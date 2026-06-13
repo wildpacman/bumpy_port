@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.re.mz import MzHeader, load_image, parse_mz
+from tools.re.mz import MzHeader, load_image, parse_mz, relocation_entries
 
 
 def mz_file(
@@ -140,6 +140,14 @@ class MzHeaderTest(unittest.TestCase):
         data = mz_file(payload=b"B" * 32) + b"TRAILING"
 
         self.assertEqual(load_image(data), b"B" * 32)
+
+    def test_extracts_ordered_relocation_entries(self):
+        data = bytearray(
+            mz_file(relocation_count=1, relocation_table_offset=28),
+        )
+        data[28:32] = struct.pack("<HH", 0x1234, 0x5678)
+
+        self.assertEqual(relocation_entries(bytes(data)), ((0x1234, 0x5678),))
 
     def test_writes_stable_sorted_ascii_report_with_file_name(self):
         from tools.re.report_mz import write_report

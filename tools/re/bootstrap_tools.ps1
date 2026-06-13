@@ -48,22 +48,46 @@ function Invoke-Git {
     }
 }
 
-$unpacklzexeCommit = "3a1b8b54e63e7e03181916d40acf7626d5558f6d"
-$unpacker = Join-Path $vendor "unpacklzexe"
-if (-not (Test-Path $unpacker)) {
-    Invoke-Git @("clone", "https://github.com/samrussell/unpacklzexe.git", $unpacker)
+function Set-PinnedCheckout {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Name,
+        [Parameter(Mandatory)]
+        [string] $Url,
+        [Parameter(Mandatory)]
+        [string] $Commit
+    )
+
+    $checkout = Join-Path $vendor $Name
+    if (-not (Test-Path $checkout)) {
+        Invoke-Git @("clone", $Url, $checkout)
+    }
+
+    $status = @(& git -C $checkout status --porcelain)
+    if ($LASTEXITCODE -ne 0) {
+        throw "git command failed with exit code ${LASTEXITCODE}: git -C $checkout status --porcelain"
+    }
+    if ($status.Count -ne 0) {
+        throw "Vendor checkout must be pristine: $checkout contains tracked modifications or untracked files. Review and remove them manually; bootstrap will not reset or clean the checkout."
+    }
+
+    Invoke-Git @("-C", $checkout, "fetch", "origin", $Commit)
+    Invoke-Git @("-C", $checkout, "checkout", "--detach", $Commit)
+
+    $status = @(& git -C $checkout status --porcelain)
+    if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) {
+        throw "Pinned vendor checkout is not pristine: $checkout"
+    }
 }
 
-Invoke-Git @("-C", $unpacker, "fetch", "origin", $unpacklzexeCommit)
-Invoke-Git @("-C", $unpacker, "checkout", "--detach", $unpacklzexeCommit)
-
-$unpackerStatus = @(& git -C $unpacker status --porcelain)
-if ($LASTEXITCODE -ne 0) {
-    throw "git command failed with exit code ${LASTEXITCODE}: git -C $unpacker status --porcelain"
-}
-if ($unpackerStatus.Count -ne 0) {
-    throw "Vendor checkout must be pristine: $unpacker contains tracked modifications or untracked files. Review and remove them manually; bootstrap will not reset or clean the checkout."
-}
+Set-PinnedCheckout `
+    -Name "unpacklzexe" `
+    -Url "https://github.com/samrussell/unpacklzexe.git" `
+    -Commit "3a1b8b54e63e7e03181916d40acf7626d5558f6d"
+Set-PinnedCheckout `
+    -Name "unlzexe" `
+    -Url "https://github.com/mywave82/unlzexe.git" `
+    -Commit "066aac7be3b27813c221d3b03621ad6dfaecd285"
 
 foreach ($tool in @("ghidraRun", "analyzeHeadless", "dosbox-x")) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {

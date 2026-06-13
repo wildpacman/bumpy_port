@@ -20,18 +20,38 @@ Run the bootstrap from Developer PowerShell for Visual Studio so `cl` is on
 - `samrussell/unpacklzexe` commit
   `3a1b8b54e63e7e03181916d40acf7626d5558f6d`: primary LZEXE 0.91
   unpacker.
-- Official LZEXE 0.91 `UPACKEXE.EXE`: independent unpack validation under
-  DOSBox-X.
+- Historical Kou Kurizono UNLZEXE C implementation from `mywave82/unlzexe`
+  commit `066aac7be3b27813c221d3b03621ad6dfaecd285`: independent LZEXE
+  unpack validator.
 
 Run `tools/re/bootstrap_tools.ps1` to check required command-line tools, clone
-`unpacklzexe` into the ignored `tools/vendor/` directory, and detach it at the
-pinned commit. Missing Ghidra and DOSBox-X commands are reported as warnings
-because their installation is external to this repository.
+both unpackers into the ignored `tools/vendor/` directory, and detach them at
+their pinned commits. Missing Ghidra and DOSBox-X commands are reported as
+warnings because their installation is external to this repository.
 
-After checkout, bootstrap requires `tools/vendor/unpacklzexe` to be pristine
-according to `git status --porcelain`. Tracked modifications and untracked
-files both stop bootstrap. The script never resets, cleans, deletes, or changes
-dirty files; review and remove them manually before running it again.
+Before and after checkout, bootstrap requires both vendor repositories to be
+pristine according to `git status --porcelain`. Tracked modifications and
+untracked files both stop bootstrap. The script never resets, cleans, deletes,
+or changes dirty files; review and remove them manually before running it
+again.
+
+## Independent unpack validation
+
+The historical UNLZEXE implementation is independent from the primary Python
+implementation derived from disassembly. LZEXE's official companion named
+`UPACKEXE` is not a LZEXE decompressor; it unpacks Microsoft's EXEPACK format
+and therefore cannot validate this task.
+
+Validation compares normalized execution semantics: load-module bytes, ordered
+relocation entries, CS:IP, SS:SP, and minimum/maximum extra paragraphs. Full
+EXE files may differ because unpackers choose different header padding.
+
+The pinned primary Python implementation calculates minimum allocation
+incorrectly. Its output wrapper normalizes MinBSS and MaxBSS using the
+historical UNLZEXE v0.7 formula and the original LZEXE 0.91 stub metadata:
+the load-module growth, rounded decompressor size, and nine bookkeeping
+paragraphs. The value is derived from the packed source, never copied from the
+validator.
 
 ## External installation
 

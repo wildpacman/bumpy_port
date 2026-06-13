@@ -68,3 +68,11 @@ def parse_mz(data: bytes) -> MzHeader:
 def load_image(data: bytes) -> bytes:
     header = parse_mz(data)
     return data[header.header_size:header.file_size]
+
+
+def relocation_entries(data: bytes) -> tuple[tuple[int, int], ...]:
+    header = parse_mz(data)
+    return tuple(
+        struct.unpack_from("<HH", data, header.relocation_table_offset + index * 4)
+        for index in range(header.relocation_count)
+    )
