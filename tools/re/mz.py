@@ -54,6 +54,14 @@ def parse_mz(data: bytes) -> MzHeader:
         raise ValueError("declared MZ size exceeds file size")
     if header.header_size > header.file_size:
         raise ValueError("MZ header exceeds declared file size")
+    if header.relocation_count > 0:
+        if header.relocation_table_offset < 28:
+            raise ValueError("MZ relocation table starts before byte 28")
+        relocation_table_end = (
+            header.relocation_table_offset + header.relocation_count * 4
+        )
+        if relocation_table_end > header.header_size:
+            raise ValueError("MZ relocation table exceeds header size")
     return header
 
 

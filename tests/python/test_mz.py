@@ -16,6 +16,8 @@ def mz_file(
     bytes_in_last_page=64,
     page_count=1,
     header_paragraphs=2,
+    relocation_count=0,
+    relocation_table_offset=28,
     payload=b"A" * 32,
 ):
     header = struct.pack(
@@ -23,7 +25,7 @@ def mz_file(
         signature,
         bytes_in_last_page,
         page_count,
-        0,
+        relocation_count,
         header_paragraphs,
         0,
         0xFFFF,
@@ -32,7 +34,7 @@ def mz_file(
         0,
         0,
         0,
-        28,
+        relocation_table_offset,
         0,
     )
     return header + b"\x00" * 4 + payload
@@ -112,6 +114,27 @@ class MzHeaderTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "MZ header size is shorter than 28 bytes"):
             parse_mz(mz_file(header_paragraphs=1))
 
+    def test_accepts_relocation_table_ending_at_header_boundary(self):
+        header = parse_mz(
+            mz_file(relocation_count=1, relocation_table_offset=28),
+        )
+
+        self.assertEqual(header.relocation_count, 1)
+
+    def test_rejects_relocation_table_before_fixed_header(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "MZ relocation table starts before byte 28",
+        ):
+            parse_mz(mz_file(relocation_count=1, relocation_table_offset=27))
+
+    def test_rejects_relocation_table_beyond_header(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "MZ relocation table exceeds header size",
+        ):
+            parse_mz(mz_file(relocation_count=2, relocation_table_offset=28))
+
     def test_load_image_excludes_header_and_trailing_bytes(self):
         data = mz_file(payload=b"B" * 32) + b"TRAILING"
 
@@ -140,6 +163,19 @@ class MzHeaderTest(unittest.TestCase):
             )
             self.assertEqual(output.read_bytes(), first)
 
+    def test_rejects_same_report_input_and_output_without_changing_source(self):
+        from tools.re.report_mz import write_report
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "SAMPLE.EXE"
+            original = mz_file()
+            source.write_bytes(original)
+
+            with self.assertRaisesRegex(ValueError, "same path"):
+                write_report(source, source.parent / "." / source.name)
+
+            self.assertEqual(source.read_bytes(), original)
+
     def test_report_script_runs_directly_from_repository_root(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "report.json"
@@ -161,6 +197,54 @@ class MzHeaderTest(unittest.TestCase):
                 json.loads(output.read_text(encoding="ascii"))["file"],
                 "BUMPY.EXE",
             )
+
+    def test_report_script_prints_concise_error_for_malformed_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "BROKEN.EXE"
+            output = root / "report.json"
+            source.write_bytes(b"not an MZ executable")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "tools/re/report_mz.py",
+                    str(source),
+                    str(output),
+                ],
+                cwd=Path.cwd(),
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 2)
+            self.assertTrue(result.stderr.startswith("error: "), result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertFalse(output.exists())
+
+    def test_report_script_rejects_same_input_and_output_without_data_loss(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "SAMPLE.EXE"
+            original = mz_file()
+            source.write_bytes(original)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "tools/re/report_mz.py",
+                    str(source),
+                    str(source),
+                ],
+                cwd=Path.cwd(),
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("same path", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(source.read_bytes(), original)
 
 
 if __name__ == "__main__":

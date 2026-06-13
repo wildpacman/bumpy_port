@@ -11,7 +11,13 @@ if __package__ in {None, ""}:
 from tools.re.mz import parse_mz
 
 
+# Command-line input and reporting errors use exit code 2.
+ERROR_EXIT_CODE = 2
+
+
 def write_report(source: Path, output: Path) -> None:
+    if source.resolve() == output.resolve():
+        raise ValueError("input and output resolve to the same path")
     report = {
         "file": source.name,
         **parse_mz(source.read_bytes()).to_dict(),
@@ -26,7 +32,11 @@ def main() -> int:
     parser.add_argument("input", type=Path)
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
-    write_report(args.input, args.output)
+    try:
+        write_report(args.input, args.output)
+    except (ValueError, OSError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return ERROR_EXIT_CODE
     return 0
 
 
