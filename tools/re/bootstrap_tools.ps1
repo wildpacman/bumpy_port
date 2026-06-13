@@ -57,6 +57,14 @@ if (-not (Test-Path $unpacker)) {
 Invoke-Git @("-C", $unpacker, "fetch", "origin", $unpacklzexeCommit)
 Invoke-Git @("-C", $unpacker, "checkout", "--detach", $unpacklzexeCommit)
 
+$unpackerStatus = @(& git -C $unpacker status --porcelain)
+if ($LASTEXITCODE -ne 0) {
+    throw "git command failed with exit code ${LASTEXITCODE}: git -C $unpacker status --porcelain"
+}
+if ($unpackerStatus.Count -ne 0) {
+    throw "Vendor checkout must be pristine: $unpacker contains tracked modifications or untracked files. Review and remove them manually; bootstrap will not reset or clean the checkout."
+}
+
 foreach ($tool in @("ghidraRun", "analyzeHeadless", "dosbox-x")) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
         Write-Warning "$tool is not on PATH; install the pinned version documented in analysis/README.md"

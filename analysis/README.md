@@ -28,6 +28,11 @@ Run `tools/re/bootstrap_tools.ps1` to check required command-line tools, clone
 pinned commit. Missing Ghidra and DOSBox-X commands are reported as warnings
 because their installation is external to this repository.
 
+After checkout, bootstrap requires `tools/vendor/unpacklzexe` to be pristine
+according to `git status --porcelain`. Tracked modifications and untracked
+files both stop bootstrap. The script never resets, cleans, deletes, or changes
+dirty files; review and remove them manually before running it again.
+
 ## External installation
 
 Download the official pinned archives:
