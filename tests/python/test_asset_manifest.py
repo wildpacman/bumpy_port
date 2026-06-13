@@ -25,6 +25,42 @@ class AssetManifestTest(unittest.TestCase):
             self.assertEqual(result.missing, ["MISSING.BIN"])
             self.assertFalse(result.ok)
 
+    def test_rejects_manifest_names_that_are_not_plain_filenames(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            digest = hashlib.sha256(b"outside").hexdigest()
+            for name in (
+                "../OUTSIDE.BIN",
+                "subdir/ASSET.BIN",
+                "subdir\\ASSET.BIN",
+                "/ABSOLUTE.BIN",
+                "C:\\ABSOLUTE.BIN",
+            ):
+                with self.subTest(name=name):
+                    manifest = root / "assets.sha256"
+                    manifest.write_text(
+                        f"{digest}  {name}\n",
+                        encoding="ascii",
+                    )
+
+                    with self.assertRaisesRegex(ValueError, "plain filename"):
+                        verify_manifest(root, manifest)
+
+    def test_reports_directory_entries_as_missing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "A.BIN").mkdir()
+            manifest = root / "assets.sha256"
+            manifest.write_text(
+                f"{'0' * 64}  A.BIN\n",
+                encoding="ascii",
+            )
+
+            result = verify_manifest(root, manifest)
+
+            self.assertEqual(result.missing, ["A.BIN"])
+            self.assertEqual(result.changed, [])
+
     def test_writes_selected_assets_in_name_order(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -57,6 +93,13 @@ class AssetManifestTest(unittest.TestCase):
                 sorted(selected_names),
             )
             self.assertTrue(verify_manifest(root, output).ok)
+            expected = b"".join(
+                f"{hashlib.sha256(name.encode('ascii')).hexdigest()}  {name}\n".encode(
+                    "ascii"
+                )
+                for name in sorted(selected_names)
+            )
+            self.assertEqual(output.read_bytes(), expected)
 
 
 if __name__ == "__main__":

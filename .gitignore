@@ -2,6 +2,8 @@
 .worktrees/
 build/
 out/
+__pycache__/
+*.py[cod]
 
 # User-supplied original game files
 /*.EXE

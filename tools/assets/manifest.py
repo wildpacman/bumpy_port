@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 
 ASSET_SUFFIXES = {
@@ -54,7 +54,7 @@ def asset_paths(root: Path) -> list[Path]:
 def write_manifest(root: Path, output: Path) -> None:
     lines = [f"{sha256(path)}  {path.name}\n" for path in asset_paths(root)]
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text("".join(lines), encoding="ascii")
+    output.write_bytes("".join(lines).encode("ascii"))
 
 
 def verify_manifest(root: Path, manifest: Path) -> Verification:
@@ -62,8 +62,16 @@ def verify_manifest(root: Path, manifest: Path) -> Verification:
     missing: list[str] = []
     for line in manifest.read_text(encoding="ascii").splitlines():
         expected, name = line.split("  ", 1)
+        windows_name = PureWindowsPath(name)
+        if (
+            name in {"", ".", ".."}
+            or "/" in name
+            or "\\" in name
+            or windows_name.drive
+        ):
+            raise ValueError(f"asset name is not a plain filename: {name}")
         path = root / name
-        if not path.exists():
+        if not path.is_file():
             missing.append(name)
         elif sha256(path) != expected:
             changed.append(name)
