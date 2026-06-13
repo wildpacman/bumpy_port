@@ -1,5 +1,6 @@
 import dataclasses
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -175,6 +176,60 @@ class MzHeaderTest(unittest.TestCase):
                 write_report(source, source.parent / "." / source.name)
 
             self.assertEqual(source.read_bytes(), original)
+
+    def test_rejects_hard_link_output_without_changing_source(self):
+        from tools.re.report_mz import write_report
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "SAMPLE.EXE"
+            output = root / "report.json"
+            original = mz_file()
+            source.write_bytes(original)
+            os.link(source, output)
+
+            with self.assertRaisesRegex(ValueError, "same file"):
+                write_report(source, output)
+
+            self.assertEqual(source.read_bytes(), original)
+            self.assertEqual(output.read_bytes(), original)
+
+    def test_replaces_existing_report_atomically_without_temp_files(self):
+        from tools.re.report_mz import write_report
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "SAMPLE.EXE"
+            output = root / "report.json"
+            observer = root / "old-report.json"
+            source.write_bytes(mz_file())
+            output.write_bytes(b"old report")
+            os.link(output, observer)
+
+            write_report(source, output)
+
+            self.assertEqual(observer.read_bytes(), b"old report")
+            self.assertEqual(
+                json.loads(output.read_text(encoding="ascii"))["file"],
+                "SAMPLE.EXE",
+            )
+            self.assertEqual(list(root.glob(f".{output.name}.*.tmp")), [])
+
+    def test_cleans_temporary_report_when_atomic_replace_fails(self):
+        from tools.re.report_mz import write_report
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "SAMPLE.EXE"
+            output = root / "report.json"
+            source.write_bytes(mz_file())
+            output.mkdir()
+
+            with self.assertRaises(OSError):
+                write_report(source, output)
+
+            self.assertTrue(output.is_dir())
+            self.assertEqual(list(root.glob(f".{output.name}.*.tmp")), [])
 
     def test_report_script_runs_directly_from_repository_root(self):
         with tempfile.TemporaryDirectory() as directory:
