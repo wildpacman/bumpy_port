@@ -1,0 +1,19 @@
+{
+  "bytes_in_last_page": 451,
+  "checksum": 0,
+  "file": "BUMPY.EXE",
+  "file_size": 46019,
+  "header_paragraphs": 2,
+  "header_size": 32,
+  "initial_cs": 2783,
+  "initial_ip": 14,
+  "initial_sp": 128,
+  "initial_ss": 6866,
+  "max_extra_paragraphs": 65535,
+  "min_extra_paragraphs": 4303,
+  "overlay": 0,
+  "page_count": 90,
+  "relocation_count": 0,
+  "relocation_table_offset": 28,
+  "signature": 23117
+}
