@@ -2,3 +2,20 @@
 .worktrees/
 build/
 out/
+
+# User-supplied original game files
+/*.EXE
+/*.VEC
+/*.BNK
+/*.MID
+/*.BIN
+/*.BUM
+/*.DEC
+/*.PAV
+/*.CAR
+/*.NFO
+/QUELDISK
+
+# Reproducible reverse-engineering artifacts and downloaded tools
+/analysis/generated/
+/tools/vendor/
