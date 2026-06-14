@@ -38,7 +38,8 @@ non-destructive.**
 Task 5 reproducibly creates two ignored clean Ghidra projects and an
 address-linked catalog containing 509 initial functions. All entries remain
 `unknown` until later reverse-engineering work supplies stronger evidence.
-The initial Task 5 commit is `e916baa`; quality-review fixes are being verified.
+The initial Task 5 commit is `e916baa`; quality-review fixes are commit
+`74dc91e`. Task 5 remains in review until approval.
 
 ## Progress
 
@@ -48,15 +49,15 @@ The initial Task 5 commit is `e916baa`; quality-review fixes are being verified.
 | 2. Strict DOS MZ inspection | Complete | `654007f`, `56334b7`, `8872c29` | Safe MZ parser and atomic deterministic report |
 | 3. Pin research tools | Complete | `4ce56d6`, `9a7d84d`, `fcb7a7c` | Hash-pinned archives and pristine vendor checkouts |
 | 4. Reproducible EXE unpacking | Complete | `2f125ed`, `ea5f060` | Two independent unpackers agree on normalized execution semantics |
-| 5. Ghidra database/catalog | In review | `e916baa` | Review fixes in progress |
+| 5. Ghidra database/catalog | In review | `e916baa`, `74dc91e` | Review fixes verified; awaiting approval |
 | 6. DOSBox-X reference run | Pending | - | Blocked until Task 5 review approval |
 | 7. C++20/CMake scaffold | Pending | - | - |
 | 8. Asset validation and SDL3 window | Pending | - | - |
 | 9. Unified milestone verification | Pending | - | - |
 
 Tasks 1-4 passed separate spec-compliance and code-quality reviews. Task 5
-initial implementation is commit `e916baa`; its quality-review fixes are in
-progress.
+initial implementation is commit `e916baa`; verified quality-review fixes are
+commit `74dc91e`, awaiting review approval.
 
 ## Verified Findings
 
