@@ -1,6 +1,6 @@
 # Bumpy Accurate Port: Project Status
 
-Last updated: 2026-06-13
+Last updated: 2026-06-14
 
 ## Start Here
 
@@ -11,7 +11,6 @@ This file is the operational handoff for new sessions.
   `C:\dev\BUMPY\.worktrees\reverse-engineering-foundation`
 - Active branch: `reverse-engineering-foundation`
 - Base branch: `master`
-- Latest implementation commit: `ea5f060`
 - Design:
   `docs/superpowers/specs/2026-06-13-bumpy-accurate-port-design.md`
 - Implementation plan:
@@ -33,18 +32,11 @@ playable from launch through win/loss and return to menu.
 
 Milestone: reverse-engineering foundation.
 
-Current task: **Task 5 - Create Ghidra database and initial address-linked
-function catalog.**
+Current task: **Task 6 - Configure a reproducible DOSBox-X reference run.**
 
-Task 5 has not started. A previous worker stalled while attempting to create a
-nested subagent. No Task 5 tracked files or commit were produced. Do not create
-nested subagents for this task.
-
-Expected Task 5 tracked outputs:
-
-- `analysis/ghidra_scripts/ExportFunctions.py`
-- `analysis/catalog/functions.csv`
-- `analysis/catalog/globals.csv`
+Task 5 created an ignored Ghidra project under `analysis/generated/ghidra` and
+an address-linked catalog containing 509 initial functions. All entries remain
+`unknown` until later reverse-engineering work supplies stronger evidence.
 
 ## Progress
 
@@ -54,14 +46,15 @@ Expected Task 5 tracked outputs:
 | 2. Strict DOS MZ inspection | Complete | `654007f`, `56334b7`, `8872c29` | Safe MZ parser and atomic deterministic report |
 | 3. Pin research tools | Complete | `4ce56d6`, `9a7d84d`, `fcb7a7c` | Hash-pinned archives and pristine vendor checkouts |
 | 4. Reproducible EXE unpacking | Complete | `2f125ed`, `ea5f060` | Two independent unpackers agree on normalized execution semantics |
-| 5. Ghidra database/catalog | Not started | - | Next task |
-| 6. DOSBox-X reference run | Pending | - | - |
+| 5. Ghidra database/catalog | Complete | - | 509 address-linked functions exported from verified MZ analysis |
+| 6. DOSBox-X reference run | Pending | - | Next task |
 | 7. C++20/CMake scaffold | Pending | - | - |
 | 8. Asset validation and SDL3 window | Pending | - | - |
 | 9. Unified milestone verification | Pending | - | - |
 
-Every completed task passed a separate spec-compliance review and code-quality
-review. Review findings were fixed before advancing.
+Tasks 1-4 passed separate spec-compliance and code-quality reviews. Task 5 was
+executed directly and verified by a clean Ghidra import plus a stable rerun of
+the export script.
 
 ## Verified Findings
 
@@ -86,6 +79,16 @@ review. Review findings were fixed before advancing.
 - The primary unpacker's MinBSS calculation was incorrect. The wrapper
   normalizes it from original LZEXE 0.91 stub metadata using the historical
   UNLZEXE formula. The confirmed value is `211` paragraphs.
+- Ghidra 12.1.2 imports the validated unpacked executable with loader
+  `MzLoader` (`Old-style DOS Executable (MZ)`) and language/compiler
+  `x86:LE:16:Real Mode:default`.
+- Initial Ghidra analysis identifies 509 functions. The stable exported catalog
+  SHA-256 is
+  `d9d8178b51833b5799ce8f37bda3f5faf5c60fdd11a79ac065d31361a6df760a`.
+- Ghidra rejects project paths containing a component that begins with `.`.
+  Because the active worktree is below `.worktrees`, headless commands use a
+  temporary junction path without dotted components while project files remain
+  physically under the ignored `analysis/generated/ghidra` directory.
 
 See `analysis/reports/mz-header.json` and
 `analysis/reports/unpack-validation.json` for machine-readable evidence.
@@ -106,8 +109,7 @@ See `analysis/reports/mz-header.json` and
 
 ## Current Verification
 
-At implementation commit `ea5f060`, the full Python suite contained 42 passing
-tests.
+The full Python suite contains 42 passing tests.
 
 Run:
 
@@ -138,8 +140,7 @@ Expected:
 2. Read this file, the design, and the implementation plan.
 3. Confirm the branch is `reverse-engineering-foundation`.
 4. Run the current verification commands above.
-5. Continue Task 5 directly with one worker. Do not let a worker create nested
-   subagents.
+5. Continue Task 6 directly.
 6. After implementation, run spec-compliance review, then code-quality review.
 7. Update this file after each completed task or important discovery and commit
    the update as a checkpoint.
@@ -149,13 +150,6 @@ Suggested new-session prompt:
 ```text
 Continue the Bumpy accurate-port project from PROJECT_STATUS.md in
 C:\dev\BUMPY\.worktrees\reverse-engineering-foundation. Verify the checkpoint,
-then execute Task 5 from the implementation plan using one worker without
-nested subagents. Update PROJECT_STATUS.md when Task 5 is complete.
+then execute Task 6 from the implementation plan. Update PROJECT_STATUS.md when
+Task 6 is complete.
 ```
-
-## Recent Operational Note
-
-The previous Task 5 worker made no tracked changes. It stalled for about
-40 minutes while attempting to create a nested subagent. The operation was
-interrupted and the worker was stopped. No active Ghidra/Java analysis process
-or Task 5 commit remained afterward.
