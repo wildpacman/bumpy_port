@@ -1,23 +1,22 @@
 # Bumpy Accurate Port: Project Status
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 ## Start Here
 
 This file is the operational handoff for new sessions.
 
 - Project root with original game files: `C:\dev\BUMPY`
-- Active implementation worktree:
-  `C:\dev\BUMPY\.worktrees\reverse-engineering-foundation`
-- Active branch: `reverse-engineering-foundation`
-- Base branch: `master`
+- Current checkout: `C:\dev\BUMPY`
+- Current branch: `master`
 - Design:
   `docs/superpowers/specs/2026-06-13-bumpy-accurate-port-design.md`
-- Implementation plan:
+- Completed foundation plan:
   `docs/superpowers/plans/2026-06-13-reverse-engineering-foundation.md`
 
-Run all development commands from the active implementation worktree unless a
-task explicitly says otherwise.
+Create a new isolated worktree before implementing the next milestone. Use
+`master` only to read status, create the next plan, and integrate completed
+work.
 
 ## Goal
 
@@ -30,15 +29,16 @@ playable from launch through win/loss and return to menu.
 
 ## Current Milestone
 
-Milestone: reverse-engineering foundation.
+Milestone: **resource formats and accurate menu**.
 
-Current task: **Task 6 - Configure reproducible reference execution.**
+Current task: create the detailed implementation plan
+`docs/superpowers/plans/2026-06-15-resource-formats-and-menu.md`.
 
-Task 5 is complete and approved. It reproducibly creates ignored clean Ghidra projects under
-`analysis/generated/ghidra-clean-1` and `analysis/generated/ghidra-clean-2`,
-then writes an address-linked catalog containing 509 initial functions. All
-entries remain `unknown` until later reverse-engineering work supplies stronger
-evidence.
+The reverse-engineering foundation milestone is complete and merged into
+`master`. The next milestone starts by recovering the original file-opening
+and file-reading functions from the Ghidra catalog, then specifies the `.VEC`
+and other menu resource formats, and ends with a pixel-comparable original
+menu rendered by the native SDL3 runtime.
 
 ## Progress
 
@@ -49,12 +49,32 @@ evidence.
 | 3. Pin research tools | Complete | `4ce56d6`, `9a7d84d`, `fcb7a7c` | Hash-pinned archives and pristine vendor checkouts |
 | 4. Reproducible EXE unpacking | Complete | `2f125ed`, `ea5f060` | Two independent unpackers agree on normalized execution semantics |
 | 5. Ghidra database/catalog | Complete | `e916baa`, `74dc91e`, `ddca578`, `4104bad` | Reproducible clean imports and approved address-linked catalog |
-| 6. DOSBox-X reference run | In progress | - | Configure and verify the fixed reference environment |
-| 7. C++20/CMake scaffold | Pending | - | - |
-| 8. Asset validation and SDL3 window | Pending | - | - |
-| 9. Unified milestone verification | Pending | - | - |
+| 6. DOSBox-X reference run | Complete | `995b725` | Fixed reference environment and automated menu probe |
+| 7. C++20/CMake scaffold | Complete | `6f947d4`, `6cb3648` | SDL-independent indexed framebuffer and native test scaffold |
+| 8. Asset validation and SDL3 window | Complete | `6f613da` | Validated runtime shell with SDL3 output |
+| 9. Unified milestone verification | Complete | `39e4121`, `9350555` | One-command milestone verification and stable artifact line endings |
 
-Tasks 1-5 passed separate spec-compliance and code-quality reviews.
+All foundation tasks are complete. `tools/verify.ps1` passes on `master`.
+
+## Next Milestone
+
+Working name: `resource-formats-and-menu`.
+
+Required outcome:
+
+1. Recover and document the original file-opening and file-reading functions
+   with addresses and evidence in the analysis catalog.
+2. Identify the exact original resources used by the startup menu.
+3. Specify and test `.VEC` and every other format needed by that menu path.
+4. Implement SDL-independent C++ resource decoders that read the supplied
+   original files directly.
+5. Recover the menu palette, composition, cursor behavior, and input handling.
+6. Render the original menu through `IndexedFramebuffer`.
+7. Compare captured original and native menu frames automatically.
+8. Add one command that verifies the menu milestone.
+
+This milestone must recover behavior from the binary and resources. Do not
+approximate the menu from screenshots.
 
 ## Verified Findings
 
@@ -121,48 +141,42 @@ See `analysis/reports/mz-header.json` and
 
 ## Current Verification
 
-The full Python suite contains 48 passing tests.
+The full Python suite contains 50 passing tests. The native C++ suite contains
+3 passing test cases.
 
 Run:
 
 ```powershell
-Set-Location C:\dev\BUMPY\.worktrees\reverse-engineering-foundation
-python tools/assets/manifest.py verify
-python -m unittest discover -s tests/python -v
-python tools/re/validate_unpack.py
-& tools/re/run_ghidra_analysis.ps1
-git -C tools/vendor/unpacklzexe status --porcelain
-git -C tools/vendor/unlzexe status --porcelain
-git diff --check
-git status --short --branch
+Set-Location C:\dev\BUMPY
+& tools/verify.ps1
+git status --short
 ```
 
 Expected:
 
-- asset verification exits `0`;
-- all Python tests pass;
-- unpack validation exits `0`;
-- two clean Ghidra imports produce identical discovery hashes;
-- both vendor status commands print nothing;
-- `git diff --check` prints nothing;
+- asset verification, all Python tests, unpack validation, CMake build, and C++
+  tests pass;
+- the Ghidra function catalog is non-empty;
 - tracked worktree is clean.
 
 ## How To Continue
 
-1. Open a new session in:
-   `C:\dev\BUMPY\.worktrees\reverse-engineering-foundation`.
-2. Read this file, the design, and the implementation plan.
-3. Confirm the branch is `reverse-engineering-foundation`.
-4. Run the current verification commands above.
-5. Continue Task 6 from the implementation plan.
-6. After implementation, run spec-compliance review, then code-quality review.
-7. Update this file after each completed task or important discovery and commit
-   the update as a checkpoint.
+1. Open a new session in `C:\dev\BUMPY`.
+2. Read this file, the design, and the completed foundation plan.
+3. Confirm the branch is `master` and run `tools/verify.ps1`.
+4. Use the brainstorming and writing-plans skills to create
+   `docs/superpowers/plans/2026-06-15-resource-formats-and-menu.md`.
+5. Review the new plan against the design and the required outcome above.
+6. Create an isolated worktree/branch for executing the new plan.
+7. Update this file after each completed task or important discovery.
 
 Suggested new-session prompt:
 
 ```text
 Continue the Bumpy accurate-port project from PROJECT_STATUS.md in
-C:\dev\BUMPY\.worktrees\reverse-engineering-foundation. Verify the checkpoint,
-then continue Task 6 using the subagent-driven workflow.
+C:\dev\BUMPY. Verify the completed foundation checkpoint, then create the
+detailed resource-formats-and-menu implementation plan. The plan must begin
+with recovering the original file-opening and file-reading functions from the
+Ghidra catalog and end with a pixel-comparable original menu in the SDL3
+runtime. Do not approximate behavior from screenshots.
 ```
