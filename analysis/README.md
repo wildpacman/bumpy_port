@@ -83,9 +83,10 @@ Invoke-WebRequest `
 The bootstrap fails on a hash mismatch. It warns when either archive is absent
 because downloading and installing these tools remains external.
 
-Only after this verification succeeds, extract the archives. Task 5 uses
-ignored local installations under `tools/vendor`; it does not install
-system-wide or modify the user `PATH`.
+The hash-verified archives remain under ignored `tools/vendor`. On every Task 5
+run, the wrapper extracts clean local installations into ignored
+`analysis/generated/ghidra-tools`; it does not install system-wide or modify
+the user `PATH`.
 
 After installation, verify the external tools:
 
