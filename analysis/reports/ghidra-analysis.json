@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "loader": "MzLoader",
+  "loader_display": "Old-style DOS Executable (MZ)",
+  "language": "x86:LE:16:Real Mode:default",
+  "input_sha256": "3ff2f60b474dc04b1de7c69cf3764b95e31967b74a00f755d231ddd3235adbe0",
+  "discovery_sha256": "4620fc53924f5e4c63671e8f09fc60d035ce3624fc1ecea50278f7ea3e6f0c6e",
+  "catalog_sha256": "d9d8178b51833b5799ce8f37bda3f5faf5c60fdd11a79ac065d31361a6df760a",
+  "address_catalog_sha256": "fef17ed47419cef5bfad0f4f469e3f0d214af36ce10962923173faf4889ee5bd",
+  "function_count": 509,
+  "discovered_function_count": 509,
+  "tools": {
+    "ghidra_version": "12.1.2",
+    "ghidra_archive_sha256": "b62e81a0390618466c019c60d8c2f796ced2509c4c1aea4a37644a77272cf99d",
+    "jdk_version": "21.0.11",
+    "jdk_archive_sha256": "d3625e7cadf23787ea540229544b6e2ab494b3b54da1801879e583e1dfee0a64",
+    "pyghidra_version": "3.1.0",
+    "pyghidra_wheel_sha256": "d4d21729c126190ca358700220fed62af4be2252b4e255ffb889d82dd5a263ac"
+  },
+  "clean_imports": [
+    {
+      "name": "ghidra-clean-1",
+      "discovery_sha256": "4620fc53924f5e4c63671e8f09fc60d035ce3624fc1ecea50278f7ea3e6f0c6e",
+      "function_count": 509,
+      "warning_count": 2
+    },
+    {
+      "name": "ghidra-clean-2",
+      "discovery_sha256": "4620fc53924f5e4c63671e8f09fc60d035ce3624fc1ecea50278f7ea3e6f0c6e",
+      "function_count": 509,
+      "warning_count": 2
+    }
+  ],
+  "warning": {
+    "status": "allowlisted known Ghidra decompiler warning",
+    "signature": "Decompiling 1000:35a5, pcode error at 1000:84d7: Unable to resolve constructor at 1000:84d7",
+    "count_per_import": 2,
+    "confirmed_effect": "warning is present while headless analysis and import report success; no broader effect has been established"
+  }
+}

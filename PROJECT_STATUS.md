@@ -32,11 +32,13 @@ playable from launch through win/loss and return to menu.
 
 Milestone: reverse-engineering foundation.
 
-Current task: **Task 6 - Configure a reproducible DOSBox-X reference run.**
+Current task: **Task 5 review - Make the Ghidra catalog reproducible and
+non-destructive.**
 
-Task 5 created an ignored Ghidra project under `analysis/generated/ghidra` and
-an address-linked catalog containing 509 initial functions. All entries remain
+Task 5 reproducibly creates two ignored clean Ghidra projects and an
+address-linked catalog containing 509 initial functions. All entries remain
 `unknown` until later reverse-engineering work supplies stronger evidence.
+The initial Task 5 commit is `e916baa`; quality-review fixes are being verified.
 
 ## Progress
 
@@ -46,15 +48,15 @@ an address-linked catalog containing 509 initial functions. All entries remain
 | 2. Strict DOS MZ inspection | Complete | `654007f`, `56334b7`, `8872c29` | Safe MZ parser and atomic deterministic report |
 | 3. Pin research tools | Complete | `4ce56d6`, `9a7d84d`, `fcb7a7c` | Hash-pinned archives and pristine vendor checkouts |
 | 4. Reproducible EXE unpacking | Complete | `2f125ed`, `ea5f060` | Two independent unpackers agree on normalized execution semantics |
-| 5. Ghidra database/catalog | Complete | - | 509 address-linked functions exported from verified MZ analysis |
-| 6. DOSBox-X reference run | Pending | - | Next task |
+| 5. Ghidra database/catalog | In review | `e916baa` | Review fixes in progress |
+| 6. DOSBox-X reference run | Pending | - | Blocked until Task 5 review approval |
 | 7. C++20/CMake scaffold | Pending | - | - |
 | 8. Asset validation and SDL3 window | Pending | - | - |
 | 9. Unified milestone verification | Pending | - | - |
 
-Tasks 1-4 passed separate spec-compliance and code-quality reviews. Task 5 was
-executed directly and verified by a clean Ghidra import plus a stable rerun of
-the export script.
+Tasks 1-4 passed separate spec-compliance and code-quality reviews. Task 5
+initial implementation is commit `e916baa`; its quality-review fixes are in
+progress.
 
 ## Verified Findings
 
@@ -85,6 +87,13 @@ the export script.
 - Initial Ghidra analysis identifies 509 functions. The stable exported catalog
   SHA-256 is
   `d9d8178b51833b5799ce8f37bda3f5faf5c60fdd11a79ac065d31361a6df760a`.
+- Two independent clean Ghidra projects produce the same raw discovery
+  SHA-256:
+  `4620fc53924f5e4c63671e8f09fc60d035ce3624fc1ecea50278f7ea3e6f0c6e`.
+- Each clean analysis emits the same known Ghidra decompiler warning exactly
+  twice: `Decompiling 1000:35a5, pcode error at 1000:84d7: Unable to resolve
+  constructor at 1000:84d7`. Ghidra reports successful analysis and import in
+  the same logs. No broader effect has been established.
 - Ghidra rejects project paths containing a component that begins with `.`.
   Because the active worktree is below `.worktrees`, headless commands use a
   temporary junction path without dotted components while project files remain
@@ -109,7 +118,7 @@ See `analysis/reports/mz-header.json` and
 
 ## Current Verification
 
-The full Python suite contains 42 passing tests.
+The full Python suite contains 47 passing tests.
 
 Run:
 
@@ -118,6 +127,7 @@ Set-Location C:\dev\BUMPY\.worktrees\reverse-engineering-foundation
 python tools/assets/manifest.py verify
 python -m unittest discover -s tests/python -v
 python tools/re/validate_unpack.py
+& tools/re/run_ghidra_analysis.ps1
 git -C tools/vendor/unpacklzexe status --porcelain
 git -C tools/vendor/unlzexe status --porcelain
 git diff --check
@@ -127,8 +137,9 @@ git status --short --branch
 Expected:
 
 - asset verification exits `0`;
-- 42 Python tests pass;
+- all Python tests pass;
 - unpack validation exits `0`;
+- two clean Ghidra imports produce identical discovery hashes;
 - both vendor status commands print nothing;
 - `git diff --check` prints nothing;
 - tracked worktree is clean.
@@ -140,7 +151,7 @@ Expected:
 2. Read this file, the design, and the implementation plan.
 3. Confirm the branch is `reverse-engineering-foundation`.
 4. Run the current verification commands above.
-5. Continue Task 6 directly.
+5. Complete and obtain approval for the Task 5 review fixes.
 6. After implementation, run spec-compliance review, then code-quality review.
 7. Update this file after each completed task or important discovery and commit
    the update as a checkpoint.
@@ -150,6 +161,6 @@ Suggested new-session prompt:
 ```text
 Continue the Bumpy accurate-port project from PROJECT_STATUS.md in
 C:\dev\BUMPY\.worktrees\reverse-engineering-foundation. Verify the checkpoint,
-then execute Task 6 from the implementation plan. Update PROJECT_STATUS.md when
-Task 6 is complete.
+then complete the Task 5 quality-review fixes. Do not start Task 6 until Task 5
+review is approved.
 ```

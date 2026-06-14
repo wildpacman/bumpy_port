@@ -1,6 +1,8 @@
 # @category Bumpy
 
 import csv
+import os
+import tempfile
 
 
 def export_functions():
@@ -10,18 +12,28 @@ def export_functions():
 
     output = args[0]
     functions = list(currentProgram.getFunctionManager().getFunctions(True))
-
-    with open(output, "w", encoding="utf-8", newline="") as stream:
-        csv_writer = csv.writer(stream, lineterminator="\n")
-        csv_writer.writerow(["address", "name", "status", "evidence", "cpp_symbol"])
-        for function in functions:
-            csv_writer.writerow([
-                str(function.getEntryPoint()),
-                function.getName(),
-                "unknown",
-                "ghidra initial analysis",
-                "",
-            ])
+    output_directory = os.path.dirname(os.path.abspath(output))
+    descriptor, temporary = tempfile.mkstemp(
+        dir=output_directory,
+        prefix="." + os.path.basename(output) + ".",
+        suffix=".tmp",
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="ascii", newline="") as stream:
+            csv_writer = csv.writer(stream, lineterminator="\n")
+            csv_writer.writerow(["address", "name"])
+            for function in functions:
+                csv_writer.writerow([
+                    str(function.getEntryPoint()),
+                    function.getName(),
+                ])
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, output)
+        temporary = None
+    finally:
+        if temporary is not None and os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 export_functions()
