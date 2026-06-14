@@ -35,9 +35,11 @@ Milestone: reverse-engineering foundation.
 Current task: **Task 5 review - Make the Ghidra catalog reproducible and
 non-destructive.**
 
-Task 5 reproducibly creates two ignored clean Ghidra projects and an
-address-linked catalog containing 509 initial functions. All entries remain
-`unknown` until later reverse-engineering work supplies stronger evidence.
+Task 5 reproducibly creates ignored clean Ghidra projects under
+`analysis/generated/ghidra-clean-1` and `analysis/generated/ghidra-clean-2`,
+then writes an address-linked catalog containing 509 initial functions. All
+entries remain `unknown` until later reverse-engineering work supplies stronger
+evidence.
 The initial Task 5 commit is `e916baa`; quality-review fixes are commit
 `74dc91e`. Task 5 remains in review until approval.
 
@@ -98,7 +100,12 @@ commit `74dc91e`, awaiting review approval.
 - Ghidra rejects project paths containing a component that begins with `.`.
   Because the active worktree is below `.worktrees`, headless commands use a
   temporary junction path without dotted components while project files remain
-  physically under the ignored `analysis/generated/ghidra` directory.
+  physically under the ignored `analysis/generated/ghidra-clean-1` and
+  `analysis/generated/ghidra-clean-2` directories.
+- Every Task 5 verification run cleanly extracts hash-verified Ghidra and JDK
+  archives into ignored `analysis/generated/ghidra-tools`, verifies pinned
+  `py.exe` and Python 3.12.0 executable hashes, and creates a clean PyGhidra
+  virtual environment.
 
 See `analysis/reports/mz-header.json` and
 `analysis/reports/unpack-validation.json` for machine-readable evidence.
@@ -119,7 +126,7 @@ See `analysis/reports/mz-header.json` and
 
 ## Current Verification
 
-The full Python suite contains 47 passing tests.
+The full Python suite contains 48 passing tests.
 
 Run:
 

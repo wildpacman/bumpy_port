@@ -6,6 +6,7 @@ Run the bootstrap from Developer PowerShell for Visual Studio so `cl` is on
 `PATH`. The required local command-line tools are:
 
 - Python 3.14.
+- Windows `py.exe` launcher with Python 3.12.0 available as `py -3.12`.
 - CMake 4.2 or newer.
 - Git.
 - Visual Studio C++ with MSVC.
@@ -109,10 +110,14 @@ Run the complete Task 5 verification from any directory:
 
 The wrapper does not modify the system installation or user `PATH`. It:
 
-- verifies the pinned Ghidra 12.1.2 and Temurin JDK 21.0.11 archives;
-- compares key installed files against bytes in those verified archives;
-- verifies the bundled PyGhidra 3.1.0 wheel and force-installs it into an
-  ignored local virtual environment;
+- verifies the pinned Ghidra 12.1.2 and Temurin JDK 21.0.11 archives, deletes
+  the prior ignored tool directory, and cleanly extracts both archives into
+  `analysis/generated/ghidra-tools` on every run;
+- requires the pinned Windows `py.exe` launcher and Python 3.12.0 interpreter,
+  verifies both executable hashes, and creates a clean ignored virtual
+  environment on every run;
+- verifies the freshly extracted bundled PyGhidra 3.1.0 wheel and installs it
+  into that clean virtual environment;
 - runs asset verification and independently validated unpacking;
 - creates two separate clean ignored Ghidra projects using `MzLoader` and
   `x86:LE:16:Real Mode`;
@@ -138,6 +143,8 @@ curated catalog. For a segmented real-mode address `segment:offset`:
 
 `0x10000` is the Ghidra MZ load-module base represented by `1000:0000`.
 Addresses below this base are rejected rather than assigned a guessed offset.
+`linear_address` and `image_offset` use fixed-width eight-digit hexadecimal so
+plain lexical sorting has the same order as numeric sorting.
 
 Both clean analyses currently emit the same warning exactly twice:
 

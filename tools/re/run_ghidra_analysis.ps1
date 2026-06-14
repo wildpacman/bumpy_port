@@ -6,6 +6,9 @@ $GhidraVersion = "12.1.2"
 $JdkArchiveName = "OpenJDK21U-jdk_x64_windows_hotspot_21.0.11_10.zip"
 $JdkArchiveSha256 = "d3625e7cadf23787ea540229544b6e2ab494b3b54da1801879e583e1dfee0a64"
 $JdkVersion = "21.0.11"
+$PythonVersion = "3.12.0"
+$PyLauncherSha256 = "bec50779367301f008aec0066595582275c4db949e4789eda9a87050c08905f4"
+$PythonExecutableSha256 = "42ac541168e97dedb9aabd8be335539fc41c682e414b9e8d137b164fb68683b0"
 $PyGhidraVersion = "3.1.0"
 $PyGhidraWheelSha256 = "d4d21729c126190ca358700220fed62af4be2252b4e255ffb889d82dd5a263ac"
 $Loader = "MzLoader"
@@ -29,6 +32,20 @@ function Assert-FileHash {
     $actual = Get-Sha256 $Path
     if ($actual -ne $Expected) {
         throw "SHA-256 mismatch for $Path`: expected $Expected, got $actual"
+    }
+}
+
+function Test-FileHash {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][string] $Expected
+    )
+    try {
+        return (Test-Path -LiteralPath $Path -PathType Leaf) -and
+            ((Get-Sha256 $Path) -eq $Expected)
+    }
+    catch {
+        return $false
     }
 }
 
@@ -67,6 +84,39 @@ function Assert-ZipInstallFile {
     $installedHash = Get-Sha256 $InstalledPath
     if ($archiveHash -ne $installedHash) {
         throw "installed file differs from pinned archive: $InstalledPath"
+    }
+}
+
+function Get-PinnedPython {
+    $launchers = @(Get-Command py -CommandType Application -ErrorAction SilentlyContinue)
+    if ($launchers.Count -eq 0) {
+        throw "required Windows py launcher is absent"
+    }
+    $matchingLaunchers = @(
+        $launchers | Where-Object {
+            Test-FileHash $_.Source $PyLauncherSha256
+        }
+    )
+    if ($matchingLaunchers.Count -ne 1) {
+        throw "expected exactly one pinned Windows py launcher, found $($matchingLaunchers.Count)"
+    }
+    $launcher = $matchingLaunchers[0]
+
+    $version = (& $launcher.Source -3.12 -c "import platform; print(platform.python_version())").Trim()
+    if ($LASTEXITCODE -ne 0 -or $version -ne $PythonVersion) {
+        throw "Python prerequisite mismatch: expected $PythonVersion via py -3.12, got $version"
+    }
+    $executable = (& $launcher.Source -3.12 -c "import sys; print(sys.executable)").Trim()
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+        throw "Python 3.12 executable could not be resolved via py launcher"
+    }
+    Assert-FileHash $executable $PythonExecutableSha256
+    return [ordered]@{
+        launcher = $launcher.Source
+        launcher_sha256 = $PyLauncherSha256
+        executable = $executable
+        executable_sha256 = $PythonExecutableSha256
+        version = $version
     }
 }
 
@@ -232,10 +282,11 @@ function Invoke-Main {
     $generated = Join-Path $root "analysis\generated"
     $ghidraArchive = Join-Path $downloads $GhidraArchiveName
     $jdkArchive = Join-Path $downloads $JdkArchiveName
-    $ghidraInstall = Join-Path $vendor "ghidra_12.1.2_PUBLIC"
-    $jdkInstall = Join-Path $vendor "jdk21\jdk-21.0.11+10"
+    $toolRoot = Join-Path $generated "ghidra-tools"
+    $ghidraInstall = Join-Path $toolRoot "ghidra_12.1.2_PUBLIC"
+    $jdkInstall = Join-Path $toolRoot "jdk-21.0.11+10"
     $wheel = Join-Path $ghidraInstall "Ghidra\Features\PyGhidra\pypkg\dist\pyghidra-3.1.0-py3-none-any.whl"
-    $venv = Join-Path $vendor "pyghidra-venv"
+    $venv = Join-Path $toolRoot "pyghidra-venv"
     $venvPython = Join-Path $venv "Scripts\python.exe"
     $launcher = Join-Path $ghidraInstall "Ghidra\Features\PyGhidra\support\pyghidra_launcher.py"
     $unpacked = Join-Path $generated "BUMPY.UNPACKED.EXE"
@@ -247,6 +298,12 @@ function Invoke-Main {
 
     Assert-FileHash $ghidraArchive $GhidraArchiveSha256
     Assert-FileHash $jdkArchive $JdkArchiveSha256
+    $pythonPrerequisite = Get-PinnedPython
+    Remove-SafeGeneratedDirectory $toolRoot $generated
+    New-Item -ItemType Directory -Force -Path $toolRoot | Out-Null
+    Expand-Archive -LiteralPath $ghidraArchive -DestinationPath $toolRoot
+    Expand-Archive -LiteralPath $jdkArchive -DestinationPath $toolRoot
+
     Assert-FileHash $wheel $PyGhidraWheelSha256
     foreach ($required in @($launcher, (Join-Path $jdkInstall "bin\java.exe"))) {
         if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
@@ -272,17 +329,17 @@ function Invoke-Main {
         throw "JDK install version mismatch"
     }
 
-    Invoke-Checked "asset verification" "python" @(
+    Invoke-Checked "asset verification" $pythonPrerequisite.executable @(
         (Join-Path $root "tools\assets\manifest.py"), "verify"
     )
-    Invoke-Checked "validated unpacking" "python" @(
+    Invoke-Checked "validated unpacking" $pythonPrerequisite.executable @(
         (Join-Path $root "tools\re\validate_unpack.py")
     )
     Assert-FileHash $unpacked "3ff2f60b474dc04b1de7c69cf3764b95e31967b74a00f755d231ddd3235adbe0"
 
-    if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
-        Invoke-Checked "create PyGhidra venv" "py" @("-3.12", "-m", "venv", $venv)
-    }
+    Invoke-Checked "create clean PyGhidra venv" $pythonPrerequisite.launcher @(
+        "-3.12", "-m", "venv", $venv
+    )
     Invoke-Checked "install pinned PyGhidra" $venvPython @(
         "-m", "pip", "install", "--disable-pip-version-check", "--no-index",
         "--force-reinstall", "--find-links", (Split-Path -Parent $wheel),
@@ -308,7 +365,7 @@ function Invoke-Main {
         }
 
         $discovery = Join-Path $generated "ghidra-clean-1-functions.csv"
-        Invoke-Checked "publish curated Ghidra catalog" "python" @(
+        Invoke-Checked "publish curated Ghidra catalog" $venvPython @(
             (Join-Path $root "tools\re\ghidra_catalog.py"),
             $discovery, $catalog, $addresses
         )
@@ -329,8 +386,14 @@ function Invoke-Main {
                 ghidra_archive_sha256 = $GhidraArchiveSha256
                 jdk_version = $JdkVersion
                 jdk_archive_sha256 = $JdkArchiveSha256
+                python_version = $pythonPrerequisite.version
+                py_launcher_sha256 = $pythonPrerequisite.launcher_sha256
+                python_executable_sha256 = $pythonPrerequisite.executable_sha256
                 pyghidra_version = $PyGhidraVersion
                 pyghidra_wheel_sha256 = $PyGhidraWheelSha256
+                clean_archive_extraction_per_run = $true
+                ghidra_install = "analysis/generated/ghidra-tools/ghidra_12.1.2_PUBLIC"
+                jdk_install = "analysis/generated/ghidra-tools/jdk-21.0.11+10"
             }
             clean_imports = @($first, $second)
             warning = [ordered]@{
@@ -347,7 +410,7 @@ function Invoke-Main {
         Remove-SafeAlias $alias $root
     }
 
-    Invoke-Checked "post-analysis asset verification" "python" @(
+    Invoke-Checked "post-analysis asset verification" $pythonPrerequisite.executable @(
         (Join-Path $root "tools\assets\manifest.py"), "verify"
     )
 }

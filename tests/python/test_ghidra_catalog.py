@@ -105,12 +105,27 @@ class GhidraCatalogTest(unittest.TestCase):
                 "address": "1000:1234",
                 "segment": "0x1000",
                 "offset": "0x1234",
-                "linear_address": "0x11234",
-                "image_offset": "0x1234",
+                "linear_address": "0x00011234",
+                "image_offset": "0x00001234",
             },
         )
         with self.assertRaisesRegex(ValueError, "below load-module base"):
             address_mapping("0fff:0000")
+
+    def test_machine_addresses_are_lexically_sortable(self) -> None:
+        mappings = [
+            address_mapping("1000:0000"),
+            address_mapping("1000:ffff"),
+            address_mapping("ffff:ffff"),
+        ]
+        for field in ("linear_address", "image_offset"):
+            self.assertEqual(
+                sorted(row[field] for row in mappings),
+                [
+                    row[field]
+                    for row in sorted(mappings, key=lambda row: int(row[field], 16))
+                ],
+            )
 
     def test_repository_catalogs_and_report_correspond_exactly(self) -> None:
         functions = read_csv(ROOT / "analysis/catalog/functions.csv", CATALOG_FIELDS)
@@ -185,6 +200,20 @@ class GhidraCatalogTest(unittest.TestCase):
         self.assertEqual(report["tools"]["ghidra_version"], "12.1.2")
         self.assertEqual(report["tools"]["jdk_version"], "21.0.11")
         self.assertEqual(report["tools"]["pyghidra_version"], "3.1.0")
+        self.assertEqual(report["tools"]["python_version"], "3.12.0")
+        self.assertEqual(
+            report["tools"]["py_launcher_sha256"],
+            "bec50779367301f008aec0066595582275c4db949e4789eda9a87050c08905f4",
+        )
+        self.assertTrue(report["tools"]["clean_archive_extraction_per_run"])
+        self.assertEqual(
+            report["tools"]["ghidra_install"],
+            "analysis/generated/ghidra-tools/ghidra_12.1.2_PUBLIC",
+        )
+        self.assertEqual(
+            report["tools"]["jdk_install"],
+            "analysis/generated/ghidra-tools/jdk-21.0.11+10",
+        )
         self.assertEqual(
             report["tools"]["ghidra_archive_sha256"],
             "b62e81a0390618466c019c60d8c2f796ced2509c4c1aea4a37644a77272cf99d",

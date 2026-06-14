@@ -120,8 +120,8 @@ def address_mapping(address: str) -> dict[str, str]:
         "address": address,
         "segment": f"0x{segment:04x}",
         "offset": f"0x{offset:04x}",
-        "linear_address": f"0x{linear:x}",
-        "image_offset": f"0x{linear - LOAD_MODULE_LINEAR_BASE:x}",
+        "linear_address": f"0x{linear:08x}",
+        "image_offset": f"0x{linear - LOAD_MODULE_LINEAR_BASE:08x}",
     }
 
 
