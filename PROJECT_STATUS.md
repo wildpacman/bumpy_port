@@ -32,16 +32,13 @@ playable from launch through win/loss and return to menu.
 
 Milestone: reverse-engineering foundation.
 
-Current task: **Task 5 review - Make the Ghidra catalog reproducible and
-non-destructive.**
+Current task: **Task 6 - Configure reproducible reference execution.**
 
-Task 5 reproducibly creates ignored clean Ghidra projects under
+Task 5 is complete and approved. It reproducibly creates ignored clean Ghidra projects under
 `analysis/generated/ghidra-clean-1` and `analysis/generated/ghidra-clean-2`,
 then writes an address-linked catalog containing 509 initial functions. All
 entries remain `unknown` until later reverse-engineering work supplies stronger
 evidence.
-The initial Task 5 commit is `e916baa`; quality-review fixes are commits
-`74dc91e` and `ddca578`. Task 5 remains in review until approval.
 
 ## Progress
 
@@ -51,15 +48,13 @@ The initial Task 5 commit is `e916baa`; quality-review fixes are commits
 | 2. Strict DOS MZ inspection | Complete | `654007f`, `56334b7`, `8872c29` | Safe MZ parser and atomic deterministic report |
 | 3. Pin research tools | Complete | `4ce56d6`, `9a7d84d`, `fcb7a7c` | Hash-pinned archives and pristine vendor checkouts |
 | 4. Reproducible EXE unpacking | Complete | `2f125ed`, `ea5f060` | Two independent unpackers agree on normalized execution semantics |
-| 5. Ghidra database/catalog | In review | `e916baa`, `74dc91e`, `ddca578` | Review fixes verified; awaiting approval |
-| 6. DOSBox-X reference run | Pending | - | Blocked until Task 5 review approval |
+| 5. Ghidra database/catalog | Complete | `e916baa`, `74dc91e`, `ddca578`, `4104bad` | Reproducible clean imports and approved address-linked catalog |
+| 6. DOSBox-X reference run | In progress | - | Configure and verify the fixed reference environment |
 | 7. C++20/CMake scaffold | Pending | - | - |
 | 8. Asset validation and SDL3 window | Pending | - | - |
 | 9. Unified milestone verification | Pending | - | - |
 
-Tasks 1-4 passed separate spec-compliance and code-quality reviews. Task 5
-initial implementation is commit `e916baa`; verified quality-review fixes are
-commits `74dc91e` and `ddca578`, awaiting review approval.
+Tasks 1-5 passed separate spec-compliance and code-quality reviews.
 
 ## Verified Findings
 
@@ -159,7 +154,7 @@ Expected:
 2. Read this file, the design, and the implementation plan.
 3. Confirm the branch is `reverse-engineering-foundation`.
 4. Run the current verification commands above.
-5. Complete and obtain approval for the Task 5 review fixes.
+5. Continue Task 6 from the implementation plan.
 6. After implementation, run spec-compliance review, then code-quality review.
 7. Update this file after each completed task or important discovery and commit
    the update as a checkpoint.
@@ -169,6 +164,5 @@ Suggested new-session prompt:
 ```text
 Continue the Bumpy accurate-port project from PROJECT_STATUS.md in
 C:\dev\BUMPY\.worktrees\reverse-engineering-foundation. Verify the checkpoint,
-then complete the Task 5 quality-review fixes. Do not start Task 6 until Task 5
-review is approved.
+then continue Task 6 using the subagent-driven workflow.
 ```
