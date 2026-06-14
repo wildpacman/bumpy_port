@@ -13,6 +13,9 @@ IndexedFramebuffer::IndexedFramebuffer(int width, int height)
 }
 
 std::uint8_t& IndexedFramebuffer::pixel(int x, int y) {
+    if (x < 0 || x >= width_ || y < 0 || y >= height_) {
+        throw std::out_of_range("framebuffer coordinates are outside the image");
+    }
     return pixels_.at(static_cast<std::size_t>(y * width_ + x));
 }
 

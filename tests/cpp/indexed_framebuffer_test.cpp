@@ -12,3 +12,10 @@ TEST_CASE("indexed framebuffer converts palette entries exactly") {
 
     REQUIRE(rgba == std::vector<std::uint32_t>{0xff563412, 0xff563412});
 }
+
+TEST_CASE("indexed framebuffer rejects coordinates outside either axis") {
+    bumpy::IndexedFramebuffer frame(2, 2);
+
+    REQUIRE_THROWS_AS(frame.pixel(2, 0), std::out_of_range);
+    REQUIRE_THROWS_AS(frame.pixel(-1, 1), std::out_of_range);
+}
