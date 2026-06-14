@@ -1,0 +1,2 @@
+analysis/catalog/*.csv text eol=lf
+analysis/reports/*.json text eol=lf
