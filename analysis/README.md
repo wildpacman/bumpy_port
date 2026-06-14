@@ -164,3 +164,9 @@ established.
 - `hypothesis`: named from evidence that still needs an independent check.
 - `confirmed`: validated by static analysis plus reference execution or an
   independent implementation.
+
+## Foundation milestone verification
+
+Run `tools/verify.ps1`. A successful run proves asset integrity, deterministic
+and independently checked unpacking, non-empty address-linked analysis output,
+and a passing native C++/SDL3 build.
