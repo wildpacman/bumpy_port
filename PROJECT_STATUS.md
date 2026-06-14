@@ -31,8 +31,9 @@ playable from launch through win/loss and return to menu.
 
 Milestone: **resource formats and accurate menu**.
 
-Current task: create the detailed implementation plan
-`docs/superpowers/plans/2026-06-15-resource-formats-and-menu.md`.
+Current task: execute Task 1 of
+`docs/superpowers/plans/2026-06-15-resource-formats-and-menu.md` in a new
+isolated worktree: export and confirm the original file I/O and menu call path.
 
 The reverse-engineering foundation milestone is complete and merged into
 `master`. The next milestone starts by recovering the original file-opening
@@ -64,7 +65,7 @@ Required outcome:
 
 1. Recover and document the original file-opening and file-reading functions
    with addresses and evidence in the analysis catalog.
-2. Identify the exact original resources used by the startup menu.
+2. Identify the exact original resources used by the VGA game menu.
 3. Specify and test `.VEC` and every other format needed by that menu path.
 4. Implement SDL-independent C++ resource decoders that read the supplied
    original files directly.
@@ -75,6 +76,11 @@ Required outcome:
 
 This milestone must recover behavior from the binary and resources. Do not
 approximate the menu from screenshots.
+
+Product decision: the native port starts directly on the confirmed VGA
+game-menu path. It does not reproduce the DOS startup EGA/VGA selector. The
+reference harness selects VGA only as setup before capturing/comparing the
+resource-backed menu.
 
 ## Verified Findings
 
@@ -168,7 +174,9 @@ Expected:
    `docs/superpowers/plans/2026-06-15-resource-formats-and-menu.md`.
 5. Review the new plan against the design and the required outcome above.
 6. Create an isolated worktree/branch for executing the new plan.
-7. Update this file after each completed task or important discovery.
+7. Execute Task 1 first; do not implement resource decoders before the
+   file-I/O/menu-path evidence and resource list are confirmed.
+8. Update this file after each completed task or important discovery.
 
 Suggested new-session prompt:
 
