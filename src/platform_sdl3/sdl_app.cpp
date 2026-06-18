@@ -10,6 +10,33 @@ void require(bool ok) {
     }
 }
 
+void update_key_state(bumpy::MenuInput& input, SDL_Keycode key, bool pressed) {
+    switch (key) {
+    case SDLK_UP:
+        input.up = pressed;
+        break;
+    case SDLK_DOWN:
+        input.down = pressed;
+        break;
+    case SDLK_LEFT:
+        input.left = pressed;
+        break;
+    case SDLK_RIGHT:
+        input.right = pressed;
+        break;
+    case SDLK_RETURN:
+    case SDLK_KP_ENTER:
+    case SDLK_SPACE:
+        input.confirm = pressed;
+        break;
+    case SDLK_ESCAPE:
+        input.cancel = pressed;
+        break;
+    default:
+        break;
+    }
+}
+
 }  // namespace
 
 namespace bumpy {
@@ -45,16 +72,26 @@ SdlApp::~SdlApp() {
     SDL_Quit();
 }
 
-int SdlApp::run(IndexedFramebuffer& frame) {
+int SdlApp::run(Menu& menu, const MenuRenderer& menu_renderer, IndexedFramebuffer& frame) {
     bool running = true;
+    MenuInput input{};
     while (running) {
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_QUIT ||
-                (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) {
+            if (event.type == SDL_EVENT_QUIT) {
                 running = false;
+            } else if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+                update_key_state(input, event.key.key, true);
+                if (event.key.key == SDLK_ESCAPE) {
+                    running = false;
+                }
+            } else if (event.type == SDL_EVENT_KEY_UP) {
+                update_key_state(input, event.key.key, false);
             }
         }
+
+        const auto action = menu.update(input);
+        menu_renderer.render(menu.view(), frame);
 
         const auto rgba = frame.to_rgba();
         require(SDL_UpdateTexture(
@@ -62,6 +99,11 @@ int SdlApp::run(IndexedFramebuffer& frame) {
         require(SDL_RenderClear(renderer_));
         require(SDL_RenderTexture(renderer_, texture_, nullptr, nullptr));
         require(SDL_RenderPresent(renderer_));
+
+        if (action == MenuAction::start_first_level || action == MenuAction::quit) {
+            running = false;
+        }
+        SDL_Delay(16);
     }
     return 0;
 }

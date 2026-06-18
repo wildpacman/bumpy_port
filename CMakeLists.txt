@@ -16,7 +16,12 @@ FetchContent_MakeAvailable(SDL Catch2)
 
 add_library(bumpy_core
   src/core/indexed_framebuffer.cpp
-  src/core/asset_manifest.cpp)
+  src/core/asset_manifest.cpp
+  src/game/menu.cpp
+  src/resources/binary_reader.cpp
+  src/resources/vec.cpp
+  src/resources/menu_resources.cpp
+  src/video/menu_renderer.cpp)
 target_include_directories(bumpy_core PUBLIC src)
 target_link_libraries(bumpy_core PUBLIC bcrypt)
 
@@ -35,7 +40,12 @@ add_custom_command(TARGET bumpy_port POST_BUILD
 enable_testing()
 add_executable(bumpy_tests
   tests/cpp/indexed_framebuffer_test.cpp
-  tests/cpp/asset_manifest_test.cpp)
+  tests/cpp/asset_manifest_test.cpp
+  tests/cpp/binary_reader_test.cpp
+  tests/cpp/vec_test.cpp
+  tests/cpp/menu_resources_test.cpp
+  tests/cpp/menu_renderer_test.cpp
+  tests/cpp/menu_test.cpp)
 target_link_libraries(bumpy_tests PRIVATE bumpy_core Catch2::Catch2WithMain)
 add_test(NAME bumpy_tests COMMAND bumpy_tests)
 set_tests_properties(bumpy_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")

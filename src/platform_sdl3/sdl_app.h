@@ -3,6 +3,8 @@
 #include <SDL3/SDL.h>
 
 #include "core/indexed_framebuffer.h"
+#include "game/menu.h"
+#include "video/menu_renderer.h"
 
 namespace bumpy {
 
@@ -12,7 +14,7 @@ public:
     ~SdlApp();
     SdlApp(const SdlApp&) = delete;
     SdlApp& operator=(const SdlApp&) = delete;
-    int run(IndexedFramebuffer& frame);
+    int run(Menu& menu, const MenuRenderer& menu_renderer, IndexedFramebuffer& frame);
 
 private:
     SDL_Window* window_{};

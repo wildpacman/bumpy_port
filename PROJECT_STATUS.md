@@ -5,9 +5,8 @@ Source of truth for new sessions. Last updated: 2026-06-19.
 ## Goal
 
 A **playable** native Windows 11 port of *Bumpy's Arcade Fantasy* in C++/SDL3
-that reads the original game's resources directly. The port should feel faithful
-to the original — same look, timing, and behavior — without being a
-bit-for-bit preservation project.
+that reads the original game's resources directly. Faithful to the original's
+look, timing, and behavior — not a bit-for-bit preservation project.
 
 First slice (definition of done): the original menu and the first level are
 playable from launch through win/loss and back to the menu, reading the supplied
@@ -15,115 +14,98 @@ original files.
 
 ## Approach
 
-Two principles drive every decision:
-
 1. **Pragmatic.** Optimize for reaching a playable game. Recover formats and
    logic accurately enough to be correct; do not add reproducibility ceremony
-   (dual-tool agreement, pixel-exact gates, per-syscall dynamic proofs) that does
-   not move us toward a playable build.
+   that does not move the port forward.
 2. **Binary-only sources.** Recover behavior from `BUMPY.EXE` and the original
-   resource files — not from community docs or third-party reverse engineering.
-   Screenshots and video are used only for visual comparison.
+   files — not from community docs. Screenshots/video are for visual comparison
+   only.
 
-Game logic stays independent of SDL3, the monitor refresh rate, and floating
-point. SDL3 is only a platform adapter (window, input, timer, audio, present).
+Game logic stays independent of SDL3, refresh rate, and floating point. SDL3 is
+only a platform adapter.
 
 ## Architecture
 
-- `core` — fixed game tick, integer math, RNG, indexed framebuffer.
+- `core` — fixed tick, integer math, RNG, indexed framebuffer.
 - `game` — menu, level, physics, collision, objects, state transitions.
-- `resources` — direct readers/decoders for the original file formats.
+- `resources` — direct readers/decoders for the original formats.
 - `video` — palette and frame composition over an indexed 320×200 buffer.
 - `audio` — music, instrument bank, effects.
 - `platform_sdl3` — window, input, timing, presentation.
 
 ## Roadmap
 
-- **Stage 1 — `.VEC` container + title screen.** Recover the resource load +
-  draw path and the `.VEC` pixel/palette format from the binary; implement a C++
-  decoder; render `TITRE.VEC`. One decoder unlocks title, masks, worlds, score,
-  and level graphics.
-- **Stage 2 — Menu.** Composition, palette, cursor (`FLECHE.BIN`), font
-  (`DDFNT2.CAR`), input, transitions — from the menu code.
-- **Stage 3 — First level.** `.BUM`/`.DEC`/`.PAV` formats, physics, collision,
-  objects; win/loss; return to menu.
-
-Each stage is a short, lean plan. Verify a format by decoding every file of that
-format to full consumption, and verify visuals by eye against the original.
+- **Stage 1 — `.VEC` container + title screen — DONE.** `.VEC` decoder and the
+  title bitmap render natively.
+- **Stage 2 — Menu — mostly done.** Resource bundle, menu state machine, cursor
+  logic, and SDL3 shell exist and build. Remaining: the real VGA DAC palette and
+  sprite pixel rendering.
+- **Stage 3 — First level — next.** `.BUM`/`.DEC`/`.PAV` formats, physics,
+  collision, objects; win/loss; return to menu.
 
 ## Current state
 
-**Foundation (done, reusable):**
-- SHA-256 manifest of all 50 original files (`config/original-assets.sha256`).
-- Reproducible LZEXE 0.91 unpack → `analysis/generated/BUMPY.UNPACKED.EXE`
-  (112336 bytes).
-- Ghidra 12.1.2 import of the unpacked image (509 functions).
-- DOSBox-X reference harness (`tools/reference/run_reference.ps1`).
-- C++20/CMake/SDL3 runtime shell with `IndexedFramebuffer`, asset-manifest
-  reader, and an SDL window.
+**Foundation (done, reusable):** SHA-256 asset manifest (50 files), reproducible
+LZEXE unpack → `analysis/generated/BUMPY.UNPACKED.EXE`, Ghidra import (509
+functions), DOSBox-X reference harness.
 
-**Reverse-engineering tooling:**
-- `tools/re/decompile_loader.ps1` — one-pass PyGhidra export (reuses the
-  downloaded Ghidra + JDK) → `analysis/generated/decomp/all_functions.c`
-  (all 509 functions as readable C), `strings.txt`, `index.txt`.
+**Menu/resource pipeline (recovered, builds and runs on master):**
+- `.VEC` decoder (`src/resources/vec`): 12-byte big-endian layer header with XOR
+  checksum, multi-layer, **method 4** (marker-RLE) and **method 12**
+  (marker-mask). All 13 supplied `.VEC` decode to the expected bytes (verified by
+  SHA in `tests/cpp/vec_test.cpp`).
+- `TITRE.VEC` → 320×200 four-plane planar bitmap, rendered through
+  `IndexedFramebuffer` (`src/video/menu_renderer`).
+- `BUMSPJEU.BIN` sprite archive layout (`src/resources/menu_resources`): 3 groups
+  × 33 = 99 offset-delimited children.
+- Menu state machine (`src/game/menu`) and SDL3 shell (`src/platform_sdl3`).
+- `bumpy_port.exe` renders the title and runs the menu window; 28 C++ test cases
+  pass. `bumpy_port.exe --render-title out.bmp` dumps the title headlessly.
 
-**Stage 1 (in progress):** the resource/loader pipeline is recovered from the
-binary — see `analysis/RESOURCE_PIPELINE.md`. Confirmed: the 10-byte resource
-table, the open→read→close path, and that `.VEC` files load **raw** (pixel decode
-happens at draw time). Game logic ported so far: none.
+**Placeholders / remaining work:**
+- **Palette is a preview** (`apply_preview_palette` in `main.cpp`). The real VGA
+  DAC palette — the 16-byte table copied into the decoded title at offset `0x23`
+  — is not wired in yet, so colors are not authentic.
+- Sprites are decoded structurally but not yet rendered to pixels.
+- `start_first_level` is a stub; no level loading yet.
+
+## How to run
+
+```powershell
+cmake --build --preset windows-debug
+& build/windows-debug/Debug/bumpy_port.exe                       # menu window
+& build/windows-debug/Debug/bumpy_port.exe --render-title out.bmp  # headless dump
+```
 
 ## Reverse-engineering workflow
 
-1. Regenerate the decompilation if needed (`tools/re/decompile_loader.ps1`).
-2. Read the relevant functions in `analysis/generated/decomp/all_functions.c`;
-   correlate with strings, the resource table, and original file bytes.
-3. Record the recovered behavior in `analysis/` (catalog + notes) with addresses.
+1. Regenerate the decompilation if needed (`tools/re/decompile_loader.ps1` →
+   `analysis/generated/decomp/all_functions.c`).
+2. Read the relevant functions; correlate with strings, the resource table, and
+   the raw bytes of the original files.
+3. Record recovered behavior in `analysis/` (catalog + specs) with addresses.
 4. Transcribe confirmed behavior into C++ behind a platform-independent boundary.
-5. Test decoders/logic on the real original files; compare visuals to the
-   original by eye. Investigate any mismatch as a port defect.
+5. Test decoders/logic on the real files; compare visuals to the original by eye.
 
 ## Key recovered facts
 
-- `BUMPY.EXE` is a DOS MZ executable packed with LZEXE 0.91.
-- Built with **Turbo C++ 1990 (Borland)**, 16-bit real mode, large/far-data
-  model. DOS calls appear as `swi(0x21)` in the decompilation.
-- Ghidra load base is segment `0x1000`. The data segment is the load-relative
-  `0x103b`, which Ghidra shows as `0x203b` (`+0x1000`). File offset `F` maps to
-  Ghidra linear `0x10000 + (F − 0x1090)`.
-- Resource pipeline (table format, open/read/close, draw entry points) is
-  documented in `analysis/RESOURCE_PIPELINE.md`.
-
-## Repository layout
-
-```
-BUMPY.EXE, *.VEC, *.BUM, ...   original game files (read-only inputs)
-config/original-assets.sha256   manifest of the original files
-src/                            C++ port (core/game/resources/video/platform_sdl3)
-tests/                          C++ (Catch2) and Python tests
-tools/assets/                   asset manifest verifier
-tools/re/                       reverse-engineering tools (decompile_loader.ps1, mz, unpack)
-tools/reference/                DOSBox-X reference harness
-analysis/catalog/               function/global catalogs (addresses + status)
-analysis/RESOURCE_PIPELINE.md   recovered resource/loader map
-analysis/generated/             IGNORED: unpacked exe, decompilation, downloaded tools
-```
+- Built with **Turbo C++ 1990 (Borland)**, 16-bit real mode, large model. DOS
+  calls appear as `swi(0x21)` in the decompilation.
+- Data segment is the load-relative `0x103b` (Ghidra shows `0x203b`, `+0x1000`).
+- Resource/loader pipeline: `analysis/RESOURCE_PIPELINE.md`.
+- `.VEC` and sprite formats: `analysis/specs/menu-resource-formats.md`.
 
 ## Safety rules
 
-- Never modify the original game files; treat every root-level game file as a
-  read-only input. `python tools/assets/manifest.py verify` checks them.
+- Never modify the original game files; treat root-level game files as read-only
+  inputs (`python tools/assets/manifest.py verify`).
 - Generated artifacts and downloaded tools live under ignored
   `analysis/generated/` and `tools/vendor/`. Do not commit them.
 
-## Verification
-
-`tools/verify.ps1` checks asset integrity, the unpack, the Python tests, the
-CMake build, and the C++ tests. Run it before and after work that touches the
-build or the original files.
-
 ## Next step
 
-Read `FUN_1000_7b5a` (blit) and `FUN_1000_7b93` (palette) in the decompilation to
-recover the exact `.VEC` pixel encoding and palette, then implement
-`src/resources/vec` and render `TITRE.VEC`. See
-`docs/superpowers/plans/stage-1-vec-and-title-screen.md`.
+Recover the real VGA DAC palette (the 16-byte table at decoded title offset
+`0x23` and its DAC mapping; trace `1000:7b93` / `1000:08d1`) and wire it into the
+renderer for authentic colors. Then render the menu sprites, then begin Stage 3
+(level 1). See `docs/superpowers/plans/stage-1-vec-and-title-screen.md` for the
+recovered context.

@@ -1,5 +1,6 @@
 #include "core/indexed_framebuffer.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace bumpy {
@@ -19,8 +20,16 @@ std::uint8_t& IndexedFramebuffer::pixel(int x, int y) {
     return pixels_.at(static_cast<std::size_t>(y * width_ + x));
 }
 
+void IndexedFramebuffer::clear(std::uint8_t color) {
+    std::fill(pixels_.begin(), pixels_.end(), color);
+}
+
 void IndexedFramebuffer::set_palette(std::uint8_t index, Rgba color) {
     palette_[index] = color;
+}
+
+std::span<const std::uint8_t> IndexedFramebuffer::pixels() const noexcept {
+    return pixels_;
 }
 
 std::vector<std::uint32_t> IndexedFramebuffer::to_rgba() const {
