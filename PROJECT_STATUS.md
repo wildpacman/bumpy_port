@@ -1,190 +1,129 @@
-# Bumpy Accurate Port: Project Status
+# Bumpy Port — Project Status
 
-Last updated: 2026-06-15
-
-## Start Here
-
-This file is the operational handoff for new sessions.
-
-- Project root with original game files: `C:\dev\BUMPY`
-- Current checkout: `C:\dev\BUMPY`
-- Current branch: `master`
-- Design:
-  `docs/superpowers/specs/2026-06-13-bumpy-accurate-port-design.md`
-- Completed foundation plan:
-  `docs/superpowers/plans/2026-06-13-reverse-engineering-foundation.md`
-
-Create a new isolated worktree before implementing the next milestone. Use
-`master` only to read status, create the next plan, and integrate completed
-work.
+Source of truth for new sessions. Last updated: 2026-06-19.
 
 ## Goal
 
-Create an accurate native Windows 11 port of Bumpy's Arcade Fantasy using
-C++ and SDL3. The port must read the supplied original resources directly and
-preserve the original game's integer behavior, timing, limitations, and bugs.
+A **playable** native Windows 11 port of *Bumpy's Arcade Fantasy* in C++/SDL3
+that reads the original game's resources directly. The port should feel faithful
+to the original — same look, timing, and behavior — without being a
+bit-for-bit preservation project.
 
-The first vertical slice ends when the original menu and first level are
-playable from launch through win/loss and return to menu.
+First slice (definition of done): the original menu and the first level are
+playable from launch through win/loss and back to the menu, reading the supplied
+original files.
 
-## Current Milestone
+## Approach
 
-Milestone: **resource formats and accurate menu**.
+Two principles drive every decision:
 
-Current task: execute Task 1 of
-`docs/superpowers/plans/2026-06-15-resource-formats-and-menu.md` in a new
-isolated worktree: export and confirm the original file I/O and menu call path.
+1. **Pragmatic.** Optimize for reaching a playable game. Recover formats and
+   logic accurately enough to be correct; do not add reproducibility ceremony
+   (dual-tool agreement, pixel-exact gates, per-syscall dynamic proofs) that does
+   not move us toward a playable build.
+2. **Binary-only sources.** Recover behavior from `BUMPY.EXE` and the original
+   resource files — not from community docs or third-party reverse engineering.
+   Screenshots and video are used only for visual comparison.
 
-The reverse-engineering foundation milestone is complete and merged into
-`master`. The next milestone starts by recovering the original file-opening
-and file-reading functions from the Ghidra catalog, then specifies the `.VEC`
-and other menu resource formats, and ends with a pixel-comparable original
-menu rendered by the native SDL3 runtime.
+Game logic stays independent of SDL3, the monitor refresh rate, and floating
+point. SDL3 is only a platform adapter (window, input, timer, audio, present).
 
-## Progress
+## Architecture
 
-| Task | Status | Commits | Result |
-|---|---|---|---|
-| 1. Protect original assets | Complete | `ec7d4f5`, `6599eae` | Deterministic SHA-256 manifest for all 50 supplied files |
-| 2. Strict DOS MZ inspection | Complete | `654007f`, `56334b7`, `8872c29` | Safe MZ parser and atomic deterministic report |
-| 3. Pin research tools | Complete | `4ce56d6`, `9a7d84d`, `fcb7a7c` | Hash-pinned archives and pristine vendor checkouts |
-| 4. Reproducible EXE unpacking | Complete | `2f125ed`, `ea5f060` | Two independent unpackers agree on normalized execution semantics |
-| 5. Ghidra database/catalog | Complete | `e916baa`, `74dc91e`, `ddca578`, `4104bad` | Reproducible clean imports and approved address-linked catalog |
-| 6. DOSBox-X reference run | Complete | `995b725` | Fixed reference environment and automated menu probe |
-| 7. C++20/CMake scaffold | Complete | `6f947d4`, `6cb3648` | SDL-independent indexed framebuffer and native test scaffold |
-| 8. Asset validation and SDL3 window | Complete | `6f613da` | Validated runtime shell with SDL3 output |
-| 9. Unified milestone verification | Complete | `39e4121`, `9350555` | One-command milestone verification and stable artifact line endings |
+- `core` — fixed game tick, integer math, RNG, indexed framebuffer.
+- `game` — menu, level, physics, collision, objects, state transitions.
+- `resources` — direct readers/decoders for the original file formats.
+- `video` — palette and frame composition over an indexed 320×200 buffer.
+- `audio` — music, instrument bank, effects.
+- `platform_sdl3` — window, input, timing, presentation.
 
-All foundation tasks are complete. `tools/verify.ps1` passes on `master`.
+## Roadmap
 
-## Next Milestone
+- **Stage 1 — `.VEC` container + title screen.** Recover the resource load +
+  draw path and the `.VEC` pixel/palette format from the binary; implement a C++
+  decoder; render `TITRE.VEC`. One decoder unlocks title, masks, worlds, score,
+  and level graphics.
+- **Stage 2 — Menu.** Composition, palette, cursor (`FLECHE.BIN`), font
+  (`DDFNT2.CAR`), input, transitions — from the menu code.
+- **Stage 3 — First level.** `.BUM`/`.DEC`/`.PAV` formats, physics, collision,
+  objects; win/loss; return to menu.
 
-Working name: `resource-formats-and-menu`.
+Each stage is a short, lean plan. Verify a format by decoding every file of that
+format to full consumption, and verify visuals by eye against the original.
 
-Required outcome:
+## Current state
 
-1. Recover and document the original file-opening and file-reading functions
-   with addresses and evidence in the analysis catalog.
-2. Identify the exact original resources used by the VGA game menu.
-3. Specify and test `.VEC` and every other format needed by that menu path.
-4. Implement SDL-independent C++ resource decoders that read the supplied
-   original files directly.
-5. Recover the menu palette, composition, cursor behavior, and input handling.
-6. Render the original menu through `IndexedFramebuffer`.
-7. Compare captured original and native menu frames automatically.
-8. Add one command that verifies the menu milestone.
+**Foundation (done, reusable):**
+- SHA-256 manifest of all 50 original files (`config/original-assets.sha256`).
+- Reproducible LZEXE 0.91 unpack → `analysis/generated/BUMPY.UNPACKED.EXE`
+  (112336 bytes).
+- Ghidra 12.1.2 import of the unpacked image (509 functions).
+- DOSBox-X reference harness (`tools/reference/run_reference.ps1`).
+- C++20/CMake/SDL3 runtime shell with `IndexedFramebuffer`, asset-manifest
+  reader, and an SDL window.
 
-This milestone must recover behavior from the binary and resources. Do not
-approximate the menu from screenshots.
+**Reverse-engineering tooling:**
+- `tools/re/decompile_loader.ps1` — one-pass PyGhidra export (reuses the
+  downloaded Ghidra + JDK) → `analysis/generated/decomp/all_functions.c`
+  (all 509 functions as readable C), `strings.txt`, `index.txt`.
 
-Product decision: the native port starts directly on the confirmed VGA
-game-menu path. It does not reproduce the DOS startup EGA/VGA selector. The
-reference harness selects VGA only as setup before capturing/comparing the
-resource-backed menu.
+**Stage 1 (in progress):** the resource/loader pipeline is recovered from the
+binary — see `analysis/RESOURCE_PIPELINE.md`. Confirmed: the 10-byte resource
+table, the open→read→close path, and that `.VEC` files load **raw** (pixel decode
+happens at draw time). Game logic ported so far: none.
 
-## Verified Findings
+## Reverse-engineering workflow
+
+1. Regenerate the decompilation if needed (`tools/re/decompile_loader.ps1`).
+2. Read the relevant functions in `analysis/generated/decomp/all_functions.c`;
+   correlate with strings, the resource table, and original file bytes.
+3. Record the recovered behavior in `analysis/` (catalog + notes) with addresses.
+4. Transcribe confirmed behavior into C++ behind a platform-independent boundary.
+5. Test decoders/logic on the real original files; compare visuals to the
+   original by eye. Investigate any mismatch as a port defect.
+
+## Key recovered facts
 
 - `BUMPY.EXE` is a DOS MZ executable packed with LZEXE 0.91.
-- Packed `BUMPY.EXE` SHA-256:
-  `fcf4f4837e649efc9b4a4d8d1f7c8fc8644a9894f7dbd530d228d5462270b7a0`.
-- The supplied set contains 50 original files tracked by
-  `config/original-assets.sha256`.
-- Primary unpacker:
-  `samrussell/unpacklzexe@3a1b8b54e63e7e03181916d40acf7626d5558f6d`.
-- Independent validator:
-  historical Kou Kurizono UNLZEXE C implementation at
-  `mywave82/unlzexe@066aac7be3b27813c221d3b03621ad6dfaecd285`.
-- The official LZEXE companion `UPACKEXE.EXE` is not an LZEXE decompressor. It
-  handles Microsoft EXEPACK and must not be used as the independent validator.
-- The unpackers agree on normalized execution semantics:
-  load image, ordered relocations, CS:IP, SS:SP, MinBSS, and MaxBSS.
-- Normalized load image:
-  - size: `108096` bytes
-  - SHA-256:
-    `a581f932352cd3bdd31f800819fd32d6b727caa46d1771a4f375d842e464083b`
-- The primary unpacker's MinBSS calculation was incorrect. The wrapper
-  normalizes it from original LZEXE 0.91 stub metadata using the historical
-  UNLZEXE formula. The confirmed value is `211` paragraphs.
-- Ghidra 12.1.2 imports the validated unpacked executable with loader
-  `MzLoader` (`Old-style DOS Executable (MZ)`) and language/compiler
-  `x86:LE:16:Real Mode:default`.
-- Initial Ghidra analysis identifies 509 functions. The stable exported catalog
-  SHA-256 is
-  `d9d8178b51833b5799ce8f37bda3f5faf5c60fdd11a79ac065d31361a6df760a`.
-- Two independent clean Ghidra projects produce the same raw discovery
-  SHA-256:
-  `4620fc53924f5e4c63671e8f09fc60d035ce3624fc1ecea50278f7ea3e6f0c6e`.
-- Each clean analysis emits the same known Ghidra decompiler warning exactly
-  twice: `Decompiling 1000:35a5, pcode error at 1000:84d7: Unable to resolve
-  constructor at 1000:84d7`. Ghidra reports successful analysis and import in
-  the same logs. No broader effect has been established.
-- Ghidra rejects project paths containing a component that begins with `.`.
-  Because the active worktree is below `.worktrees`, headless commands use a
-  temporary junction path without dotted components while project files remain
-  physically under the ignored `analysis/generated/ghidra-clean-1` and
-  `analysis/generated/ghidra-clean-2` directories.
-- Every Task 5 verification run cleanly extracts hash-verified Ghidra and JDK
-  archives into ignored `analysis/generated/ghidra-tools`, verifies pinned
-  `py.exe` and Python 3.12.0 executable hashes, and creates a clean PyGhidra
-  virtual environment.
+- Built with **Turbo C++ 1990 (Borland)**, 16-bit real mode, large/far-data
+  model. DOS calls appear as `swi(0x21)` in the decompilation.
+- Ghidra load base is segment `0x1000`. The data segment is the load-relative
+  `0x103b`, which Ghidra shows as `0x203b` (`+0x1000`). File offset `F` maps to
+  Ghidra linear `0x10000 + (F − 0x1090)`.
+- Resource pipeline (table format, open/read/close, draw entry points) is
+  documented in `analysis/RESOURCE_PIPELINE.md`.
 
-See `analysis/reports/mz-header.json` and
-`analysis/reports/unpack-validation.json` for machine-readable evidence.
+## Repository layout
 
-## Safety Rules
-
-- Never modify the original game files.
-- Original files in the worktree are hard links to files in `C:\dev\BUMPY`.
-  Treat every root-level game file as read-only.
-- Run `python tools/assets/manifest.py verify` before and after operations that
-  touch game files.
-- Generated files and downloaded tools belong under ignored
-  `analysis/generated/` and `tools/vendor/`.
-- Vendor git checkouts must remain at their pinned commits and pristine.
-- Do not commit original game files, generated binaries, Ghidra projects, or
-  downloaded tools.
-- Do not work directly on `master`.
-
-## Current Verification
-
-The full Python suite contains 50 passing tests. The native C++ suite contains
-3 passing test cases.
-
-Run:
-
-```powershell
-Set-Location C:\dev\BUMPY
-& tools/verify.ps1
-git status --short
+```
+BUMPY.EXE, *.VEC, *.BUM, ...   original game files (read-only inputs)
+config/original-assets.sha256   manifest of the original files
+src/                            C++ port (core/game/resources/video/platform_sdl3)
+tests/                          C++ (Catch2) and Python tests
+tools/assets/                   asset manifest verifier
+tools/re/                       reverse-engineering tools (decompile_loader.ps1, mz, unpack)
+tools/reference/                DOSBox-X reference harness
+analysis/catalog/               function/global catalogs (addresses + status)
+analysis/RESOURCE_PIPELINE.md   recovered resource/loader map
+analysis/generated/             IGNORED: unpacked exe, decompilation, downloaded tools
 ```
 
-Expected:
+## Safety rules
 
-- asset verification, all Python tests, unpack validation, CMake build, and C++
-  tests pass;
-- the Ghidra function catalog is non-empty;
-- tracked worktree is clean.
+- Never modify the original game files; treat every root-level game file as a
+  read-only input. `python tools/assets/manifest.py verify` checks them.
+- Generated artifacts and downloaded tools live under ignored
+  `analysis/generated/` and `tools/vendor/`. Do not commit them.
 
-## How To Continue
+## Verification
 
-1. Open a new session in `C:\dev\BUMPY`.
-2. Read this file, the design, and the completed foundation plan.
-3. Confirm the branch is `master` and run `tools/verify.ps1`.
-4. Use the brainstorming and writing-plans skills to create
-   `docs/superpowers/plans/2026-06-15-resource-formats-and-menu.md`.
-5. Review the new plan against the design and the required outcome above.
-6. Create an isolated worktree/branch for executing the new plan.
-7. Execute Task 1 first; do not implement resource decoders before the
-   file-I/O/menu-path evidence and resource list are confirmed.
-8. Update this file after each completed task or important discovery.
+`tools/verify.ps1` checks asset integrity, the unpack, the Python tests, the
+CMake build, and the C++ tests. Run it before and after work that touches the
+build or the original files.
 
-Suggested new-session prompt:
+## Next step
 
-```text
-Continue the Bumpy accurate-port project from PROJECT_STATUS.md in
-C:\dev\BUMPY. Verify the completed foundation checkpoint, then create the
-detailed resource-formats-and-menu implementation plan. The plan must begin
-with recovering the original file-opening and file-reading functions from the
-Ghidra catalog and end with a pixel-comparable original menu in the SDL3
-runtime. Do not approximate behavior from screenshots.
-```
+Read `FUN_1000_7b5a` (blit) and `FUN_1000_7b93` (palette) in the decompilation to
+recover the exact `.VEC` pixel encoding and palette, then implement
+`src/resources/vec` and render `TITRE.VEC`. See
+`docs/superpowers/plans/stage-1-vec-and-title-screen.md`.
