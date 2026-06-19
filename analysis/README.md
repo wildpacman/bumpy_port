@@ -17,8 +17,15 @@ specifications are tracked here; large generated artifacts are not.
 
 ## Decompilation
 
-The unpacked image is `generated/BUMPY.UNPACKED.EXE`. Regenerate the readable
-decompilation with:
+The unpacked image is `generated/BUMPY.UNPACKED.EXE`. First-time setup extracts
+Ghidra + the JDK and creates the PyGhidra venv from the pinned archives in
+`tools/vendor/downloads/`:
+
+```powershell
+& tools/re/setup_ghidra.ps1
+```
+
+Then regenerate the readable decompilation:
 
 ```powershell
 & tools/re/decompile_loader.ps1

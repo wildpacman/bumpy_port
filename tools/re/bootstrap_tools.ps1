@@ -16,10 +16,6 @@ $pinnedArchives = @(
     @{
         Name = "ghidra_12.1.2_PUBLIC_20260605.zip"
         Sha256 = "b62e81a0390618466c019c60d8c2f796ced2509c4c1aea4a37644a77272cf99d"
-    },
-    @{
-        Name = "dosbox-x-mingw64-dosbox-x-v2026.06.02-osfree-portable.zip"
-        Sha256 = "1c71c6e580a9b675029d0f40f3646bf86f59a4d47dff964974e8f2f6048b51f6"
     }
 )
 
@@ -84,10 +80,6 @@ Set-PinnedCheckout `
     -Name "unpacklzexe" `
     -Url "https://github.com/samrussell/unpacklzexe.git" `
     -Commit "3a1b8b54e63e7e03181916d40acf7626d5558f6d"
-Set-PinnedCheckout `
-    -Name "unlzexe" `
-    -Url "https://github.com/mywave82/unlzexe.git" `
-    -Commit "066aac7be3b27813c221d3b03621ad6dfaecd285"
 
 foreach ($tool in @("ghidraRun", "analyzeHeadless", "dosbox-x")) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {

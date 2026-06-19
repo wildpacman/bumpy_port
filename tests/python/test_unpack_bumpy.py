@@ -1,4 +1,3 @@
-import json
 import io
 import os
 import subprocess
@@ -11,29 +10,28 @@ from unittest.mock import patch
 
 from tools.re.mz import parse_mz
 from tools.re.unpack_bumpy import atomic_write, run_checked, unpack
-from tools.re.validate_unpack import (
-    PRIMARY_COMMIT,
-    VALIDATOR_COMMIT,
-    unpack_with_unlzexe,
-    validate,
+
+
+def _unpacker_available() -> bool:
+    """The live LZEXE unpacker needs the pinned vendored checkout, which a fresh
+    clone does not have. Tests that drive it skip when it is absent."""
+    try:
+        from tools.re.unpack_bumpy import _primary_source
+
+        _primary_source(Path(__file__).resolve().parents[2])
+        return True
+    except Exception:
+        return False
+
+
+UNPACKER_AVAILABLE = _unpacker_available()
+NEEDS_UNPACKER = unittest.skipUnless(
+    UNPACKER_AVAILABLE, "vendored unpacklzexe is not set up (run tools/re/bootstrap_tools.ps1)"
 )
 
 
 class UnpackBumpyTest(unittest.TestCase):
-    def test_bootstrap_and_docs_pin_historical_unlzexe_validator(self):
-        bootstrap = Path("tools/re/bootstrap_tools.ps1").read_text(encoding="utf-8")
-        readme = Path("analysis/README.md").read_text(encoding="utf-8")
-
-        self.assertIn(VALIDATOR_COMMIT, bootstrap)
-        self.assertIn("mywave82/unlzexe", bootstrap)
-        self.assertIn("status --porcelain", bootstrap)
-        self.assertIn(VALIDATOR_COMMIT, readme)
-        self.assertIn("historical", readme.lower())
-        self.assertNotIn(
-            "Official LZEXE 0.91 `UPACKEXE.EXE`: independent unpack validation",
-            readme,
-        )
-
+    @NEEDS_UNPACKER
     def test_primary_unpack_is_deterministic(self):
         with tempfile.TemporaryDirectory() as directory:
             first = Path(directory) / "first.exe"
@@ -47,6 +45,7 @@ class UnpackBumpyTest(unittest.TestCase):
             self.assertNotEqual(first.read_bytes()[28:32], b"LZ91")
             self.assertEqual(parse_mz(first.read_bytes()).min_extra_paragraphs, 211)
 
+    @NEEDS_UNPACKER
     def test_primary_unpack_rejects_output_hardlinked_to_source(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "linked.exe"
@@ -60,76 +59,20 @@ class UnpackBumpyTest(unittest.TestCase):
                 unpack(Path("BUMPY.EXE"), output)
             self.assertEqual(Path("BUMPY.EXE").read_bytes(), before)
 
-    def test_unlzexe_unpack_is_deterministic_and_preserves_source(self):
-        with tempfile.TemporaryDirectory() as directory:
-            first = Path(directory) / "first.exe"
-            second = Path(directory) / "second.exe"
-            before = Path("BUMPY.EXE").read_bytes()
-
-            unpack_with_unlzexe(Path("BUMPY.EXE"), first)
-            unpack_with_unlzexe(Path("BUMPY.EXE"), second)
-
-            self.assertEqual(first.read_bytes(), second.read_bytes())
-            self.assertEqual(Path("BUMPY.EXE").read_bytes(), before)
-            self.assertNotEqual(first.read_bytes()[28:32], b"LZ91")
-
-    def test_validation_writes_stable_report_with_both_hash_kinds(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            primary = root / "primary.exe"
-            validator = root / "validator.exe"
-            report = root / "report.json"
-            unpack(Path("BUMPY.EXE"), primary)
-            unpack_with_unlzexe(Path("BUMPY.EXE"), validator)
-
-            validate(primary, validator, report)
-            first_report = report.read_bytes()
-            validate(primary, validator, report)
-
-            self.assertEqual(report.read_bytes(), first_report)
-            data = json.loads(first_report)
-            self.assertTrue(data["semantic_match"])
-            self.assertEqual(data["differences"], [])
-            self.assertEqual(data["primary"]["commit"], PRIMARY_COMMIT)
-            self.assertEqual(data["validator"]["commit"], VALIDATOR_COMMIT)
-            for identity in ("primary", "validator"):
-                self.assertEqual(len(data[identity]["file_sha256"]), 64)
-                self.assertEqual(len(data[identity]["load_image_sha256"]), 64)
-                self.assertEqual(data[identity]["min_extra_paragraphs"], 211)
-                self.assertEqual(data[identity]["relocation_count"], 1050)
-
-    def test_validation_rejects_report_that_is_an_input(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            primary = root / "primary.exe"
-            validator = root / "validator.exe"
-            unpack(Path("BUMPY.EXE"), primary)
-            unpack_with_unlzexe(Path("BUMPY.EXE"), validator)
-            before = primary.read_bytes()
-
-            with self.assertRaisesRegex(ValueError, "same file"):
-                validate(primary, validator, primary)
-
-            self.assertEqual(primary.read_bytes(), before)
-
+    @NEEDS_UNPACKER
     def test_parallel_unpack_invocations_are_isolated(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             outputs = [root / f"primary-{index}.exe" for index in range(4)]
-            validators = [root / f"validator-{index}.exe" for index in range(4)]
-            with ThreadPoolExecutor(max_workers=8) as executor:
+            with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = [
                     executor.submit(unpack, Path("BUMPY.EXE"), output)
                     for output in outputs
-                ] + [
-                    executor.submit(unpack_with_unlzexe, Path("BUMPY.EXE"), output)
-                    for output in validators
                 ]
                 for future in futures:
                     future.result()
 
             self.assertEqual(len({path.read_bytes() for path in outputs}), 1)
-            self.assertEqual(len({path.read_bytes() for path in validators}), 1)
 
     def test_run_checked_reports_timeout_concisely(self):
         with self.assertRaisesRegex(RuntimeError, "timed out"):

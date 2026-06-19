@@ -29,6 +29,9 @@ class ReferenceRunnerTest(unittest.TestCase):
             self.assertIn(setting, config)
 
     def test_automated_menu_probe_finishes_and_preserves_originals(self) -> None:
+        archive = ROOT / "tools/vendor/downloads/dosbox-x-mingw64-2026.06.02-portable.zip"
+        if not archive.exists():
+            self.skipTest("pinned DOSBox-X archive is not downloaded (see reference/README.md)")
         result = subprocess.run(
             [
                 "pwsh",

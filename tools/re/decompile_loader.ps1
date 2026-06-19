@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$tools = Join-Path $root ".worktrees\resource-formats-and-menu\analysis\generated\ghidra-tools"
+$tools = Join-Path $root "analysis\generated\ghidra-tools"
 $ghidra = Join-Path $tools "ghidra_12.1.2_PUBLIC"
 $jdk = Join-Path $tools "jdk-21.0.11+10"
 $venvPython = Join-Path $tools "pyghidra-venv\Scripts\python.exe"
@@ -16,8 +16,11 @@ $projLoc = Join-Path $root "analysis\generated\ghidra-loader-proj"
 $outDir = Join-Path $root "analysis\generated\decomp"
 $log = Join-Path $root "analysis\generated\decompile_loader.log"
 
+if (-not (Test-Path -LiteralPath $tools)) {
+    throw "Ghidra tools not found at $tools. Run tools/re/setup_ghidra.ps1 first."
+}
 foreach ($p in @($venvPython, $launcher, (Join-Path $jdk "bin\java.exe"), $input)) {
-    if (-not (Test-Path -LiteralPath $p)) { throw "missing required path: $p" }
+    if (-not (Test-Path -LiteralPath $p)) { throw "missing required path: $p (run tools/re/setup_ghidra.ps1)" }
 }
 if (Test-Path -LiteralPath $projLoc) { Remove-Item -LiteralPath $projLoc -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $projLoc | Out-Null
