@@ -1,4 +1,0 @@
-interface:
-  display_name: "Source Port Reverse Engineering"
-  short_description: "Evidence-driven source ports without source code"
-  default_prompt: "Use $source-port-reverse-engineering to plan and execute an evidence-driven source port of this legacy binary."
