@@ -282,11 +282,13 @@ recovered from ground-truth disassembly but **unused by the supplied assets**
 `SPRITE.BIN` are not shipped). See `analysis/specs/menu-resource-formats.md`.
 
 ## Open questions / next blockers
-1. Per-world palette plumbing: confirm which resource the live game installs as
-   the gameplay palette. The entity sprites and PAV objects currently render under
-   the `MONDE?.VEC` map palette (world 1 = brown-tinted); the in-level gameplay
-   palette is likely a different resource and is not yet traced. This is the main
-   reason the rendered board looks monochrome-brown rather than colourful.
+1. **Missing world-map screen.** The original goes menu → **world map** (navigate
+   nodes) → playfield; the port jumps straight to the playfield and pages boards
+   with `←/→`. The map screen (`FUN_1000_3852`, per-world `MONDE{world}.VEC` +
+   node graph) is fully traced in `analysis/specs/screen-flow.md` but not yet
+   implemented. (Palette is **resolved**: the playfield has no backdrop of its own
+   and faithfully inherits the per-world MONDE palette — world 1 is brown by
+   design, not a bug. See screen-flow.md "Palette mechanism".)
 2. Layer B sprite source: its `0x3ad2` records yield small frame indices that do
    not resolve in the same `BUMSPJEU` master table region as layers A/C; the bank
    region / base for layer B is not yet pinned (it is empty on `D1` board 0).

@@ -221,6 +221,7 @@ cmake --build --preset windows-debug
 - Resource/loader pipeline: `analysis/RESOURCE_PIPELINE.md`.
 - `.VEC` and sprite formats: `analysis/specs/menu-resource-formats.md`.
 - Level formats (PAV/DEC/BUM, MONDE): `analysis/specs/level-formats.md`.
+- Screen flow + world map + palette: `analysis/specs/screen-flow.md`.
 
 ## Safety rules
 
@@ -230,6 +231,18 @@ cmake --build --preset windows-debug
   `analysis/generated/` and `tools/vendor/`. Do not commit them.
 
 ## Next step
+
+**The world-map screen is the next milestone** (the main gap that makes the
+current build "not feel like a game"). The original sequences screens **menu →
+world map → playfield**; the port skips the map and jumps menu → playfield,
+paging boards with `←/→` as a stand-in for node selection. The full flow is now
+traced in `analysis/specs/screen-flow.md`: `FUN_1000_0c18` (main loop),
+`FUN_1000_3852` (world map = per-world `MONDE{world}.VEC` + a 15-node graph at
+`0x10c8[world]` / positions at `0x10ec[world]`), arrow navigation between linked
+nodes, and fire → board `node-1`. Implementing it means adding a `Screen::map`
+between menu and level, rendering MONDE with the Bumpy avatar, and moving between
+nodes; the `←/→` board paging then retires. The "brown board" is **not a bug** —
+the playfield faithfully inherits the per-world MONDE palette (screen-flow.md).
 
 The **static composed board is DONE** (above): `level_resources` + `board_renderer`
 compose a board from the recovered formats and it matches the original world-1 art
