@@ -3,8 +3,12 @@
 #include <SDL3/SDL.h>
 
 #include "core/indexed_framebuffer.h"
-#include "game/menu.h"
+#include "game/app.h"
+#include "resources/level_resources.h"
 #include "video/menu_renderer.h"
+
+#include <cstdint>
+#include <span>
 
 namespace bumpy {
 
@@ -14,7 +18,12 @@ public:
     ~SdlApp();
     SdlApp(const SdlApp&) = delete;
     SdlApp& operator=(const SdlApp&) = delete;
-    int run(Menu& menu, const MenuRenderer& menu_renderer, IndexedFramebuffer& frame);
+
+    // Drive the top-level App: render the menu when on the menu screen and the
+    // static level board (over the per-world backdrop palette) when on the level
+    // screen, presenting each frame until the App requests quit.
+    int run(App& app, const MenuRenderer& menu_renderer, const LevelResources& level,
+            std::span<const std::uint8_t> backdrop_screen, IndexedFramebuffer& frame);
 
 private:
     SDL_Window* window_{};

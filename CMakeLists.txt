@@ -18,6 +18,7 @@ add_library(bumpy_core
   src/core/indexed_framebuffer.cpp
   src/core/asset_manifest.cpp
   src/game/menu.cpp
+  src/game/app.cpp
   src/resources/binary_reader.cpp
   src/resources/vec.cpp
   src/resources/menu_resources.cpp
@@ -51,7 +52,8 @@ add_executable(bumpy_tests
   tests/cpp/menu_renderer_test.cpp
   tests/cpp/level_resources_test.cpp
   tests/cpp/board_renderer_test.cpp
-  tests/cpp/menu_test.cpp)
+  tests/cpp/menu_test.cpp
+  tests/cpp/app_test.cpp)
 target_link_libraries(bumpy_tests PRIVATE bumpy_core Catch2::Catch2WithMain)
 add_test(NAME bumpy_tests COMMAND bumpy_tests)
 set_tests_properties(bumpy_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")

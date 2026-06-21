@@ -1,5 +1,7 @@
 #include "platform_sdl3/sdl_app.h"
 
+#include "video/board_renderer.h"
+
 #include <stdexcept>
 
 namespace {
@@ -72,7 +74,8 @@ SdlApp::~SdlApp() {
     SDL_Quit();
 }
 
-int SdlApp::run(Menu& menu, const MenuRenderer& menu_renderer, IndexedFramebuffer& frame) {
+int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResources& level,
+                std::span<const std::uint8_t> backdrop_screen, IndexedFramebuffer& frame) {
     bool running = true;
     MenuInput input{};
     while (running) {
@@ -82,16 +85,22 @@ int SdlApp::run(Menu& menu, const MenuRenderer& menu_renderer, IndexedFramebuffe
                 running = false;
             } else if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
                 update_key_state(input, event.key.key, true);
-                if (event.key.key == SDLK_ESCAPE) {
-                    running = false;
-                }
             } else if (event.type == SDL_EVENT_KEY_UP) {
                 update_key_state(input, event.key.key, false);
             }
         }
 
-        const auto action = menu.update(input);
-        menu_renderer.render(menu.view(), frame);
+        // The App owns all screen transitions, including Escape/cancel (menu ->
+        // quit, level -> menu), so the event loop no longer special-cases Escape.
+        if (app.update(input) == AppOutcome::quit) {
+            running = false;
+        }
+
+        if (app.screen() == Screen::menu) {
+            menu_renderer.render(app.menu().view(), frame);
+        } else {
+            render_board(level, app.board_index(), backdrop_screen, frame);
+        }
 
         const auto rgba = frame.to_rgba();
         require(SDL_UpdateTexture(
@@ -100,9 +109,6 @@ int SdlApp::run(Menu& menu, const MenuRenderer& menu_renderer, IndexedFramebuffe
         require(SDL_RenderTexture(renderer_, texture_, nullptr, nullptr));
         require(SDL_RenderPresent(renderer_));
 
-        if (action == MenuAction::start_first_level || action == MenuAction::quit) {
-            running = false;
-        }
         SDL_Delay(16);
     }
     return 0;

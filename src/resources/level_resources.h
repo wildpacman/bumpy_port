@@ -34,6 +34,47 @@ struct LevelBoard {
     [[nodiscard]] std::uint8_t object_index(int col, int row) const;
 };
 
+// One board's dynamic entities, decoded from a D?.BUM record (194 bytes). The
+// record is three parallel 8-column x 6-row entity layers of 48 bytes each, then
+// 6 board params at 0x90, then a 44-byte remainder. Recovered from the board
+// activation FUN_1000_32b0 (which copies bytes 0x00..0x95 into the working buffer
+// 203b:a0e4) and the spawn/draw routine FUN_1000_2a78 which iterates the grid as
+// cell = row*8 + col and draws each non-zero cell through a per-layer path; see
+// analysis/specs/level-formats.md ("D?.BUM entity layers").
+struct BumEntities {
+    static constexpr int columns = 8;
+    static constexpr int rows = 6;
+    static constexpr int cells = columns * rows;       // 48 = 0x30
+    static constexpr std::size_t record_size = 0xc2;   // 194
+    static constexpr std::size_t layer_a_offset = 0x00;  // peg/bumper grid (0/1)
+    static constexpr std::size_t layer_b_offset = 0x30;  // second layer (col 7 unused)
+    static constexpr std::size_t layer_c_offset = 0x60;  // collectibles; sprite = value + 0x179
+    static constexpr std::size_t params_offset = 0x90;   // 6 board params
+    static constexpr int param_count = 6;
+
+    std::array<std::uint8_t, record_size> bytes{};
+
+    // Cell value for each layer at (col,row); cell = row*8 + col. 0 = empty.
+    // Layer A is the bumper/peg grid; layer C's value selects the collectible
+    // sprite; layer B is a second entity layer (its col 7 is never drawn).
+    [[nodiscard]] std::uint8_t layer_a(int col, int row) const;
+    [[nodiscard]] std::uint8_t layer_b(int col, int row) const;
+    [[nodiscard]] std::uint8_t layer_c(int col, int row) const;
+    // Board params 0..5 (0x90..0x95). Params 0/1 are 1-based grid cell indices
+    // (decremented when non-zero by the spawn routine); 2/4 are small counts.
+    [[nodiscard]] std::uint8_t param(int index) const;
+};
+
+// Faithful screen position (sprite top-left) of a BUM grid cell, read from the
+// data-segment coordinate table at DS:0x274 in BUMPY.UNPACKED.EXE: columns 0..6
+// sit at x = 8 + col*40 and rows at y = 8 + row*32; column 7 is a spare slot at
+// x = 32 that tables A/B never use. See analysis/specs/level-formats.md.
+struct CellPosition {
+    int x{};
+    int y{};
+};
+[[nodiscard]] CellPosition bum_cell_position(int col, int row);
+
 // The decoded level blobs for one level number (D{n}.PAV/DEC/BUM). All three are
 // layered-VEC containers decoded by the existing vec decoder, except D6.BUM and
 // D9.BUM which ship raw (already decoded) and are detected by VEC-decode failure.
@@ -57,8 +98,11 @@ public:
     [[nodiscard]] bool has_object_sheet() const noexcept { return object_sheet_.has_value(); }
     [[nodiscard]] const MenuImage& object_sheet() const;
 
-    // Raw 194-byte D?.BUM board records (dynamic entities); not yet rendered.
+    // Raw 194-byte D?.BUM board records (dynamic entities).
     [[nodiscard]] std::span<const std::uint8_t> bum_board(std::size_t index) const;
+    // The same record parsed into the three 8x6 entity layers + board params.
+    [[nodiscard]] BumEntities bum_entities(std::size_t index) const;
+    [[nodiscard]] std::size_t bum_board_count() const noexcept { return bum_board_count_; }
     [[nodiscard]] bool bum_was_raw() const noexcept { return bum_was_raw_; }
 
 private:

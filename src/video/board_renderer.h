@@ -37,4 +37,21 @@ BoardRenderStats render_board(const LevelResources& level, std::size_t board_ind
                               std::span<const std::uint8_t> backdrop_screen,
                               IndexedFramebuffer& target, bool draw_map = false);
 
+struct EntityOverlayStats {
+    int layer_a{};  // peg/bumper cells
+    int layer_b{};  // second-layer cells
+    int layer_c{};  // collectible cells
+};
+
+// Overlay the decoded BUM entity grid onto an already-composed board, for by-eye
+// inspection of the recovered layout. A marker is drawn per occupied cell at its
+// faithful DS:0x274 screen position (see bum_cell_position): layer A (pegs) a
+// small centred dot, layer B a filled square, layer C (collectibles) a hollow
+// box. These are NOT the original entity sprites -- those live in an
+// overlay/BUMSPJEU sprite bank that needs the compressed-sprite decoder -- so the
+// markers validate only the decoded grid and positions, not the final art.
+EntityOverlayStats overlay_bum_entities(const BumEntities& bum, IndexedFramebuffer& target,
+                                        std::uint8_t color_a = 15, std::uint8_t color_b = 9,
+                                        std::uint8_t color_c = 14);
+
 }  // namespace bumpy

@@ -2,6 +2,7 @@
 
 #include "core/asset_manifest.h"
 #include "core/indexed_framebuffer.h"
+#include "game/app.h"
 #include "game/menu.h"
 #include "platform_sdl3/sdl_app.h"
 #include "resources/level_resources.h"
@@ -288,16 +289,22 @@ int render_pav(const std::filesystem::path& pav_path, const std::string& pal_pat
 // grid) and dump it to a BMP for by-eye comparison with the original.
 int render_board_to_bmp(const std::filesystem::path& asset_root, int level_number,
                         const std::filesystem::path& monde_path, std::size_t board_index,
-                        const std::filesystem::path& out_path, bool draw_map) {
+                        const std::filesystem::path& out_path, bool draw_map, bool draw_entities) {
     const auto level = bumpy::LevelResources::load(asset_root, level_number);
     const auto backdrop = bumpy::decode_vec_resource(monde_path);
     bumpy::IndexedFramebuffer frame(320, 200);
     const auto stats =
         bumpy::render_board(level, board_index, backdrop.decoded_bytes(), frame, draw_map);
-    write_24bit_bmp(out_path, frame);
     std::cout << "wrote " << out_path.string() << " (level " << level_number << " board "
               << board_index << ": " << stats.objects_drawn << " objects, " << stats.stacked_cells
-              << " stacked cells -> " << stats.stacked_tiles << " tiles)\n";
+              << " stacked cells -> " << stats.stacked_tiles << " tiles";
+    if (draw_entities) {
+        const auto ent = bumpy::overlay_bum_entities(level.bum_entities(board_index), frame);
+        std::cout << "; BUM entities: " << ent.layer_a << " A / " << ent.layer_b << " B / "
+                  << ent.layer_c << " C";
+    }
+    write_24bit_bmp(out_path, frame);
+    std::cout << ")\n";
     return 0;
 }
 
@@ -305,12 +312,21 @@ int run_sdl_menu(const std::filesystem::path& asset_root) {
     warn_if_assets_changed(asset_root);
     const auto resources = bumpy::MenuResources::load_from(asset_root);
     const bumpy::MenuRenderer renderer(resources);
-    bumpy::Menu menu;
-    bumpy::IndexedFramebuffer frame(320, 200);
-    renderer.render(menu.view(), frame);
 
-    bumpy::SdlApp app;
-    return app.run(menu, renderer, frame);
+    // Load level 1 and its world-1 backdrop up front so confirming "start" can
+    // show the static board in-window (Stage 3 wiring). MONDE1.VEC supplies the
+    // per-world VGA palette the board renders under; the decoded resource must
+    // outlive run() because decoded_bytes() is a view into it.
+    const auto level = bumpy::LevelResources::load(asset_root, 1);
+    const auto backdrop = bumpy::decode_vec_resource(asset_root / "MONDE1.VEC");
+    const auto backdrop_bytes = backdrop.decoded_bytes();
+
+    bumpy::App app(level.board_count());
+    bumpy::IndexedFramebuffer frame(320, 200);
+    renderer.render(app.menu().view(), frame);
+
+    bumpy::SdlApp sdl;
+    return sdl.run(app, renderer, level, backdrop_bytes, frame);
 }
 
 }  // namespace
@@ -334,15 +350,18 @@ int main(int argc, char* argv[]) {
             return render_screen_vec(argv[2], argv[3]);
         }
         if ((argc == 6 || argc == 7) && std::string_view(argv[1]) == "--render-board") {
-            // --render-board <level> <MONDE.VEC> <board_index> <out.bmp> [map]
+            // --render-board <level> <MONDE.VEC> <board_index> <out.bmp> [map|entities]
             // Faithful by default: the base-tile pass clears to colour index 0 and the
             // PAV objects compose the board over it, using the MONDE per-world palette.
             // The optional "map" token overlays the MONDE world-select screen instead
             // of the flat clear (a debug aid; that screen is not the playfield).
-            const bool draw_map = argc == 7 && std::string_view(argv[6]) == "map";
+            // "entities" overlays the decoded BUM entity grid as inspection markers.
+            const auto token = argc == 7 ? std::string_view(argv[6]) : std::string_view{};
+            const bool draw_map = token == "map";
+            const bool draw_entities = token == "entities";
             return render_board_to_bmp(asset_root, std::stoi(argv[2]), argv[3],
                                        static_cast<std::size_t>(std::stoi(argv[4])), argv[5],
-                                       draw_map);
+                                       draw_map, draw_entities);
         }
         if (argc == 9 && std::string_view(argv[1]) == "--render-pav") {
             // --render-pav <pav> <pal|DEBUG> <out.bmp> <layout> <w> <h> <hdr>

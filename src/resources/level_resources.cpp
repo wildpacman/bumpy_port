@@ -37,6 +37,50 @@ std::uint8_t LevelBoard::object_index(int col, int row) const {
     return cell(col, row)[0];
 }
 
+namespace {
+
+// Shared bounds-checked lookup for a BUM layer: cell = row*8 + col, offset into
+// the 194-byte record by the layer base. Matches FUN_1000_2a78's indexing.
+std::uint8_t bum_layer_cell(const std::array<std::uint8_t, BumEntities::record_size>& bytes,
+                            std::size_t layer_offset, int col, int row) {
+    if (col < 0 || col >= BumEntities::columns || row < 0 || row >= BumEntities::rows) {
+        throw std::out_of_range("BUM entity cell is outside the 8x6 grid");
+    }
+    return bytes[layer_offset + static_cast<std::size_t>(row) * BumEntities::columns + col];
+}
+
+}  // namespace
+
+std::uint8_t BumEntities::layer_a(int col, int row) const {
+    return bum_layer_cell(bytes, layer_a_offset, col, row);
+}
+
+std::uint8_t BumEntities::layer_b(int col, int row) const {
+    return bum_layer_cell(bytes, layer_b_offset, col, row);
+}
+
+std::uint8_t BumEntities::layer_c(int col, int row) const {
+    return bum_layer_cell(bytes, layer_c_offset, col, row);
+}
+
+std::uint8_t BumEntities::param(int index) const {
+    if (index < 0 || index >= param_count) {
+        throw std::out_of_range("BUM board param index is outside 0..5");
+    }
+    return bytes[params_offset + static_cast<std::size_t>(index)];
+}
+
+CellPosition bum_cell_position(int col, int row) {
+    if (col < 0 || col >= BumEntities::columns || row < 0 || row >= BumEntities::rows) {
+        throw std::out_of_range("BUM cell position is outside the 8x6 grid");
+    }
+    // Faithful to the DS:0x274 coordinate table: columns 0..6 at 8 + col*40, the
+    // spare column 7 at 32, rows at 8 + row*32.
+    const int x = (col == 7) ? 32 : 8 + col * 40;
+    const int y = 8 + row * 32;
+    return CellPosition{x, y};
+}
+
 MenuImage deplane_object_sheet(std::span<const std::uint8_t> pav_body) {
     constexpr int width = LevelResources::sheet_width;
     constexpr int height = LevelResources::sheet_height;
@@ -78,6 +122,13 @@ std::span<const std::uint8_t> LevelResources::bum_board(std::size_t index) const
         throw std::out_of_range("BUM board index is outside the decoded BUM");
     }
     return std::span<const std::uint8_t>(bum_.data() + 2 + index * record, record);
+}
+
+BumEntities LevelResources::bum_entities(std::size_t index) const {
+    const auto record = bum_board(index);  // bounds-checked, 194 bytes
+    BumEntities entities;
+    std::copy(record.begin(), record.end(), entities.bytes.begin());
+    return entities;
 }
 
 LevelResources LevelResources::load(const std::filesystem::path& root, int level_number) {

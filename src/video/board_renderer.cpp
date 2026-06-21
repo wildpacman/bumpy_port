@@ -130,4 +130,57 @@ BoardRenderStats render_board(const LevelResources& level, std::size_t board_ind
     return stats;
 }
 
+namespace {
+
+void plot(IndexedFramebuffer& target, int x, int y, std::uint8_t color) {
+    if (x >= 0 && x < target.width() && y >= 0 && y < target.height()) {
+        target.pixel(x, y) = color;
+    }
+}
+
+void fill_rect(IndexedFramebuffer& target, int x, int y, int w, int h, std::uint8_t color) {
+    for (int dy = 0; dy < h; ++dy) {
+        for (int dx = 0; dx < w; ++dx) {
+            plot(target, x + dx, y + dy, color);
+        }
+    }
+}
+
+void box_outline(IndexedFramebuffer& target, int x, int y, int w, int h, std::uint8_t color) {
+    for (int dx = 0; dx < w; ++dx) {
+        plot(target, x + dx, y, color);
+        plot(target, x + dx, y + h - 1, color);
+    }
+    for (int dy = 0; dy < h; ++dy) {
+        plot(target, x, y + dy, color);
+        plot(target, x + w - 1, y + dy, color);
+    }
+}
+
+}  // namespace
+
+EntityOverlayStats overlay_bum_entities(const BumEntities& bum, IndexedFramebuffer& target,
+                                        std::uint8_t color_a, std::uint8_t color_b,
+                                        std::uint8_t color_c) {
+    EntityOverlayStats stats;
+    for (int row = 0; row < BumEntities::rows; ++row) {
+        for (int col = 0; col < BumEntities::columns; ++col) {
+            const auto pos = bum_cell_position(col, row);
+            if (bum.layer_a(col, row) != 0) {
+                fill_rect(target, pos.x + 6, pos.y + 6, 4, 4, color_a);  // peg dot, cell-centred
+                ++stats.layer_a;
+            }
+            if (bum.layer_b(col, row) != 0 && col != 7) {  // col 7 is never drawn (FUN_1000_2a78)
+                fill_rect(target, pos.x + 4, pos.y + 4, 8, 8, color_b);
+                ++stats.layer_b;
+            }
+            if (bum.layer_c(col, row) != 0) {
+                box_outline(target, pos.x, pos.y, 16, 16, color_c);  // collectible footprint
+                ++stats.layer_c;
+            }
+        }
+    }
+    return stats;
+}
+
 }  // namespace bumpy

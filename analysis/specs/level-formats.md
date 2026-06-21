@@ -154,15 +154,81 @@ buffer `203b:a0e4`:
 
 | Region | Offset | Size | Meaning |
 |---|---:|---:|---|
-| table A | `0x00` | 48 | per-entity bytes (copied) |
-| table B | `0x30` | 48 | per-entity bytes (copied) |
-| table C | `0x60` | 48 | per-entity bytes (copied) |
+| layer A | `0x00` | 48 | 8×6 entity grid — pegs/bumpers |
+| layer B | `0x30` | 48 | 8×6 entity grid — second layer (col 7 unused) |
+| layer C | `0x60` | 48 | 8×6 entity grid — collectibles |
 | params | `0x90` | 6 | board entity params (copied verbatim) |
-| (rest) | `0x96` | 44 | remainder of the 194-byte record |
+| (rest) | `0x96` | 44 | remainder of the 194-byte record (byte `0x96` used) |
 
-The three 48-byte tables are parallel per-entity arrays (Hypothesis: up to 16
-moving objects/bumpers × 3 bytes, or x/y/type columns). Exact per-entity field
-meanings are the next thing to pin down when implementing entity spawning.
+### Entity layers = three 8-column × 6-row grids (Confirmed)
+
+The spawn/draw routine `FUN_1000_2a78` (called right after `FUN_1000_32b0` on
+board activation) iterates the working buffer as a grid, **not** as packed
+per-entity records:
+
+```c
+for (row = 0; row < 6; row++)
+  for (col = 0; col < 8; col++) {
+    cell = row*8 + col;
+    a = buf[0x00 + cell];  if (a)            draw_layer_a(cell, a);   // FUN_165e/1a67
+    b = buf[0x30 + cell];  if (b && col!=7)  draw_layer_b(cell, b);   // FUN_17c7/1b2b
+    c = buf[0x60 + cell];  if (c)            draw_layer_c(cell, c);   // FUN_942a
+  }
+```
+
+So each of the three 48-byte tables is an **8×6 grid** (cell = `row*8 + col`),
+and the three are independent **layers** drawn by three distinct paths — not
+x/y/type columns of one entity list. A non-zero cell means "entity present"; its
+value selects the sprite/type:
+
+- **Layer A** (pegs/bumpers): value indexes a sprite descriptor table at
+  `0x3d3a`/`0x3d6a`. In `D1` board 0 it is the fixed `0/1` peg field (4 pegs per
+  row in rows 0–4, a solid bottom row, column 7 always empty) — 27 pegs.
+- **Layer B**: indexes a descriptor table at `0x4086`/`0x40a6`; column 7 is never
+  drawn. Empty on `D1` board 0.
+- **Layer C** (collectibles): sprite id = `value + 0x179`; screen position from a
+  coordinate table (below). In `D1` board 0: codes `0x1b,0x03,0x17,0x29,0x0f,0x0e`
+  at six scattered cells.
+
+### Cell → screen position (Confirmed, extracted)
+
+Layer C reads its position from a data-segment table at `DS:0x274` indexed by
+`(col*2 + row*0x10)`; the table is a contiguous 8×6 array of `(x,y)` word pairs.
+Extracted from `BUMPY.UNPACKED.EXE` (file `0x1090 + 0x103b*0x10 + 0x274 =
+0x116b4`):
+
+| | col 0 | col 1 | … | col 6 | col 7 |
+|---|---:|---:|---|---:|---:|
+| x | 8 | 48 | (+40) | 248 | 32 (spare) |
+| y (per row) | 8, 40, 72, 104, 136, 168 | | | | |
+
+So columns 0–6 sit at `x = 8 + col*40` and rows at `y = 8 + row*32`; column 7 is
+a spare slot at `x = 32` that layers A/B never use. This is `bum_cell_position`
+in `src/resources/level_resources`. (Layers A/B store the cell index for
+`FUN_165e`/`FUN_17c7`, presumed to use the same grid — **Hypothesis** that those
+paths share this table; not byte-verified.)
+
+### Board params `0x90..0x95` + byte `0x96` (Confirmed structure)
+
+Read by `FUN_1000_2a78`. `D1` board 0 = `29 2c 06 00 09 00`:
+
+- `0x90`, `0x91` — **1-based grid cell indices** (decremented when non-zero):
+  `0x29`→cell 40, `0x2c`→cell 43 (both bottom-row). Likely Bumpy's start /
+  an entry/exit cell.
+- `0x92` (`→ a0cf`), `0x94` (`→ 8562`), `0x95` (`→ 7920`) — small per-board
+  counts/flags (exact roles not yet pinned).
+- `0x93` (`→ 8571`, decremented) — a cell index; `0xff` sentinel when `0x00`.
+- byte `0x96` indexes a word table at `0x2546` → `a0de` (a per-board value).
+
+### Decoder + inspection (Implemented)
+
+`src/resources/level_resources` decodes a board into `BumEntities` (the three
+8×6 layers + 6 params), validated against the `D1` values above
+(`tests/cpp/level_resources_test.cpp`). `overlay_bum_entities`
+(`src/video/board_renderer`) draws a marker per occupied cell at its faithful
+position for by-eye checking: `--render-board 1 MONDE1.VEC 0 out.bmp entities`
+(`analysis/generated/board_L1_B0_entities.png`). The markers confirm the grid and
+positions; they are **not** the original sprites — see the blocker below.
 
 ## Resolved (Stage 3 static board)
 
@@ -177,16 +243,27 @@ meanings are the next thing to pin down when implementing entity spawning.
 - **Gameplay palette** — the per-world `MONDE?.VEC` palette renders the objects in
   correct natural tones (Hypothesis upgraded to confirmed-by-eye). `MONDE?.VEC`
   itself is the world-select map screen, not the in-level backdrop.
+- **BUM entity layout** — three 8×6 entity layers + 6 params, with the faithful
+  cell→pixel coordinate table (above). Decoded into `BumEntities` and validated
+  against `D1` data and by eye via the marker overlay.
 
 ## Open questions / next blockers
 
-1. BUM entity table field semantics (the three 48-byte arrays + 6 params) — the
-   next thing to pin down for entity spawning.
-2. Per-world palette plumbing: confirm which resource the live game installs as
+1. **Entity sprite bank (the spawn blocker).** Layers A/B/C select sprites via
+   descriptor tables (`0x3d3a`, `0x4086`) and layer C's `value + 0x179`. These are
+   overlay/`BUMSPJEU`-resident sprites, so drawing the *real* entity art needs the
+   sprite source traced and the **compressed sprite-frame decoder** (flags
+   `0x40`/`0x20`) implemented. Until then the port draws the recovered grid as
+   inspection markers, not the original sprites.
+2. Param roles `0x92/0x94/0x95` and byte `0x96`'s `0x2546` table — structure is
+   known; exact gameplay meaning (counts vs flags) is not yet pinned.
+3. Per-world palette plumbing: confirm which resource the live game installs as
    the gameplay palette (the MONDE palette matches by eye, but the exact source
    load is not yet traced).
-3. Then: physics, collision, entities (BUM), win/loss, return to menu; wire
-   `start_first_level`.
+4. Then: physics, collision, win/loss. The menu → level → menu shell is already
+   wired (`src/game/app`, `src/platform_sdl3`): confirming "start" shows the
+   static board in-window and Escape returns to the menu; what remains is the live
+   board loop and a win/loss return path.
 
 ## Base-Tile Blit Recovery
 

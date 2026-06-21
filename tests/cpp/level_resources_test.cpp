@@ -73,6 +73,75 @@ TEST_CASE("level 3 ships no object sheet (0-byte PAV) but still has a DEC grid")
     REQUIRE_THROWS(level.object_sheet());
 }
 
+TEST_CASE("level 1 board 0 decodes the three BUM entity layers and board params") {
+    const auto level = bumpy::LevelResources::load(root, 1);
+    const auto bum = level.bum_entities(0);
+
+    // Layer A is the peg/bumper grid: a fixed 0/1 column pattern, all-1 bottom
+    // row, and an always-empty spare column 7 (the values dumped from D1.BUM).
+    REQUIRE(bum.layer_a(0, 0) == 0);
+    REQUIRE(bum.layer_a(1, 0) == 1);
+    REQUIRE(bum.layer_a(4, 0) == 1);
+    REQUIRE(bum.layer_a(0, 5) == 1);  // bottom row is solid bumpers...
+    REQUIRE(bum.layer_a(6, 5) == 1);
+    for (int row = 0; row < bumpy::BumEntities::rows; ++row) {
+        REQUIRE(bum.layer_a(7, row) == 0);  // ...except the spare column 7
+    }
+
+    // Layer B is empty on the first board.
+    for (int col = 0; col < bumpy::BumEntities::columns; ++col) {
+        for (int row = 0; row < bumpy::BumEntities::rows; ++row) {
+            REQUIRE(bum.layer_b(col, row) == 0);
+        }
+    }
+
+    // Layer C carries the sparse collectibles with their type codes at the exact
+    // cells dumped from D1.BUM.
+    REQUIRE(bum.layer_c(3, 0) == 0x1b);
+    REQUIRE(bum.layer_c(4, 1) == 0x03);
+    REQUIRE(bum.layer_c(1, 2) == 0x17);
+    REQUIRE(bum.layer_c(6, 2) == 0x29);
+    REQUIRE(bum.layer_c(4, 3) == 0x0f);
+    REQUIRE(bum.layer_c(3, 4) == 0x0e);
+    REQUIRE(bum.layer_c(0, 0) == 0);
+
+    // Board params: 0/1 are 1-based cell indices (41, 44 -> bottom-row cells),
+    // 2 and 4 are small counts.
+    REQUIRE(bum.param(0) == 41);
+    REQUIRE(bum.param(1) == 44);
+    REQUIRE(bum.param(2) == 6);
+    REQUIRE(bum.param(3) == 0);
+    REQUIRE(bum.param(4) == 9);
+    REQUIRE(bum.param(5) == 0);
+}
+
+TEST_CASE("BUM cell positions match the recovered DS:0x274 coordinate table") {
+    REQUIRE(bumpy::bum_cell_position(0, 0).x == 8);
+    REQUIRE(bumpy::bum_cell_position(0, 0).y == 8);
+    REQUIRE(bumpy::bum_cell_position(6, 0).x == 248);
+    REQUIRE(bumpy::bum_cell_position(3, 2).x == 128);
+    REQUIRE(bumpy::bum_cell_position(3, 2).y == 72);
+    REQUIRE(bumpy::bum_cell_position(0, 5).y == 168);
+    REQUIRE(bumpy::bum_cell_position(7, 0).x == 32);  // the spare column
+}
+
+TEST_CASE("BUM entities decode from raw (pre-decoded) D6/D9 too") {
+    const auto level6 = bumpy::LevelResources::load(root, 6);
+    REQUIRE(level6.bum_was_raw());
+    REQUIRE_NOTHROW(level6.bum_entities(0));
+    REQUIRE_NOTHROW(level6.bum_entities(level6.bum_board_count() - 1));
+}
+
+TEST_CASE("BUM entity access is bounds-checked") {
+    const auto level = bumpy::LevelResources::load(root, 1);
+    const auto bum = level.bum_entities(0);
+    REQUIRE_THROWS(bum.layer_a(-1, 0));
+    REQUIRE_THROWS(bum.layer_a(bumpy::BumEntities::columns, 0));
+    REQUIRE_THROWS(bum.layer_c(0, bumpy::BumEntities::rows));
+    REQUIRE_THROWS(bum.param(bumpy::BumEntities::param_count));
+    REQUIRE_THROWS(bumpy::bum_cell_position(8, 0));
+}
+
 TEST_CASE("board cell access is bounds-checked to the 20x13 grid") {
     const auto level = bumpy::LevelResources::load(root, 1);
     const auto& board = level.board(0);

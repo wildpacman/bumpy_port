@@ -42,11 +42,13 @@ only a platform adapter.
   `FLECHE.BIN` arrow sprite) draws at the active row and tracks `cursor_row`.
   Resource bundle, menu state machine, and SDL3 shell build and run.
 - **Stage 3 — First level — IN PROGRESS.** Level data formats recovered and
-  visually verified, and a **static composed board renders natively** (MONDE
-  per-world palette + DEC-placed PAV objects over the flat base clear; see "Stage
-  3 progress" below). Remaining: physics, collision, entities (BUM); win/loss;
-  return to menu. The sprite-frame decoder from Stage 2 is the reusable foundation
-  for gameplay sprites.
+  visually verified, a **static composed board renders natively**, and it is now
+  **wired into the SDL window**: confirming "start" on the menu shows level 1's
+  board (MONDE per-world palette + DEC-placed PAV objects over the flat base
+  clear), Escape returns to the menu, and ←/→ page through the level's boards (see
+  "Stage 3 progress" below). Remaining: physics, collision, entities (BUM);
+  win/loss. The sprite-frame decoder from Stage 2 is the reusable foundation for
+  gameplay sprites.
 
 ## Current state
 
@@ -125,12 +127,51 @@ functions), DOSBox-X reference harness.
   recovery in `analysis/specs/level-formats.md` ("Base-Tile Blit Recovery").
 - 38 C++ tests pass; originals verify clean.
 
+**Stage 3 in-window wiring (builds and runs on master):**
+- **`src/game/app`** — an SDL-independent top-level state machine (`App`) tying
+  the menu to the in-level board view. Transitions: menu `--confirm "start"-->`
+  level (board 0); menu `--cancel-->` quit; level `--cancel-->` menu; level
+  `--left/right-->` page boards (wrap within `[0, board_count)`). The Menu keeps
+  its own up/down/confirm debounce; `App` adds edge detection for the keys it owns
+  (cancel, left/right) so a held key cannot bounce across a transition. 8 unit
+  tests in `tests/cpp/app_test.cpp`.
+- **`src/platform_sdl3/sdl_app`** now drives the `App`: it renders the menu via
+  `MenuRenderer` on the menu screen and the static board via `render_board(level,
+  board_index, MONDE1 backdrop)` on the level screen, and the event loop no longer
+  special-cases Escape (the `App` owns cancel). `src/app/main.cpp` loads level 1 +
+  `MONDE1.VEC` up front and constructs the `App` with the level's board count.
+- Launching → menu; confirm "start" → level 1's board fills the window (the
+  by-eye-verified world-1 art, `analysis/generated/board_L1_B0.png`); Escape →
+  menu. The level screen is **display only** — no entities/physics yet.
+- 46 C++ tests pass; originals verify clean.
+
+**Stage 3 BUM entities (recovered + decoded):**
+- **`D?.BUM` is three 8×6 entity layers + 6 params**, recovered from the spawn
+  routine `FUN_1000_2a78` (iterates `cell = row*8 + col`, three independent
+  per-layer draw paths) and the activation copy `FUN_1000_32b0`. Layer A =
+  pegs/bumpers, layer B = second layer (col 7 unused), layer C = collectibles
+  (sprite = `value + 0x179`). The cell→pixel coordinate table was extracted from
+  the data segment (`DS:0x274`): columns 0–6 at `x = 8 + col*40`, rows at
+  `y = 8 + row*32`. Full spec: `analysis/specs/level-formats.md` ("D?.BUM").
+- **`src/resources/level_resources`** decodes a board into `BumEntities` (three
+  8×6 layers + params + `bum_cell_position`), validated against the real `D1`
+  board-0 values (peg pattern, collectible codes, params 41/44/6/0/9/0) in
+  `tests/cpp/level_resources_test.cpp`.
+- **`overlay_bum_entities`** (`src/video/board_renderer`) draws a marker per
+  occupied cell at its faithful position for by-eye validation:
+  `--render-board 1 MONDE1.VEC 0 out.bmp entities`
+  (`analysis/generated/board_L1_B0_entities.png`, 27 pegs + 6 collectibles,
+  landing correctly on the world-1 art). These are inspection markers, **not** the
+  original entity sprites.
+- 50 C++ tests pass; originals verify clean.
+
 **Placeholders / remaining work:**
 - Compressed sprite frames (flags `0x40`/`0x20`) are rejected, not decoded — the
   menu cursor does not need them, but other sprites may.
 - The menu sub-screens (HIGH-SCORE / PASSWORD draw per-glyph character sprites
   via the same archive) are not implemented.
-- `start_first_level` is a stub; no level loading yet (Stage 3).
+- The in-window level screen is **static** — it shows the composed board but has
+  no BUM entities, physics, collision, or win/loss yet (Stage 3 remainder).
 
 ## How to run
 
@@ -177,22 +218,31 @@ compose a board from the recovered formats and it matches the original world-1 a
 by eye. Grid/placement, PAV tile geometry, the base-tile clear, and the gameplay
 palette are all resolved (`analysis/specs/level-formats.md`).
 
-The next milestone is **making the board come alive**:
+The static board is now also **shown in the SDL window** (menu → start → board,
+Escape → menu, ←/→ page boards; see "Stage 3 in-window wiring" above), and the
+**BUM entity layout is recovered + decoded** (three 8×6 layers + params + faithful
+cell coordinates; see "Stage 3 BUM entities" above). The next milestone is
+**making that board come alive**:
 
-1. **BUM entities** — pin down the three 48-byte per-entity tables + 6 params
-   (`FUN_1000_32b0` working buffer `203b:a0e4`), then spawn the dynamic
-   objects/bumpers onto the rendered board.
+1. **Entity sprites (the spawn blocker).** The entity *positions* are recovered,
+   but the *sprites* (layers A/B/C select via descriptor tables `0x3d3a`/`0x4086`
+   and layer C's `value + 0x179`) live in an overlay/`BUMSPJEU` bank that needs
+   the source traced and the **compressed sprite-frame decoder** (flags
+   `0x40`/`0x20`) implemented. Until then entities render as inspection markers,
+   not the real art.
 2. **Physics + collision + win/loss** — Bumpy movement, bumping objects, the
    board-clear condition, and advancing through a level's 15/12 boards.
-3. **Wire it up** — replace the `start_first_level` stub: load level 1, run the
-   board loop, and return to the menu on win/loss.
+3. **Run the board loop** — the menu → level → menu shell exists (`src/game/app`);
+   next is replacing the static display with the live board loop and returning to
+   the menu on win/loss instead of only on Escape.
 
 Notes for that work:
-- **In-window wiring is still stubbed.** Launching shows the menu; confirming the
-  top item returns `MenuAction::start_first_level`, which `src/platform_sdl3`
-  currently treats as "exit" (clean close, not a crash). No level/map screen is
-  drawn in the SDL window yet — the board/screen renderers are reachable only via
-  the headless `--render-*` flags. Wiring screens into the app is a near-term task.
+- **In-window wiring is done for the static board.** Launching shows the menu;
+  confirming the top item enters the level screen (`App` in `src/game/app`), which
+  draws level 1's board via `render_board`. The screen is display-only: no
+  entities/physics, and ←/→ paging the boards is a temporary inspection aid that
+  the live board loop will replace. The headless `--render-*` flags still work for
+  offline format checks.
 - **MONDE1 world-map verified by eye** against a real capture
   (`screenshots/bumpy_001.png`): background, 16-colour palette, purple balloon,
   bears, and the baked-in 4×5 node grid all match. The map's runtime overlays
