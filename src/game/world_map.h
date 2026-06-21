@@ -54,7 +54,7 @@ private:
     void move_to(int node) noexcept;  // set current node + avatar position
 
     WorldMapView view_{};
-    bool waiting_for_release_{true};
+    bool waiting_for_release_{false};  // a fresh map acts on first input; enter() arms the guard
 };
 
 // The baked world-1 node table (index 0 is an unused sentinel; nodes 1..15).
