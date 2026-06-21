@@ -1,5 +1,6 @@
 .superpowers/
 .worktrees/
+screenshots/
 build/
 out/
 __pycache__/

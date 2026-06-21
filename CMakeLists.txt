@@ -22,7 +22,9 @@ add_library(bumpy_core
   src/resources/vec.cpp
   src/resources/menu_resources.cpp
   src/resources/sprite_frame.cpp
-  src/video/menu_renderer.cpp)
+  src/resources/level_resources.cpp
+  src/video/menu_renderer.cpp
+  src/video/board_renderer.cpp)
 target_include_directories(bumpy_core PUBLIC src)
 target_link_libraries(bumpy_core PUBLIC bcrypt)
 
@@ -47,6 +49,8 @@ add_executable(bumpy_tests
   tests/cpp/sprite_frame_test.cpp
   tests/cpp/menu_resources_test.cpp
   tests/cpp/menu_renderer_test.cpp
+  tests/cpp/level_resources_test.cpp
+  tests/cpp/board_renderer_test.cpp
   tests/cpp/menu_test.cpp)
 target_link_libraries(bumpy_tests PRIVATE bumpy_core Catch2::Catch2WithMain)
 add_test(NAME bumpy_tests COMMAND bumpy_tests)

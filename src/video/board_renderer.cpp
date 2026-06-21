@@ -1,0 +1,133 @@
+#include "video/board_renderer.h"
+
+#include "video/menu_renderer.h"  // vga_dac_to_rgba_component
+
+#include <stdexcept>
+
+namespace {
+
+// Screen-format VEC geometry (TITRE/MONDE?): 99-byte header carrying the
+// 16-colour VGA palette ending at the pixel data, then four 8000-byte
+// plane-sequential bit-planes. Matches src/video/menu_renderer.cpp.
+constexpr int screen_width = 320;
+constexpr int screen_height = 200;
+constexpr std::size_t screen_plane = static_cast<std::size_t>(screen_width) * screen_height / 8;  // 8000
+constexpr std::size_t pixel_data_offset = 99;
+constexpr int palette_colors = 16;
+constexpr std::size_t palette_offset = pixel_data_offset - palette_colors * 3;  // 51
+
+void apply_palette(std::span<const std::uint8_t> screen, bumpy::IndexedFramebuffer& target) {
+    const std::uint8_t* palette = screen.data() + palette_offset;
+    for (int color = 0; color < palette_colors; ++color) {
+        const std::uint8_t* entry = palette + color * 3;
+        target.set_palette(static_cast<std::uint8_t>(color),
+                           bumpy::Rgba{bumpy::vga_dac_to_rgba_component(entry[0]),
+                                       bumpy::vga_dac_to_rgba_component(entry[1]),
+                                       bumpy::vga_dac_to_rgba_component(entry[2]), 0xff});
+    }
+}
+
+void deplane_backdrop(std::span<const std::uint8_t> screen, bumpy::IndexedFramebuffer& target) {
+    const std::uint8_t* planes = screen.data() + pixel_data_offset;
+    for (std::size_t pixel = 0; pixel < static_cast<std::size_t>(screen_width) * screen_height; ++pixel) {
+        const std::size_t byte = pixel >> 3U;
+        const unsigned shift = 7U - static_cast<unsigned>(pixel & 7U);
+        std::uint8_t value = 0;
+        for (int plane = 0; plane < 4; ++plane) {
+            value = static_cast<std::uint8_t>(
+                value | (((planes[plane * screen_plane + byte] >> shift) & 1U) << plane));
+        }
+        target.pixel(static_cast<int>(pixel % screen_width), static_cast<int>(pixel / screen_width)) = value;
+    }
+}
+
+}  // namespace
+
+namespace bumpy {
+
+BoardRenderStats render_board(const LevelResources& level, std::size_t board_index,
+                              std::span<const std::uint8_t> backdrop_screen,
+                              IndexedFramebuffer& target, bool draw_map) {
+    if (backdrop_screen.size() < pixel_data_offset + 4 * screen_plane) {
+        throw std::runtime_error("backdrop is not a 320x200 screen-format VEC");
+    }
+    apply_palette(backdrop_screen, target);
+    if (draw_map) {
+        deplane_backdrop(backdrop_screen, target);  // debug: overlay the world-select map
+    } else {
+        target.clear(0);  // faithful base-tile pass: every cell cleared to colour index 0
+    }
+
+    BoardRenderStats stats;
+    if (!level.has_object_sheet()) {
+        return stats;  // e.g. level 3 ships no PAV; the flat field is the whole board.
+    }
+
+    const auto& board = level.board(board_index);
+    const auto& sheet = level.object_sheet();
+    constexpr int tile = LevelResources::tile_size;            // 16
+    constexpr int sheet_cols = LevelResources::sheet_columns;  // 20
+
+    // Stamp one PAV sheet tile (colour 0 transparent) into the cell at (col,row).
+    // Returns false when the tile's source rect falls outside the 320x192 sheet
+    // (only stacked markers can index that far), matching the original's layout.
+    const auto stamp_tile = [&](int tile_index, int col, int row) -> bool {
+        const int sx = (tile_index % sheet_cols) * tile;
+        const int sy = (tile_index / sheet_cols) * tile;
+        if (sx + tile > sheet.width || sy + tile > sheet.height || tile_index < 0) {
+            return false;
+        }
+        const int dx = col * tile;
+        const int dy = row * tile;
+        for (int py = 0; py < tile; ++py) {
+            const int ty = dy + py;
+            if (ty < 0 || ty >= target.height()) {
+                continue;
+            }
+            for (int px = 0; px < tile; ++px) {
+                const int tx = dx + px;
+                if (tx < 0 || tx >= target.width()) {
+                    continue;
+                }
+                const auto color =
+                    sheet.pixels[static_cast<std::size_t>((sy + py) * sheet.width + (sx + px))];
+                if (color != 0) {  // colour index 0 is transparent
+                    target.pixel(tx, ty) = color;
+                }
+            }
+        }
+        return true;
+    };
+
+    for (int col = 0; col < LevelBoard::columns; ++col) {
+        for (int row = 0; row < LevelBoard::rows; ++row) {
+            const std::uint8_t obj = board.object_index(col, row);
+            if (obj == 0) {
+                continue;
+            }
+            if (obj < 0xf1) {
+                stamp_tile(obj - 1, col, row);
+                ++stats.objects_drawn;
+                continue;
+            }
+            // Stacked marker (FUN_1000_0a90): draw (uint8_t)(-obj-5) tiles whose
+            // indices are the cell bytes that follow byte 0, all at this cell.
+            ++stats.stacked_cells;
+            const auto count = static_cast<std::uint8_t>(-static_cast<int>(obj) - 5);
+            const std::size_t base =
+                LevelBoard::grid_offset + col * LevelBoard::column_stride + row * LevelBoard::cell_bytes;
+            for (std::uint8_t k = 1; k < count; ++k) {
+                const std::size_t index = base + k;
+                if (index >= board.bytes.size()) {
+                    break;
+                }
+                if (stamp_tile(board.bytes[index] - 1, col, row)) {
+                    ++stats.stacked_tiles;
+                }
+            }
+        }
+    }
+    return stats;
+}
+
+}  // namespace bumpy

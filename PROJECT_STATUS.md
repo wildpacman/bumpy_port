@@ -42,10 +42,11 @@ only a platform adapter.
   `FLECHE.BIN` arrow sprite) draws at the active row and tracks `cursor_row`.
   Resource bundle, menu state machine, and SDL3 shell build and run.
 - **Stage 3 — First level — IN PROGRESS.** Level data formats recovered and
-  visually verified (see "Stage 3 progress" below). Remaining: grid/object
-  placement semantics, physics, collision, objects; win/loss; return to menu.
-  The sprite-frame decoder from Stage 2 is the reusable foundation for gameplay
-  sprites.
+  visually verified, and a **static composed board renders natively** (MONDE
+  per-world palette + DEC-placed PAV objects over the flat base clear; see "Stage
+  3 progress" below). Remaining: physics, collision, entities (BUM); win/loss;
+  return to menu. The sprite-frame decoder from Stage 2 is the reusable foundation
+  for gameplay sprites.
 
 ## Current state
 
@@ -101,7 +102,28 @@ functions), DOSBox-X reference harness.
   (`75d0 = BUM+2+board*0xc2`, copied by `FUN_1000_32b0`). `D6.BUM`/`D9.BUM` ship
   **raw/pre-decoded**. Board counts verified: (12182−2)/812 = (2912−2)/194 = 15.
 - New dev/inspection flags on `bumpy_port.exe`: `--decode-vec`, `--render-screen`,
-  `--render-pav` (see spec). 31 C++ tests still pass; originals verify clean.
+  `--render-pav` (see spec).
+
+**Stage 3 board module + renderer (builds and runs on master):**
+- **`src/resources/level_resources`** — `LevelResources::load(root, n)` decodes
+  `D{n}.PAV/DEC/BUM` via the VEC decoder with the raw-BUM fallback (D6/D9), exposes
+  the board count, per-board 20×13×3 cells (column-major `0x20 + col*0x27 + row*3`),
+  and the deplaned 320×192 PAV object sheet. Validated on levels 1/3/4/6/7/9
+  (`tests/cpp/level_resources_test.cpp`), including the **D7 DEC/BUM count mismatch**
+  (12 tile-boards vs 15 entity-boards) and level 3's empty PAV.
+- **`src/video/board_renderer`** — `render_board` composes a static board: the
+  base-tile pass as a flat colour-index-0 clear (the real overlay behavior, see
+  below), then the DEC-placed PAV objects — single (`1..0xf0`) and stacked
+  (`≥0xf1`) — on the per-world MONDE palette. `--render-board <level> <MONDE.VEC>
+  <board> <out.bmp> [map]` dumps it (`analysis/generated/board_L1_B0.bmp`, verified
+  by eye against the original world-1 art).
+- **Blit geometry confirmed** (overlay `1ab9` planar path, recovered statically by
+  Codex): width-unit = 16 px, height-unit = 8 px → playfield tiles are 16×16. The
+  per-cell "base tile" (`FUN_1000_0b88`) reads no bitmap; it fills from command
+  bytes `+0x22..+0x25`, which are zeroed → a flat colour-0 clear, **not** a floor
+  sprite. The visible floor cross-hatch is the dense `0x63` PAV objects. Full
+  recovery in `analysis/specs/level-formats.md` ("Base-Tile Blit Recovery").
+- 38 C++ tests pass; originals verify clean.
 
 **Placeholders / remaining work:**
 - Compressed sprite frames (flags `0x40`/`0x20`) are rejected, not decoded — the
@@ -119,6 +141,7 @@ cmake --build --preset windows-debug
 & build/windows-debug/Debug/bumpy_port.exe --decode-vec D1.PAV out.bin          # decode any VEC/PAV/DEC/BUM
 & build/windows-debug/Debug/bumpy_port.exe --render-screen MONDE1.VEC out.bmp   # 320x200 screen-format VEC
 & build/windows-debug/Debug/bumpy_port.exe --render-pav D1.PAV MONDE1.VEC out.bmp planeseq 320 192 6
+& build/windows-debug/Debug/bumpy_port.exe --render-board 1 MONDE1.VEC 0 board.bmp        # static board (add 'map' to overlay the world-select screen)
 ```
 
 ## Reverse-engineering workflow
@@ -149,25 +172,27 @@ cmake --build --preset windows-debug
 
 ## Next step
 
-Stage 3 level **formats** are recovered and visually verified (above). The next
-concrete milestone is a **static composed level**: MONDE background + PAV objects
-placed by the BUM grid, rendered in the port and compared to the original by eye.
-To do that, the remaining recovery is:
+The **static composed board is DONE** (above): `level_resources` + `board_renderer`
+compose a board from the recovered formats and it matches the original world-1 art
+by eye. Grid/placement, PAV tile geometry, the base-tile clear, and the gameplay
+palette are all resolved (`analysis/specs/level-formats.md`).
 
-1. **Grid + placement semantics — DONE.** DEC = static 20×13×3 tile boards,
-   BUM = per-board entity tables; both confirmed from `FUN_1000_2a0a` /
-   `FUN_1000_32b0` / `FUN_1000_0416`. See `analysis/specs/level-formats.md`.
-2. **Compose + render** — add a `level` module (decode PAV/DEC/BUM with the
-   raw-BUM fallback for D6/D9; expose board 0's 20×13 cells) + a board renderer
-   (base tiles + PAV objects per cell). Dump a static board and compare by eye.
-   Open: PAV sheet tile pixel size (from blitter `1cec`) and gameplay palette
-   source.
-3. **Then** physics, collision, entities (BUM tables), win/loss, and return to
-   menu; wire `start_first_level`.
+The next milestone is **making the board come alive**:
 
-Gameplay sprite note: the **compressed frame path** (sprite-frame flags
-`0x40`/`0x20`, expanded in `1cec:2ded`) is still unimplemented and will be needed
-for animated gameplay sprites (`BUMSPJEU.BIN`, `BUMPYSPR.BIN`).
+1. **BUM entities** — pin down the three 48-byte per-entity tables + 6 params
+   (`FUN_1000_32b0` working buffer `203b:a0e4`), then spawn the dynamic
+   objects/bumpers onto the rendered board.
+2. **Physics + collision + win/loss** — Bumpy movement, bumping objects, the
+   board-clear condition, and advancing through a level's 15/12 boards.
+3. **Wire it up** — replace the `start_first_level` stub: load level 1, run the
+   board loop, and return to the menu on win/loss.
+
+Notes for that work:
+- The **compressed sprite-frame path** (flags `0x40`/`0x20`, expanded in
+  `1cec:2ded`) is still unimplemented and will be needed for animated gameplay
+  sprites (`BUMSPJEU.BIN`, `BUMPYSPR.BIN`).
+- Per-world palette plumbing: the MONDE palette matches by eye, but the exact
+  resource the live game installs as the gameplay palette is not yet traced.
 
 Optional menu polish: implement compressed sprites + per-glyph text to bring up
 the HIGH-SCORE / PASSWORD sub-screens (`FUN_1000_0d9d` / `0f7a` / `11eb`).
