@@ -181,6 +181,13 @@ functions), DOSBox-X reference harness.
   collectibles, 0 skipped) by test and by eye
   (`analysis/generated/board_L1_B0_sprites.png`). 53 C++ tests pass; originals
   verify clean. Full spec: `analysis/specs/level-formats.md` ("Entity sprite bank").
+- **Sprite decoder plane-layout fix (`src/resources/sprite_frame`):** the decoder
+  laid out a sprite row plane-major over the full width; the real format stores
+  **16px groups** (`[g0:P0 P1 P2 P3][g1:…]`). The two coincide for 16px frames, so
+  faces/collectibles were always correct, but every **32px** frame (bumper pegs, the
+  node marker, the Bumpy-on-cloud avatar) decoded scrambled. Fixed to the group
+  layout (the `1cec:0c77` reshuffle); the board's bumper sprites and the map avatar
+  now render correctly. Spec: `analysis/specs/menu-resource-formats.md`.
 
 **Stage 3 world-map screen (builds and runs on master):**
 - The original's missing **menu → world map → playfield** flow is now in the port
@@ -194,13 +201,11 @@ functions), DOSBox-X reference harness.
   `1cb2`.
 - **`src/video/map_renderer`** composes the map: the `MONDE1.VEC` backdrop (via the
   factored **`src/video/screen_image`** deplane helper, shared with `board_renderer`)
-  plus the **Bumpy avatar**, centred on the current node's ring. The original draws
-  the avatar from the **player** sprite bank (`BUMPYSPR.BIN`/`SPRITE.BIN`, frame
-  `0x21`) — **which are not shipped** with these assets; reading `0x21` from the
-  supplied `BUMSPJEU.BIN` is unrelated garbage. `BUMSPJEU` carries equivalent Bumpy
-  player faces at frames `0x00..0x0c`, so the port substitutes the forward-facing
-  idle **frame `0x08`**, matched by eye to `screenshots/bumpy_001.png` (Bumpy centred
-  in node 1's ring). Frame geometry/centring verified by a backdrop-diff measurement.
+  plus the **Bumpy-on-cloud avatar** — `BUMSPJEU.BIN` **frame `0x21`**
+  (`FUN_1000_1cb2`/`DAT_824a`) — centred on the current node's ring. This frame
+  matches `screenshots/bumpy_001.png` pixel-for-pixel (orange face + blue cloud). It
+  only looked like garbage at first because the **sprite decoder used the wrong plane
+  layout for 32px frames** — see the decoder fix below.
 - **`src/game/app`** gains `Screen::map` between menu and level; the temporary ←/→
   board paging is **retired** (node selection replaces it). Held-key guards stop a
   held fire/cancel bouncing across a transition. **`--render-map <world> <MONDE.VEC>
@@ -218,10 +223,10 @@ functions), DOSBox-X reference harness.
   via the same archive) are not implemented.
 - The in-window level screen is **static** — it shows the composed board with its
   BUM entity sprites but has no physics, collision, or win/loss yet (Stage 3
-  remainder). The world map navigates (with the gliding avatar) and selects boards,
-  but its score/lives HUD overlays and the per-completed-node markers (frame `0x1da`)
-  are not drawn. The avatar is a faithful substitute (BUMSPJEU frame `0x08`) because
-  the original player bank `BUMPYSPR.BIN`/`SPRITE.BIN` is not shipped.
+  remainder). The world map navigates (with the gliding Bumpy-on-cloud avatar) and
+  selects boards, but its score/lives HUD overlays and the per-completed-node markers
+  (frame `0x1da`) are not drawn, and the fire-to-enter cloud-jump animation
+  (frames `0x22`..) is not played yet.
 
 ## How to run
 
@@ -293,11 +298,10 @@ The next milestone is **making the board come alive** — the live gameplay loop
 
 World-map follow-ups (deferred this slice, low priority): the score/lives HUD on the
 map (`FUN_1000_0816` digit formatter), completed-node markers (frame `0x1da`,
-`FUN_1000_3c4f`), the avatar's walk-cycle animation during the slide (it glides as a
-single idle frame for now), the real player avatar (needs the unshipped
-`BUMPYSPR.BIN`), and **worlds 2–9** (extract the per-world graphs/positions at
-`0x10c8[world]` / `0x10ec[world]`, load MONDE/level on demand — unlocked once
-win/loss advances worlds).
+`FUN_1000_3c4f`), the avatar's idle cloud-bounce + the fire-to-enter cloud-jump
+animation (frames `0x22`.., currently a single static `0x21` pose), and **worlds
+2–9** (extract the per-world graphs/positions at `0x10c8[world]` / `0x10ec[world]`,
+load MONDE/level on demand — unlocked once win/loss advances worlds).
 
 Optional menu polish: implement compressed sprites + per-glyph text to bring up
 the HIGH-SCORE / PASSWORD sub-screens (`FUN_1000_0d9d` / `0f7a` / `11eb`).
