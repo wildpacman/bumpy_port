@@ -92,10 +92,14 @@ functions), DOSBox-X reference harness.
   `PAV_buffer + 6`.
 - **MONDE?.VEC** (9 files) = 32099-byte **screen-format** backgrounds (same as
   `TITRE.VEC`): per-world art + a 4×5 grid of node rings. Render successfully.
-- **D?.BUM** = `0x100e` header + 1-byte object/tile-index grid (cells 0–0x2e).
-  `D6.BUM`/`D9.BUM` ship **raw/pre-decoded** (no VEC wrapper). Grid dims TBD.
-- **D?.DEC** = `0x000e` header + palette-ish bytes + 3-byte placement records.
-  Record layout TBD.
+- **D?.DEC** = static tile grid: 2-byte header + **N×812-byte boards**
+  (N=15 or 12). Each board = 32-byte header + **20 cols × 13 rows × 3 bytes/cell**
+  (`6bca = DEC+2+board*0x32c`, read by `FUN_1000_2a0a`). Cell[0] = PAV object
+  index (0=empty, 1..0xf0=single, ≥0xf1=stacked using cell[1..2]).
+- **D?.BUM** = dynamic per-board entities ("bumpers"): 2-byte header +
+  **N×194-byte boards** (matching N), each = 3×48-byte entity tables + 6 params
+  (`75d0 = BUM+2+board*0xc2`, copied by `FUN_1000_32b0`). `D6.BUM`/`D9.BUM` ship
+  **raw/pre-decoded**. Board counts verified: (12182−2)/812 = (2912−2)/194 = 15.
 - New dev/inspection flags on `bumpy_port.exe`: `--decode-vec`, `--render-screen`,
   `--render-pav` (see spec). 31 C++ tests still pass; originals verify clean.
 
@@ -150,16 +154,16 @@ concrete milestone is a **static composed level**: MONDE background + PAV object
 placed by the BUM grid, rendered in the port and compared to the original by eye.
 To do that, the remaining recovery is:
 
-1. **Grid + placement semantics** — confirm the BUM grid dimensions and the DEC
-   3-byte record layout from the gameplay consumers (`FUN_1000_3467`, the
-   per-frame draw chain in `FUN_1000_0c18`, buffers `203b:75de`/`6bca`), and the
-   level palette source (MONDE vs DEC). See `analysis/specs/level-formats.md`
-   open questions.
+1. **Grid + placement semantics — DONE.** DEC = static 20×13×3 tile boards,
+   BUM = per-board entity tables; both confirmed from `FUN_1000_2a0a` /
+   `FUN_1000_32b0` / `FUN_1000_0416`. See `analysis/specs/level-formats.md`.
 2. **Compose + render** — add a `level` module (decode PAV/DEC/BUM with the
-   raw-BUM fallback for D6/D9) + a level renderer; dump a static level frame and
-   compare by eye.
-3. **Then** physics, collision, objects, win/loss, and return to menu; wire
-   `start_first_level`.
+   raw-BUM fallback for D6/D9; expose board 0's 20×13 cells) + a board renderer
+   (base tiles + PAV objects per cell). Dump a static board and compare by eye.
+   Open: PAV sheet tile pixel size (from blitter `1cec`) and gameplay palette
+   source.
+3. **Then** physics, collision, entities (BUM tables), win/loss, and return to
+   menu; wire `start_first_level`.
 
 Gameplay sprite note: the **compressed frame path** (sprite-frame flags
 `0x40`/`0x20`, expanded in `1cec:2ded`) is still unimplemented and will be needed

@@ -73,34 +73,78 @@ world/level board. `BUMPRESE.VEC` and `DESSFIN.VEC` are also screen-format.
 
 `MONDE?.VEC` is the playfield backdrop; `D?.PAV` objects are drawn on top.
 
-## D?.BUM — object/tile grid (Hypothesis)
+## Both files are N parallel per-board records (Confirmed)
 
-2-byte header (`0x100e`, or `0x100f` for D9) then a grid of **1-byte cells**.
-Cell values are small object/tile indices (observed 0–0x2e); 0 is empty. These
-index the PAV object sheet for placement. Two grid sizes (2910 / 2328 cells after
-the header) match the two DEC sizes.
+`FUN_1000_0416` allocates the level buffers and `FUN_1000_32b0` activates the
+current board. The decoded DEC and BUM are each a **2-byte file header followed
+by N fixed-size board records**, where N is the level's board count:
 
-Exact grid width/height is **not yet confirmed** — to be read from the gameplay
-grid consumer of buffer `203b:75de` rather than inferred from the data (design
-patterns create misleading periodicity). The PAV draw `FUN_1000_0a90` uses a
-related structure `_DAT_203b_6bca` with row stride `0x27` (39) = 13 three-byte
-records per row.
+- DEC board = `0x32c` (812) bytes. `6bd2 = DEC_buffer + 2`;
+  `6bca = 6bd2 + board * 0x32c`.
+- BUM board = `0xc2` (194) bytes. `6bf2 = BUM_buffer + 2`;
+  `75d0 = 6bf2 + board * 0xc2`.
 
-## D?.DEC — decor / object-placement records + palette (Hypothesis)
+Board count divides exactly and matches between the two files:
 
-2-byte header (`0x000e` = 14) then fixed records. Early bytes include
-8-bit-valued groups that look like a palette (`f8 a8 bc d2`, `f8 e6 e6 f8`),
-followed by a run of **3-byte records** (`VV 00 00`, `VV` = object/tile index in
-the same range as BUM cells). The 3-byte stride matches `FUN_1000_0a90`'s
-`(row>>1)*3` indexing. Record count, field meanings, and the palette layout are
-not yet confirmed.
+| variant | DEC size | (DEC−2)/812 | BUM size | (BUM−2)/194 |
+|---|---:|---:|---:|---:|
+| large | 12182 | **15** | 2912 | **15** |
+| small | 9746 | **12** | 2330 | **12** |
+
+So a level has **15 or 12 boards** (the two size variants). `D6.BUM`/`D9.BUM`
+ship raw but with the same 2912/2330 sizes, i.e. the same 15/12-board layout.
+
+## D?.DEC — static tile grid per board (Confirmed)
+
+2-byte file header, then 15 (or 12) board records of 812 bytes. Each board:
+
+| Region | Offset | Size | Meaning |
+|---|---:|---:|---|
+| board header | `0x00` | 32 | 16 words of board metadata (read as `6bca + n*2`; e.g. word `0x1c` gated in `FUN_1000_2cf*`). |
+| cell grid | `0x20` | 780 | **20 columns × 13 rows**, 3 bytes/cell, column-major. |
+
+The renderer `FUN_1000_2a0a` iterates `x = 0..19` (col, stride `0x27`=39) and
+`y = 0..12` (row, via `iVar3 = 0..24` step 2, `iVar3>>1` × 3). For each cell it
+draws the base tile (`FUN_1000_0b88`) and, if **cell byte 0 ≠ 0**, the object
+(`FUN_1000_0a90`):
+
+```text
+cell_addr = DEC + 2 + board*0x32c + 0x20 + x*0x27 + y*3
+obj = cell[0]
+```
+
+Cell byte 0 semantics (`FUN_1000_0a90`):
+- `0` — empty (object not drawn; base tile only).
+- `1..0xf0` — single object; PAV source tile = `((obj-1) % 20, ((obj-1)/20)*2)`.
+- `≥ 0xf1` — **stacked object**: draws `(-obj - 5)` tiles using the extra cell
+  bytes (`cell[1]`, `cell[2]`, …) as the stacked object indices. This is why
+  cells are 3 bytes wide.
+
+## D?.BUM — dynamic per-board entities ("bumpers") (Confirmed)
+
+2-byte file header, then 15 (or 12) board records of 194 bytes. On board
+activation `FUN_1000_32b0` copies each record into the active-board working
+buffer `203b:a0e4`:
+
+| Region | Offset | Size | Meaning |
+|---|---:|---:|---|
+| table A | `0x00` | 48 | per-entity bytes (copied) |
+| table B | `0x30` | 48 | per-entity bytes (copied) |
+| table C | `0x60` | 48 | per-entity bytes (copied) |
+| params | `0x90` | 6 | board entity params (copied verbatim) |
+| (rest) | `0x96` | 44 | remainder of the 194-byte record |
+
+The three 48-byte tables are parallel per-entity arrays (Hypothesis: up to 16
+moving objects/bumpers × 3 bytes, or x/y/type columns). Exact per-entity field
+meanings are the next thing to pin down when implementing entity spawning.
 
 ## Open questions / next blockers
 
-1. Confirm the BUM grid dimensions and DEC record layout from the gameplay
-   consumers (`FUN_1000_3467`, the per-frame draw chain in `FUN_1000_0c18`, and
-   buffer `203b:75de`/`6bca`).
-2. Confirm the level palette source (MONDE vs DEC).
-3. Compose a static level (MONDE background + PAV objects placed by the grid) in
-   the port and compare to the original by eye.
-4. Then: physics, collision, objects, win/loss, return to menu.
+1. BUM entity table field semantics (the three 48-byte arrays + 6 params).
+2. Level palette source for gameplay (PAV has none; MONDE is the world-map
+   screen — confirm whether gameplay reuses a per-world palette or a global one).
+   The playfield background is per-cell base tiles (`FUN_1000_0b88`), not MONDE.
+3. PAV sheet tiling: confirm source tile pixel size from the blitter (`1cec`);
+   `FUN_1000_0a90` addresses it as 20 columns with row step ×2.
+4. Compose a static board (base tiles + DEC objects) in the port; compare by eye.
+5. Then: physics, collision, entities, win/loss, return to menu.
