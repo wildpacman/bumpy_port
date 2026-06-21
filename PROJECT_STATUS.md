@@ -1,6 +1,6 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-06-21.
+Source of truth for new sessions. Last updated: 2026-06-22.
 
 ## Goal
 
@@ -213,6 +213,29 @@ functions), DOSBox-X reference harness.
   Design + plan: `docs/superpowers/specs/2026-06-21-world-map-screen-design.md`,
   `docs/superpowers/plans/2026-06-21-world-map-screen.md`.
 
+**Stage 3 world-map cloud-jump animation (builds and runs on master):**
+- Fire on a node now plays the original's **fire-to-enter cloud-jump** before the board
+  loads, recovered from `FUN_1000_3cf7` + the 22-record script at **DS:0x1114** (each
+  record `{frame, dx, dy}`, applied one per tick by `FUN_1000_13df`). Bumpy squashes on
+  his cloud, bounces up ~8px, arcs down ~8px, then vanishes (frame `100`). dx is 0 for
+  every record → purely vertical. Full recovery: `analysis/specs/screen-flow.md`
+  ("Selecting a node").
+- **`src/game/world_map`** owns the jump state machine (`is_jumping()`, the baked
+  24-step table incl. the two pre-loop frames); confirm starts it, `select_board`
+  returns only when it finishes, `enter()` resets it. Input is ignored mid-jump (like a
+  slide). New tests lock the frame/offset sequence and the input-ignored invariant.
+- **`src/video/map_renderer`** draws `view.avatar_frame` + the launch cloud
+  (`view.cloud_visible`). Placement was the subtle part: the resting avatar (frame
+  `0x21`, 32×21) is a **ball + cloud composite**, and the jump reuses its parts
+  standalone — frame `0` is pixel-identical to `0x21`'s top (content offset `(8,0)`),
+  frame `0xcb` to its bottom (`(0,10)`). Frames are **centred horizontally on the node**
+  in the `0x21` box (ball top-aligned + bounced, cloud bottom-aligned) so the jump
+  starts exactly where the resting pose sits and the cloud stays put. (The frame-header
+  `origin` words are **not** the composite anchor — origin-aligning lurches the parts
+  ~(8,8), which the original does not.)
+- **`--render-jump <node> <MONDE.VEC> <out-prefix>`** dumps the animation as
+  `<prefix>NN.bmp` for by-eye verification. 69 C++ tests pass; originals verify clean.
+
 **Placeholders / remaining work:**
 - Compressed sprite frames (flags `0x40`/`0x20`, `1cec:2ded`) are **fully recovered
   from disassembly but unused by the supplied assets** — `BUMSPJEU` is all
@@ -223,10 +246,10 @@ functions), DOSBox-X reference harness.
   via the same archive) are not implemented.
 - The in-window level screen is **static** — it shows the composed board with its
   BUM entity sprites but has no physics, collision, or win/loss yet (Stage 3
-  remainder). The world map navigates (with the gliding Bumpy-on-cloud avatar) and
-  selects boards, but its score/lives HUD overlays and the per-completed-node markers
-  (frame `0x1da`) are not drawn, and the fire-to-enter cloud-jump animation
-  (frames `0x22`..) is not played yet.
+  remainder). The world map navigates (with the gliding Bumpy-on-cloud avatar),
+  **plays the fire-to-enter cloud-jump animation** (see below), and selects boards, but
+  its score/lives HUD overlays and the per-completed-node markers (frame `0x1da`) are
+  not drawn yet.
 
 ## How to run
 
@@ -298,10 +321,10 @@ The next milestone is **making the board come alive** — the live gameplay loop
 
 World-map follow-ups (deferred this slice, low priority): the score/lives HUD on the
 map (`FUN_1000_0816` digit formatter), completed-node markers (frame `0x1da`,
-`FUN_1000_3c4f`), the avatar's idle cloud-bounce + the fire-to-enter cloud-jump
-animation (frames `0x22`.., currently a single static `0x21` pose), and **worlds
-2–9** (extract the per-world graphs/positions at `0x10c8[world]` / `0x10ec[world]`,
-load MONDE/level on demand — unlocked once win/loss advances worlds).
+`FUN_1000_3c4f`), the avatar's idle cloud-bounce (the fire-to-enter cloud-jump is now
+done — see "Stage 3 world-map cloud-jump animation"), and **worlds 2–9** (extract the
+per-world graphs/positions at `0x10c8[world]` / `0x10ec[world]`, load MONDE/level on
+demand — unlocked once win/loss advances worlds).
 
 Optional menu polish: implement compressed sprites + per-glyph text to bring up
 the HIGH-SCORE / PASSWORD sub-screens (`FUN_1000_0d9d` / `0f7a` / `11eb`).

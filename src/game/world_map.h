@@ -14,10 +14,23 @@ struct WorldMapAction {
     std::size_t board_index{};  // valid when result == select_board (= current_node - 1)
 };
 
+// The avatar's resting sprite: BUMSPJEU frame 0x21 (Bumpy-on-cloud). The fire-to-enter
+// jump animation drives avatar_frame through the recovered script (see WorldMap).
+inline constexpr int kRestingAvatarFrame = 0x21;
+// The launch cloud sprite drawn under the bouncing ball during the jump (frame 0xcb,
+// pre-drawn by FUN_1000_3cf7 at descriptor offset (-15, +3)).
+inline constexpr int kJumpCloudFrame = 0xcb;
+// Sentinel frame meaning "draw nothing" -- the original's blitter skips it
+// (FUN_1000_1cb2: `if (DAT_824a != 100)`); the jump's last step uses it to vanish.
+inline constexpr int kAvatarFrameHidden = 100;
+
 struct WorldMapView {
     int current_node{1};  // 1-based
-    int avatar_x{};
+    int avatar_x{};       // current node's pixel position (the avatar's resting anchor)
     int avatar_y{};
+    int avatar_frame{kRestingAvatarFrame};  // sprite frame to draw; kAvatarFrameHidden = none
+    int avatar_offset_y{};                  // vertical bounce offset added during the jump
+    bool cloud_visible{};                   // draw the launch cloud (kJumpCloudFrame) while jumping
 };
 
 // One world-map node: linked neighbour node numbers (1-based; 0 = no link) and the
@@ -39,6 +52,13 @@ struct MapNode {
 // FUN_1000_3ab2..3bc9 animate dist>>2 steps of 4px), and input is ignored until it
 // arrives -- so update() must be called every tick. Debounces its own input (one
 // slide/action per key press) like Menu does. App drives it on Screen::map.
+//
+// Fire on a node plays the recovered cloud-jump animation before entering the board:
+// FUN_1000_3cf7 sets up a 22-record script at DS:0x1114 (each record {frame, dx, dy},
+// applied one per tick by FUN_1000_13df) plus two pre-roll frames. The avatar squashes
+// on its cloud, bounces up ~8px, arcs down ~8px, then vanishes as the board loads. dx
+// is 0 for every record, so the bounce is purely vertical. Input is ignored during the
+// jump (like a slide); update() returns select_board only once it finishes.
 class WorldMap {
 public:
     WorldMap();  // world 1, avatar on node 1
@@ -55,17 +75,23 @@ public:
     [[nodiscard]] std::size_t node_count() const noexcept;
     // True while the avatar is gliding between nodes (input is ignored meanwhile).
     [[nodiscard]] bool is_sliding() const noexcept { return sliding_; }
+    // True while the fire-to-enter cloud-jump animation is playing (input ignored too).
+    [[nodiscard]] bool is_jumping() const noexcept { return jumping_; }
 
 private:
     void move_to(int node) noexcept;     // snap current node + avatar position
     void start_slide(int node) noexcept; // set target node; begin the glide
     void advance_slide() noexcept;       // step the avatar 4px toward the target
+    void start_jump() noexcept;          // begin the cloud-jump animation on the current node
+    void clear_jump() noexcept;          // reset the avatar to its resting pose
 
     WorldMapView view_{};
     bool waiting_for_release_{false};  // a fresh map acts on first input; enter() arms the guard
     bool sliding_{false};
     int slide_to_x_{};
     int slide_to_y_{};
+    bool jumping_{false};
+    std::size_t jump_step_{0};  // index into the baked jump animation table
 };
 
 // The baked world-1 node table (index 0 is an unused sentinel; nodes 1..15).

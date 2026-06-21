@@ -107,15 +107,57 @@ distances; a `96` distance skips a row).
 
 The avatar starts on node 1 (`DAT_854e = 1`).
 
-### Selecting a node — `FUN_1000_3cf7`
+### Selecting a node — `FUN_1000_3cf7` (the fire-to-enter cloud-jump)
 
-Fire on the current node: animate the avatar into the ring, compute a spawn cell
-(`FUN_1000_3dfd`: `DAT_9d36`/`DAT_9d38` from the avatar pixel position, clamped to
-0..18 / 0..22), set `DAT_854f = 0xaa`, and return "selected" so the map loop
-exits. Back in `FUN_1000_0c18`, **`DAT_7310 = DAT_854e - 1`** becomes the board
-index: `FUN_1000_32b0` reads the BUM board record at `DAT_6bf2 + (node-1)*0xc2`
-(`0xc2` = 194). So **map node N → playfield board N-1**; world 1's 15 nodes map to
-D1's 15 boards.
+Fire on an open node (`*DAT_9bac:DAT_9baa == 0`) plays a short jump animation, then
+computes a spawn cell (`FUN_1000_3dfd`: `DAT_9d36`/`DAT_9d38` from the avatar pixel
+position, clamped to 0..18 / 0..22), sets `DAT_854f = 0xaa`, and returns "selected"
+so the map loop exits. Back in `FUN_1000_0c18`, **`DAT_7310 = DAT_854e - 1`** becomes
+the board index: `FUN_1000_32b0` reads the BUM board record at `DAT_6bf2 +
+(node-1)*0xc2` (`0xc2` = 194). So **map node N → playfield board N-1**; world 1's 15
+nodes map to D1's 15 boards.
+
+**The jump animation** is a scripted sprite sequence driven by `FUN_1000_13df`, one
+step per tick (same cadence as the slide's `FUN_1000_3c26`):
+
+- `3cf7` sets the animation script pointer `DAT_a1ac = 0x203b:0x1114` and the step
+  counter `DAT_824d = 0x16` (22 records), plays a launch sound (`FUN_1000_6e11`),
+  saves the avatar position to `DAT_791c/791e`, and **pre-draws the launch cloud**
+  (`DAT_824a = 0xcb`) at the avatar descriptor offset `(-0xf, +3)`.
+- The script at **DS:0x1114** (file `0x12554` = `0x11440 + 0x1114`) is 22 records of
+  three `int16` each — `{frame, dx, dy}`. Each tick `13df` sets `DAT_824a = frame`,
+  moves the avatar by `(dx, dy)` (dx negated if `DAT_9bae != 0`), advances the pointer
+  6 bytes, and decrements `DAT_824d`. **Every dx is 0**, so the jump is purely
+  vertical. Frames + cumulative dy:
+
+  | phase | frames | cumulative dy |
+  |---|---|---|
+  | squash in place | 1,2,3,4,5,6,7,0 | 0 throughout |
+  | bounce up | 1,2,3,4,5,6,7,0 | -3,-5,-7,-8,-8,-7,-6,-5 |
+  | arc down (stretched) | 0x13,0x16,0x19,0x1c,0x1f | -4,-1,+2,+5,+8 |
+  | vanish | 100 (blitter skips it) | +8 |
+
+  `3cf7` also issues two leading draws of frame 0 before the loop, so the displayed
+  sequence is 24 ticks. `FUN_1000_1cb2` blits `DAT_824a` at `(DAT_9290, DAT_9292)`
+  and skips frame `100`.
+
+**Sprite layout (recovered by pixel-exact alignment, not the frame `origin` words).**
+The resting avatar **frame `0x21`** (32×21) is a composite: Bumpy (the ball) on top
+of a cloud. Its sub-frames are reused standalone by the jump:
+
+- **frame `0`** (16×15, the neutral ball) is **pixel-identical** to the top of `0x21`
+  at content offset **(8, 0)** — i.e. horizontally centred in the 32-wide box;
+- **frame `0xcb`** (32×11, the launch cloud) matches the bottom of `0x21` at content
+  offset **(0, 10)** — bottom-aligned in the box.
+
+So the port places every avatar frame **centred horizontally on the node** inside the
+resting `0x21` box (ball top-aligned + bounced by the cumulative dy, cloud
+bottom-aligned). This reconstructs the resting pose exactly at jump start and keeps the
+cloud stationary while Bumpy bounces. (The frame-header `origin_x/origin_y` words are
+**not** the composite anchor: origin-aligning the parts lurches them ~(8,8) off, which
+the original visibly does not do.) The blit routine itself is an unresolved far-call
+(`FUN_1cec_31b7 → func_0x0002fc2d`), so this placement is recovered from the sprite
+data + the verified resting capture, not from the blitter.
 
 ## Palette mechanism
 

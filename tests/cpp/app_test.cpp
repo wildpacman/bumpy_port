@@ -4,13 +4,24 @@
 
 namespace {
 
+// Tick the App until the world-map fire jump (cloud-jump animation) finishes and the
+// level screen is reached.
+void finish_jump(bumpy::App& app) {
+    int guard = 0;
+    while (app.world_map().is_jumping() && guard++ < 1000) {
+        REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    }
+}
+
 // Drive the App from the menu to the level the way a player would: confirm "start"
-// (menu -> world map), release, then fire on node 1 (map -> level board 0), release.
+// (menu -> world map), release, then fire on node 1 (map -> jump animation -> level
+// board 0), release.
 void enter_level(bumpy::App& app) {
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
     REQUIRE(app.screen() == bumpy::Screen::map);
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);  // release
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    finish_jump(app);  // play the cloud-jump before the board loads
     REQUIRE(app.screen() == bumpy::Screen::level);
     REQUIRE(app.board_index() == 0);
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);  // release
@@ -51,6 +62,7 @@ TEST_CASE("firing on a map node enters that node's board") {
     finish_slide(app);                                                                     // glide there
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // fire
+    finish_jump(app);                                                                      // cloud-jump
     REQUIRE(app.screen() == bumpy::Screen::level);
     REQUIRE(app.board_index() == 1);  // node 2 -> board 1
 }
@@ -111,9 +123,10 @@ TEST_CASE("a held confirm does not bounce menu -> map -> level") {
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
     REQUIRE(app.screen() == bumpy::Screen::map);
 
-    // Release, then a fresh confirm edge enters the level.
+    // Release, then a fresh confirm edge plays the jump and enters the level.
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    finish_jump(app);
     REQUIRE(app.screen() == bumpy::Screen::level);
 }
 

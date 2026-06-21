@@ -19,7 +19,10 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -332,6 +335,50 @@ int render_map_to_bmp(const std::filesystem::path& asset_root, const std::filesy
     return 0;
 }
 
+// Drive the world map through the fire-to-enter cloud-jump on the given node and dump
+// every animation step to <prefix>NN.bmp for by-eye verification of the recovered
+// sequence (frames + bounce + cloud).
+int render_jump_to_bmps(const std::filesystem::path& asset_root,
+                        const std::filesystem::path& monde_path, int node,
+                        const std::string& prefix) {
+    const auto backdrop = bumpy::decode_vec_resource(monde_path);
+    const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+    const auto screen = backdrop.decoded_bytes();
+
+    bumpy::WorldMap map;  // node 1
+    // Walk to the requested node so the jump plays somewhere clearly visible.
+    for (int n = 1; n < node; ++n) {
+        map.update(bumpy::MenuInput{.right = true});
+        int guard = 0;
+        while (map.is_sliding() && guard++ < 1000) {
+            map.update(bumpy::MenuInput{});
+        }
+        map.update(bumpy::MenuInput{});  // release
+    }
+
+    auto dump = [&](int index) {
+        bumpy::IndexedFramebuffer frame(320, 200);
+        bumpy::render_map(screen, map.view(), bank.bytes(), frame);
+        std::ostringstream name;
+        name << prefix << std::setw(2) << std::setfill('0') << index << ".bmp";
+        write_24bit_bmp(name.str(), frame);
+        std::cout << "step " << index << ": frame 0x" << std::hex << map.view().avatar_frame
+                  << std::dec << " offset_y " << map.view().avatar_offset_y << " cloud "
+                  << (map.view().cloud_visible ? "on" : "off") << "\n";
+    };
+
+    int index = 0;
+    map.update(bumpy::MenuInput{.confirm = true});  // start the jump (poses step 0)
+    dump(index++);
+    int guard = 0;
+    while (map.is_jumping() && guard++ < 1000) {
+        map.update(bumpy::MenuInput{});
+        dump(index++);
+    }
+    std::cout << "wrote " << index << " frames to " << prefix << "NN.bmp\n";
+    return 0;
+}
+
 int run_sdl_menu(const std::filesystem::path& asset_root) {
     warn_if_assets_changed(asset_root);
     const auto resources = bumpy::MenuResources::load_from(asset_root);
@@ -382,6 +429,11 @@ int main(int argc, char* argv[]) {
             // world is currently informational (world 1 only); MONDE.VEC supplies the
             // backdrop + palette, and the avatar is drawn at node 1.
             return render_map_to_bmp(asset_root, argv[3], argv[4]);
+        }
+        if (argc == 5 && std::string_view(argv[1]) == "--render-jump") {
+            // --render-jump <node> <MONDE.VEC> <out-prefix>
+            // Dumps the fire-to-enter cloud-jump animation on <node> as <prefix>NN.bmp.
+            return render_jump_to_bmps(asset_root, argv[3], std::stoi(argv[2]), argv[4]);
         }
         if ((argc == 6 || argc == 7) && std::string_view(argv[1]) == "--render-board") {
             // --render-board <level> <MONDE.VEC> <board_index> <out.bmp> [map|entities]

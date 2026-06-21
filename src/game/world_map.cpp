@@ -31,6 +31,28 @@ constexpr std::array<MapNode, 16> kWorld1{{
     {11, 0, 14, 0, 272, 176},  // 15: U11 L14
 }};
 
+// One displayed step of the cloud-jump animation: the avatar sprite frame and its
+// vertical offset from the resting position. Recovered from FUN_1000_3cf7 and the
+// script table at DS:0x1114 (BUMPY.UNPACKED.EXE file offset 0x12554): 22 records of
+// {frame, dx, dy} applied one per tick by FUN_1000_13df, where avatar_offset_y is the
+// running sum of dy (dx is 0 for every record -> purely vertical). The two leading
+// frame-0 entries are the pre-loop draws 3cf7 issues before the script loop. The final
+// frame (kAvatarFrameHidden) is the script's frame 100, which the blitter skips so the
+// avatar vanishes as the board loads.
+struct JumpFrame {
+    int frame;
+    int offset_y;
+};
+constexpr std::array<JumpFrame, 24> kJump{{
+    {0, 0},   {0, 0},                                            // pre-loop: frame 0, in place
+    {1, 0},   {2, 0},  {3, 0},  {4, 0},                          // records 0-3: squash in place
+    {5, 0},   {6, 0},  {7, 0},  {0, 0},                          // records 4-7
+    {1, -3},  {2, -5}, {3, -7}, {4, -8},                         // records 8-11: bounce up
+    {5, -8},  {6, -7}, {7, -6}, {0, -5},                         // records 12-15
+    {0x13, -4}, {0x16, -1}, {0x19, 2}, {0x1c, 5}, {0x1f, 8},     // records 16-20: arc down (stretched)
+    {kAvatarFrameHidden, 8},                                     // record 21: vanish
+}};
+
 }  // namespace
 
 const MapNode& world1_node(int node) {
@@ -48,6 +70,7 @@ WorldMap::WorldMap() {
 
 void WorldMap::enter() noexcept {
     waiting_for_release_ = true;
+    clear_jump();
     move_to(1);
 }
 
@@ -73,6 +96,25 @@ void WorldMap::start_slide(int node) noexcept {
     sliding_ = view_.avatar_x != slide_to_x_ || view_.avatar_y != slide_to_y_;
 }
 
+void WorldMap::start_jump() noexcept {
+    // FUN_1000_3cf7: fire on an open node plays the cloud-jump before the board loads.
+    // Apply the first step on the fire tick (the original pre-draws the cloud and the
+    // first pose immediately) so there is no frame of stale resting pose.
+    jumping_ = true;
+    view_.cloud_visible = true;
+    view_.avatar_frame = kJump[0].frame;
+    view_.avatar_offset_y = kJump[0].offset_y;
+    jump_step_ = 1;
+}
+
+void WorldMap::clear_jump() noexcept {
+    jumping_ = false;
+    jump_step_ = 0;
+    view_.avatar_frame = kRestingAvatarFrame;
+    view_.avatar_offset_y = 0;
+    view_.cloud_visible = false;
+}
+
 void WorldMap::advance_slide() noexcept {
     constexpr int step = 4;  // 4px per tick; node spacing (80/48px) is a multiple of 4
     if (view_.avatar_x < slide_to_x_) {
@@ -91,6 +133,20 @@ void WorldMap::advance_slide() noexcept {
 }
 
 WorldMapAction WorldMap::update(const MenuInput& input) noexcept {
+    if (jumping_) {
+        // Play the cloud-jump one step per tick; input is ignored until it finishes.
+        if (jump_step_ < kJump.size()) {
+            const JumpFrame& jf = kJump[jump_step_++];
+            view_.avatar_frame = jf.frame;
+            view_.avatar_offset_y = jf.offset_y;
+            return {};
+        }
+        // Animation done: reset the pose and enter the selected node's board.
+        const int node = view_.current_node;
+        clear_jump();
+        return {WorldMapResult::select_board, static_cast<std::size_t>(node - 1)};
+    }
+
     if (sliding_) {
         advance_slide();  // glide toward the target node; input is ignored mid-slide
         return {};
@@ -118,7 +174,9 @@ WorldMapAction WorldMap::update(const MenuInput& input) noexcept {
     } else if (input.right && n.right != 0) {
         start_slide(n.right);
     } else if (input.confirm) {
-        return {WorldMapResult::select_board, static_cast<std::size_t>(view_.current_node - 1)};
+        // All world-1 nodes are open (FUN_1000_2d14 zeroes every node's state), so fire
+        // always starts the jump; select_board is returned once the animation finishes.
+        start_jump();
     } else if (input.cancel) {
         return {WorldMapResult::back_to_menu, 0};
     }

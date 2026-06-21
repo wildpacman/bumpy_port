@@ -2,18 +2,25 @@
 
 #include "game/world_map.h"
 
+#include <algorithm>
+
 using bumpy::MenuInput;
 using bumpy::WorldMap;
 using bumpy::WorldMapResult;
 
 namespace {
-// Drive one full action: press the key (which may start a slide), run any resulting
-// slide to completion, then release so the next press registers past the debounce.
+// Drive one full action: press the key (which may start a slide or the fire jump), run
+// any resulting animation to completion, then release so the next press registers past
+// the debounce. Fire returns select_board only once the jump finishes, so capture the
+// action that emerges at the end of the animation rather than the first tick's.
 bumpy::WorldMapAction act(WorldMap& map, const MenuInput& input) {
-    const auto action = map.update(input);
+    auto action = map.update(input);
     int guard = 0;
-    while (map.is_sliding() && guard++ < 1000) {
-        map.update(MenuInput{});
+    while ((map.is_sliding() || map.is_jumping()) && guard++ < 1000) {
+        const auto stepped = map.update(MenuInput{});
+        if (stepped.result != WorldMapResult::none) {
+            action = stepped;
+        }
     }
     map.update(MenuInput{});  // release
     return action;
@@ -118,6 +125,66 @@ TEST_CASE("cancel returns to the menu") {
     REQUIRE(act(map, MenuInput{.cancel = true}).result == WorldMapResult::back_to_menu);
 }
 
+TEST_CASE("fire plays the cloud-jump animation before selecting the board") {
+    WorldMap map;  // node 1
+
+    // The fire tick starts the jump (FUN_1000_3cf7): the cloud shows and the first ball
+    // frame is posed immediately, but no board is selected yet.
+    const auto first = map.update(MenuInput{.confirm = true});
+    REQUIRE(first.result == WorldMapResult::none);
+    REQUIRE(map.is_jumping());
+    REQUIRE(map.view().cloud_visible);
+    REQUIRE(map.view().avatar_frame == 0);        // pre-roll frame 0
+    REQUIRE(map.view().avatar_offset_y == 0);
+
+    // The animation is purely vertical and bounces up before arcing down: the avatar
+    // reaches its highest point (offset -8) and ends below the start (offset +8).
+    int min_offset = 0;
+    int max_offset = 0;
+    bool saw_stretched_frame = false;  // frames 0x13.. are the taller falling poses
+    int guard = 0;
+    while (map.is_jumping() && guard++ < 1000) {
+        const auto stepped = map.update(MenuInput{});
+        min_offset = std::min(min_offset, map.view().avatar_offset_y);
+        max_offset = std::max(max_offset, map.view().avatar_offset_y);
+        if (map.view().avatar_frame >= 0x13 && map.view().avatar_frame <= 0x1f) {
+            saw_stretched_frame = true;
+        }
+        // Board selection only happens on the tick the animation finishes.
+        if (stepped.result != WorldMapResult::none) {
+            REQUIRE_FALSE(map.is_jumping());
+            REQUIRE(stepped.result == WorldMapResult::select_board);
+            REQUIRE(stepped.board_index == 0);  // node 1 -> board 0
+        }
+    }
+    REQUIRE(min_offset == -8);
+    REQUIRE(max_offset == 8);
+    REQUIRE(saw_stretched_frame);
+
+    // Once done the avatar is reset to its resting pose with the cloud gone.
+    REQUIRE_FALSE(map.is_jumping());
+    REQUIRE(map.view().avatar_frame == bumpy::kRestingAvatarFrame);
+    REQUIRE(map.view().avatar_offset_y == 0);
+    REQUIRE_FALSE(map.view().cloud_visible);
+}
+
+TEST_CASE("fire is ignored mid-jump and the jump finishes regardless of input") {
+    WorldMap map;
+    map.update(MenuInput{.confirm = true});  // start the jump
+    REQUIRE(map.is_jumping());
+
+    // Holding any key during the jump neither cancels nor reroutes it.
+    int guard = 0;
+    WorldMapResult final_result = WorldMapResult::none;
+    while (map.is_jumping() && guard++ < 1000) {
+        const auto stepped = map.update(MenuInput{.confirm = true, .cancel = true});
+        if (stepped.result != WorldMapResult::none) {
+            final_result = stepped.result;
+        }
+    }
+    REQUIRE(final_result == WorldMapResult::select_board);
+}
+
 TEST_CASE("a held arrow advances only one node per press") {
     WorldMap map;
     REQUIRE(map.update(MenuInput{.right = true}).result == WorldMapResult::none);
@@ -148,5 +215,6 @@ TEST_CASE("enter resets to node 1 (snap, no slide) and requires a key release fi
     // Holding confirm across enter must not select until released.
     REQUIRE(map.update(MenuInput{.confirm = true}).result == WorldMapResult::none);
     map.update(MenuInput{});  // release
-    REQUIRE(map.update(MenuInput{.confirm = true}).result == WorldMapResult::select_board);
+    // A fresh confirm plays the cloud-jump animation, then selects the board.
+    REQUIRE(act(map, MenuInput{.confirm = true}).result == WorldMapResult::select_board);
 }
