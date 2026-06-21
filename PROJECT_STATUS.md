@@ -188,6 +188,16 @@ The next milestone is **making the board come alive**:
    board loop, and return to the menu on win/loss.
 
 Notes for that work:
+- **In-window wiring is still stubbed.** Launching shows the menu; confirming the
+  top item returns `MenuAction::start_first_level`, which `src/platform_sdl3`
+  currently treats as "exit" (clean close, not a crash). No level/map screen is
+  drawn in the SDL window yet — the board/screen renderers are reachable only via
+  the headless `--render-*` flags. Wiring screens into the app is a near-term task.
+- **MONDE1 world-map verified by eye** against a real capture
+  (`screenshots/bumpy_001.png`): background, 16-colour palette, purple balloon,
+  bears, and the baked-in 4×5 node grid all match. The map's runtime overlays
+  (score `0000000`, the Bumpy avatar in the active node, the lives row) are drawn
+  on top at runtime and are not yet implemented.
 - The **compressed sprite-frame path** (flags `0x40`/`0x20`, expanded in
   `1cec:2ded`) is still unimplemented and will be needed for animated gameplay
   sprites (`BUMSPJEU.BIN`, `BUMPYSPR.BIN`).
