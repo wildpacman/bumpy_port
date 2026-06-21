@@ -5,13 +5,11 @@ namespace bumpy {
 App::App(std::size_t board_count) noexcept : board_count_(board_count) {}
 
 AppOutcome App::update(const MenuInput& input) noexcept {
-    // App owns cancel edge detection on every screen so a cancel that causes a
-    // transition (e.g. map -> menu) cannot bounce into the next screen's cancel.
-    // confirm is owned per-screen: Menu debounces it on the menu, WorldMap on the
-    // map. left/right only matter as a transition key... never now (paging retired).
-    const bool app_key = input.cancel;
-    const bool app_edge = app_key && !waiting_for_release_;
-    waiting_for_release_ = app_key;
+    // App owns the cancel key on every screen so a cancel that causes a transition
+    // (e.g. map -> menu) cannot bounce into the next screen's cancel. confirm is owned
+    // per-screen: Menu debounces it on the menu, WorldMap on the map.
+    const bool cancel_edge = input.cancel && !waiting_for_release_;
+    waiting_for_release_ = input.cancel;
 
     if (screen_ == Screen::menu) {
         switch (menu_.update(input)) {
@@ -24,7 +22,7 @@ AppOutcome App::update(const MenuInput& input) noexcept {
         case MenuAction::none:
             break;
         }
-        if (app_edge && input.cancel) {
+        if (cancel_edge) {
             return AppOutcome::quit;  // Escape from the menu exits the game
         }
         return AppOutcome::running;
@@ -47,7 +45,7 @@ AppOutcome App::update(const MenuInput& input) noexcept {
     }
 
     // Screen::level (display only; cancel returns to the menu)
-    if (app_edge && input.cancel) {
+    if (cancel_edge) {
         screen_ = Screen::menu;
         return AppOutcome::running;
     }
