@@ -42,13 +42,15 @@ only a platform adapter.
   `FLECHE.BIN` arrow sprite) draws at the active row and tracks `cursor_row`.
   Resource bundle, menu state machine, and SDL3 shell build and run.
 - **Stage 3 — First level — IN PROGRESS.** Level data formats recovered and
-  visually verified, a **static composed board renders natively**, and it is now
-  **wired into the SDL window**: confirming "start" on the menu shows level 1's
-  board (MONDE per-world palette + DEC-placed PAV objects over the flat base
-  clear), Escape returns to the menu, and ←/→ page through the level's boards (see
-  "Stage 3 progress" below). Remaining: physics, collision, entities (BUM);
-  win/loss. The sprite-frame decoder from Stage 2 is the reusable foundation for
-  gameplay sprites.
+  visually verified, a **static composed board renders natively**, the **BUM entity
+  sprites** draw from the uncompressed bank, and the **world-map screen is now
+  wired in**: confirming "start" on the menu shows world 1's map
+  (`MONDE1.VEC` + the Bumpy avatar on node 1); the arrows move between linked nodes;
+  fire enters that node's board; Escape returns to the menu (see "Stage 3 world-map
+  screen" below). The flow now matches the original's **menu → world map →
+  playfield**; the temporary ←/→ board paging is retired. Remaining: physics,
+  collision, win/loss; the in-level gameplay palette; the map's score/lives HUD. The
+  sprite-frame decoder from Stage 2 is the reusable foundation for gameplay sprites.
 
 ## Current state
 
@@ -180,6 +182,27 @@ functions), DOSBox-X reference harness.
   (`analysis/generated/board_L1_B0_sprites.png`). 53 C++ tests pass; originals
   verify clean. Full spec: `analysis/specs/level-formats.md` ("Entity sprite bank").
 
+**Stage 3 world-map screen (builds and runs on master):**
+- The original's missing **menu → world map → playfield** flow is now in the port
+  for world 1. **`src/game/world_map`** is a pure, SDL-free state machine over the
+  baked world-1 node graph + positions (extracted from `BUMPY.UNPACKED.EXE`: graph
+  `DS:0x09e6`, positions `DS:0x0a80`, `base + N*9` records; all 15 nodes verified
+  against `analysis/specs/screen-flow.md`). Arrows snap between linked nodes, fire
+  selects board `node−1`, Escape returns to the menu. Recovered from `FUN_1000_3852`
+  / `3a88` / `3ab2…3bc9` / `1cb2`.
+- **`src/video/map_renderer`** composes the map: the `MONDE1.VEC` backdrop (via the
+  factored **`src/video/screen_image`** deplane helper, shared with `board_renderer`)
+  plus the Bumpy avatar = `BUMSPJEU` frame `0x21` (`FUN_1000_1cb2`/`DAT_824a`),
+  centred on the current node's ring. Verified by eye against
+  `screenshots/bumpy_001.png` (Bumpy centred on node 1) and a backdrop-diff
+  measurement.
+- **`src/game/app`** gains `Screen::map` between menu and level; the temporary ←/→
+  board paging is **retired** (node selection replaces it). Held-key guards stop a
+  held fire/cancel bouncing across a transition. **`--render-map <world> <MONDE.VEC>
+  <out.bmp>`** dumps the map headlessly. 65 C++ tests pass; originals verify clean.
+  Design + plan: `docs/superpowers/specs/2026-06-21-world-map-screen-design.md`,
+  `docs/superpowers/plans/2026-06-21-world-map-screen.md`.
+
 **Placeholders / remaining work:**
 - Compressed sprite frames (flags `0x40`/`0x20`, `1cec:2ded`) are **fully recovered
   from disassembly but unused by the supplied assets** — `BUMSPJEU` is all
@@ -188,8 +211,11 @@ functions), DOSBox-X reference harness.
   transcribed into the port (nothing to decode/validate).
 - The menu sub-screens (HIGH-SCORE / PASSWORD draw per-glyph character sprites
   via the same archive) are not implemented.
-- The in-window level screen is **static** — it shows the composed board but has
-  no BUM entities, physics, collision, or win/loss yet (Stage 3 remainder).
+- The in-window level screen is **static** — it shows the composed board with its
+  BUM entity sprites but has no physics, collision, or win/loss yet (Stage 3
+  remainder). The world map navigates and selects boards, but its score/lives HUD
+  overlays and the per-completed-node markers (frame `0x1da`) are not drawn, and the
+  avatar does not yet animate the 4px slide between nodes (snaps instead).
 
 ## How to run
 
@@ -201,7 +227,12 @@ cmake --build --preset windows-debug
 & build/windows-debug/Debug/bumpy_port.exe --render-screen MONDE1.VEC out.bmp   # 320x200 screen-format VEC
 & build/windows-debug/Debug/bumpy_port.exe --render-pav D1.PAV MONDE1.VEC out.bmp planeseq 320 192 6
 & build/windows-debug/Debug/bumpy_port.exe --render-board 1 MONDE1.VEC 0 board.bmp        # static board (add 'map' to overlay the world-select screen)
+& build/windows-debug/Debug/bumpy_port.exe --render-map 1 MONDE1.VEC map.bmp              # world-map screen (MONDE1 + Bumpy avatar on node 1)
 ```
+
+In the window: confirm "start" on the menu → world map; arrows move Bumpy between
+linked nodes; Enter/Space enters that node's board; Escape steps back (level → map's
+menu, map → menu, menu → quit).
 
 ## Reverse-engineering workflow
 
@@ -232,62 +263,34 @@ cmake --build --preset windows-debug
 
 ## Next step
 
-**The world-map screen is the next milestone** (the main gap that makes the
-current build "not feel like a game"). The original sequences screens **menu →
-world map → playfield**; the port skips the map and jumps menu → playfield,
-paging boards with `←/→` as a stand-in for node selection. The full flow is now
-traced in `analysis/specs/screen-flow.md`: `FUN_1000_0c18` (main loop),
-`FUN_1000_3852` (world map = per-world `MONDE{world}.VEC` + a 15-node graph at
-`0x10c8[world]` / positions at `0x10ec[world]`), arrow navigation between linked
-nodes, and fire → board `node-1`. Implementing it means adding a `Screen::map`
-between menu and level, rendering MONDE with the Bumpy avatar, and moving between
-nodes; the `←/→` board paging then retires. The "brown board" is **not a bug** —
-the playfield faithfully inherits the per-world MONDE palette (screen-flow.md).
+**The world-map screen is DONE** (see "Stage 3 world-map screen" above): the port
+now follows the original's **menu → world map → playfield** flow for world 1, with
+node navigation and board selection; the `←/→` paging stand-in is retired. The
+static composed board, the BUM entity layout, and the real entity sprites are all
+DONE as well.
 
-The **static composed board is DONE** (above): `level_resources` + `board_renderer`
-compose a board from the recovered formats and it matches the original world-1 art
-by eye. Grid/placement, PAV tile geometry, the base-tile clear, and the gameplay
-palette are all resolved (`analysis/specs/level-formats.md`).
+The next milestone is **making the board come alive** — the live gameplay loop:
 
-The static board is now also **shown in the SDL window** (menu → start → board,
-Escape → menu, ←/→ page boards; see "Stage 3 in-window wiring" above), and the
-**BUM entity layout is recovered + decoded** (three 8×6 layers + params + faithful
-cell coordinates; see "Stage 3 BUM entities" above). The next milestone is
-**making that board come alive**:
+1. **Physics + collision + win/loss** — Bumpy movement, bumping objects, the
+   board-clear condition, and advancing through a level's 15/12 boards. Recover the
+   in-level loop body in `FUN_1000_0c18` (after `FUN_1000_3852` returns the selected
+   node) and the per-tick update/draw/input routines it calls.
+2. **Run the board loop in-window** — replace the static `Screen::level` display
+   (currently `render_board` + `draw_bum_entities`) with the live board loop, and
+   return to the world map (then menu) on win/loss instead of only on Escape. The
+   `src/game/app` shell and the `WorldMap → board node-1` selection are the hooks.
+3. **In-level gameplay palette** — the board still renders under the MONDE *map*
+   palette (so world 1 looks brown). Trace the real in-level palette load (the
+   `0x23` EGA-register patch vs the DAC palette; see `screen-flow.md` "Palette
+   mechanism"). The brown is **not a bug** — it is the faithful per-world MONDE
+   palette — but the gameplay screen likely re-patches it.
 
-1. **Entity sprites — DONE.** The real BUM entity sprites (pegs + collectibles)
-   now render from the uncompressed `BUMSPJEU` bank at their faithful positions
-   (`src/resources/entity_sprites`, `draw_bum_entities`), in both `--render-board
-   ... sprites` and the live SDL board. The compressed decoder turned out to be
-   unneeded (no supplied asset uses it). Remaining sprite gaps: the **in-level
-   gameplay palette** (the board currently uses the MONDE map palette, so world 1
-   looks brown rather than colourful) and **layer B**'s bank region.
-2. **Physics + collision + win/loss** — Bumpy movement, bumping objects, the
-   board-clear condition, and advancing through a level's 15/12 boards.
-3. **Run the board loop** — the menu → level → menu shell exists (`src/game/app`);
-   next is replacing the static display with the live board loop and returning to
-   the menu on win/loss instead of only on Escape.
-
-Notes for that work:
-- **In-window wiring is done for the static board.** Launching shows the menu;
-  confirming the top item enters the level screen (`App` in `src/game/app`), which
-  draws level 1's board via `render_board`. The screen is display-only: no
-  entities/physics, and ←/→ paging the boards is a temporary inspection aid that
-  the live board loop will replace. The headless `--render-*` flags still work for
-  offline format checks.
-- **MONDE1 world-map verified by eye** against a real capture
-  (`screenshots/bumpy_001.png`): background, 16-colour palette, purple balloon,
-  bears, and the baked-in 4×5 node grid all match. The map's runtime overlays
-  (score `0000000`, the Bumpy avatar in the active node, the lives row) are drawn
-  on top at runtime and are not yet implemented.
-- The **compressed sprite-frame path** (flags `0x40`/`0x20`, `1cec:2ded`) is fully
-  recovered from disassembly but **not needed**: `BUMSPJEU.BIN` is entirely
-  uncompressed and the compressed `BUMPYSPR.BIN`/`SPRITE.BIN` are not supplied.
-  Documented in `analysis/specs/menu-resource-formats.md`.
-- Per-world palette plumbing: the MONDE *map* palette matches the world-select
-  screen by eye, but the in-level **gameplay** palette is a different (untraced)
-  resource — the entity/PAV board currently renders brown-tinted under the MONDE
-  palette. Tracing the real gameplay palette load is the next visual fix.
+World-map follow-ups (deferred this slice, low priority): the score/lives HUD on the
+map (`FUN_1000_0816` digit formatter), completed-node markers (frame `0x1da`,
+`FUN_1000_3c4f`), the 4px-per-step avatar slide animation (currently snaps), and
+**worlds 2–9** (extract the per-world graphs/positions at `0x10c8[world]` /
+`0x10ec[world]`, load MONDE/level on demand — unlocked once win/loss advances
+worlds).
 
 Optional menu polish: implement compressed sprites + per-glyph text to bring up
 the HIGH-SCORE / PASSWORD sub-screens (`FUN_1000_0d9d` / `0f7a` / `11eb`).
