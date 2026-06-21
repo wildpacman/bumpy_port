@@ -116,3 +116,19 @@ TEST_CASE("menu renderer installs the screen's own VGA palette") {
     REQUIRE(palette[1].g == 0);
     REQUIRE(palette[1].b == 65);
 }
+
+TEST_CASE("menu renderer draws the marker at the selected row") {
+    const auto resources = bumpy::MenuResources::load_from(".");
+    bumpy::MenuRenderer renderer(resources);
+    bumpy::IndexedFramebuffer row0(320, 200);
+    bumpy::IndexedFramebuffer row1(320, 200);
+
+    renderer.render(bumpy::MenuView{true, true, 0}, row0);
+    renderer.render(bumpy::MenuView{true, true, 1}, row1);
+
+    const auto first_marker_pixel_x = 52;
+    const auto first_marker_pixel_y = 115;
+    REQUIRE(row0.pixels()[first_marker_pixel_y * 320 + first_marker_pixel_x] == 14);
+    REQUIRE(row1.pixels()[first_marker_pixel_y * 320 + first_marker_pixel_x] != 14);
+    REQUIRE(row1.pixels()[(first_marker_pixel_y + 16) * 320 + first_marker_pixel_x] == 14);
+}

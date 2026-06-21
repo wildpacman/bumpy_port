@@ -37,13 +37,13 @@ only a platform adapter.
 
 - **Stage 1 — `.VEC` container + title screen — DONE.** `.VEC` decoder and the
   title bitmap render natively.
-- **Stage 2 — Menu — title screen renders authentically.** Resource bundle, menu
-  state machine, and SDL3 shell exist and build. The full 320×200 menu screen
-  deplanes correctly with its embedded VGA palette. Remaining: the selection
-  highlight (how the original marks the active row is not yet recovered) and menu
-  sprite rendering.
+- **Stage 2 — Menu — DONE (renders + interactive).** The full 320×200 menu
+  screen deplanes with its embedded VGA palette, and the selection cursor (the
+  `FLECHE.BIN` arrow sprite) draws at the active row and tracks `cursor_row`.
+  Resource bundle, menu state machine, and SDL3 shell build and run.
 - **Stage 3 — First level — next.** `.BUM`/`.DEC`/`.PAV` formats, physics,
-  collision, objects; win/loss; return to menu.
+  collision, objects; win/loss; return to menu. The sprite-frame decoder from
+  Stage 2 (see below) is the reusable foundation for gameplay sprites.
 
 ## Current state
 
@@ -61,19 +61,29 @@ functions), DOSBox-X reference harness.
   rendered through `IndexedFramebuffer` (`src/video/menu_renderer`:
   `deplane_screen` / `apply_screen_palette`). Format spec:
   `analysis/specs/menu-resource-formats.md`.
-- `BUMSPJEU.BIN` sprite archive layout (`src/resources/menu_resources`): 3 groups
-  × 33 = 99 offset-delimited children.
+- **Sprite-frame decoder (`src/resources/sprite_frame`)** — recovered by
+  disassembling the overlay blitter (`1cec:31b7` → `1cec:2ded`/`2d6d`). Format:
+  a BE32 pointer table over a `0x800`-based data region; each frame = 12-byte
+  header (six BE16 words: mask, flags, x/y origin, width-units, height) + 4-plane
+  row-interleaved VGA pixels (colour 0 = transparent). Width = `width_units*4`.
+  Compressed frames (flags `0x40`/`0x20`) are NOT yet handled. Spec:
+  `analysis/specs/menu-resource-formats.md`. **This decoder + format is the
+  reusable foundation for all sprites** (BUMSPJEU bumpers, level sprites).
+- **Menu cursor**: the arrow is `FLECHE.BIN` frame 0 (16×16, uncompressed),
+  loaded in `MenuResources` and drawn by `MenuRenderer` at x 48, y 112+row·16,
+  tracking `cursor_row`. (BUMSPJEU.BIN itself is the gameplay bumper sprites —
+  see `analysis/generated/sprite_sheet.png`; same frame format, reuse in Stage 3.)
 - Menu state machine (`src/game/menu`) and SDL3 shell (`src/platform_sdl3`).
-- `bumpy_port.exe` renders the authentic title and runs the menu window; 29 C++
-  test cases pass. `--render-title out.bmp` dumps the screen; `--dump-title-raw
-  out.bin` dumps the raw decoded bytes for format work.
+- `bumpy_port.exe` renders the authentic title + cursor and runs the menu window;
+  31 C++ test cases pass. `--render-title [out.bmp]` dumps the menu;
+  `--dump-title-raw out.bin` dumps the raw decoded title bytes.
 
 **Placeholders / remaining work:**
-- The **selection highlight** is not drawn yet — the original's mechanism (palette
-  flash vs. a copied marker sprite) is not recovered. The prior chunky-buffer
-  "cursor marker" copy was wrong and has been removed.
-- Sprites are decoded structurally but not yet rendered to pixels.
-- `start_first_level` is a stub; no level loading yet.
+- Compressed sprite frames (flags `0x40`/`0x20`) are rejected, not decoded — the
+  menu cursor does not need them, but other sprites may.
+- The menu sub-screens (HIGH-SCORE / PASSWORD draw per-glyph character sprites
+  via the same archive) are not implemented.
+- `start_first_level` is a stub; no level loading yet (Stage 3).
 
 ## How to run
 
@@ -110,12 +120,19 @@ cmake --build --preset windows-debug
 
 ## Next step
 
-**Decode the `BUMSPJEU.BIN` sprite frame format**, which gates the menu selection
-marker (it is sprite frame index 0, drawn at x 48, y 112 + row·16 — logic fully
-recovered in `analysis/specs/menu-behavior.md`). The archive structure is known
-(per-child be32 frame-pointer tables → one shared pixel blob), but the per-frame
-pixel encoding is not: the blit is hand-written assembly and the header is read at
-a runtime-relocated address, so static guessing stalled. Unblock with a **DOSBox-X
-dynamic capture** (dump the relocated archive + the rendered menu VGA framebuffer
-and match bytes to pixels), or by disassembling the blit at `1cec:31b7` /
-`func_0x0002fcad`. Once frames decode, render the marker, then begin Stage 3.
+The menu vertical slice is visually complete (title → palette → interactive
+cursor). **Begin Stage 3 (first level).** Two natural entry points:
+
+1. **Gameplay sprites** — reuse the recovered `src/resources/sprite_frame`
+   decoder on `BUMSPJEU.BIN` (bumpers; already proven to decode, see
+   `analysis/generated/sprite_sheet.png`) and the level sprite files
+   (`SPRITE.BIN`, `BUMPYSPR.BIN`). Implement the **compressed frame path**
+   (header flags `0x40`/`0x20`, expanded in `1cec:2ded`) — needed for frames the
+   cursor's uncompressed path skips.
+2. **Level data** — decode `D?.PAV` / `D?.DEC` / `GRILLE.VEC` (level table at
+   `203b:0090`; `?` is the level digit patched at runtime by `FUN_1000_2d14`) and
+   wire `start_first_level`. Per-level init/draw lives at `FUN_1000_2d14`; the
+   gameplay loop is `FUN_1000_0c18`.
+
+Optional menu polish: implement compressed sprites + per-glyph text to bring up
+the HIGH-SCORE / PASSWORD sub-screens (`FUN_1000_0d9d` / `0f7a` / `11eb`).

@@ -37,6 +37,8 @@ TEST_CASE("menu resource bundle exposes one typed field per confirmed resource r
     REQUIRE(resources.bumper_sprites.root_offsets() == std::array<std::uint32_t, 3>{12, 144, 276});
     REQUIRE(resources.bumper_sprites.group_tables().size() == 3);
     REQUIRE(resources.bumper_sprites.child_blocks().size() == 99);
+
+    REQUIRE(resources.cursor_sprites.size() == std::filesystem::file_size("FLECHE.BIN"));
 }
 
 TEST_CASE("sprite archive decoder reproduces the confirmed offset-delimited layout") {

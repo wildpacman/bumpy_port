@@ -1,5 +1,7 @@
 #include "video/menu_renderer.h"
 
+#include "resources/sprite_frame.h"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -24,6 +26,9 @@ constexpr std::size_t plane_size =
 constexpr std::size_t pixel_data_offset = 99;
 constexpr int palette_color_count = 16;
 constexpr std::size_t palette_offset = pixel_data_offset - palette_color_count * 3;  // 51
+constexpr int marker_x = 48;
+constexpr int marker_y = 112;
+constexpr int marker_row_height = 16;
 
 bumpy::MenuImage deplane_screen(std::span<const std::uint8_t> decoded) {
     const std::size_t required = pixel_data_offset + plane_count * plane_size;
@@ -150,12 +155,21 @@ void MenuRenderer::render(const MenuView& view, IndexedFramebuffer& target) cons
             target);
     }
 
-    // The original draws a selection indicator for the highlighted row, but the
-    // mechanism (palette flash vs. a copied marker) is not recovered yet, so we
-    // composite only the authentic static screen for now. view.cursor_row drives
-    // navigation in the menu state machine and will feed the indicator once the
-    // highlight behaviour is reverse-engineered.
-    (void)view.cursor_row;
+    if (view.draw_cursor_marker) {
+        const auto marker = decode_sprite_frame(resources_.cursor_sprites, 0);
+        draw_menu_command(
+            MenuDrawCommand{
+                marker,
+                0,
+                0,
+                marker.width,
+                marker.height,
+                marker_x,
+                marker_y + view.cursor_row * marker_row_height,
+                sprite_transparent_index,
+            },
+            target);
+    }
 }
 
 }  // namespace bumpy

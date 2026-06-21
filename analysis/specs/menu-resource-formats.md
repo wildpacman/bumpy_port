@@ -139,25 +139,120 @@ group 2 entry 32: 00004678 .. 00015c1c (71172 bytes, ends at EOF)
 ### Second level: frame-pointer tables and the shared pixel blob (Confirmed structure)
 
 The 99 children are NOT 99 sprites. Each child *except the last* is a
-variable-length table of **big-endian 32-bit frame pointers** (child sizes vary:
+variable-length table of **big-endian 32-bit offsets** (child sizes vary:
 52–524 bytes, i.e. 13–131 entries). The **last child** (group 2 entry 32,
-`0x4678..EOF`, ~71076 bytes) is a single shared **pixel-data blob**; every frame
-pointer in every table points into it. (child 0 = 33 frame pointers:
-`0x46e4, 0x4760, 0x47ec, …`, frame sizes 124/140/124/156…). The loader relocates
-these big-endian offsets into far pointers at load time.
+`0x4678..EOF`, ~71076 bytes) is a shared byte blob. Earlier structural probes
+identified child 0 entries such as `0x46e4, 0x4760, 0x47ec, …`; those are table
+offsets consumed by the original setup mutator, not the final menu marker frame
+records rendered by `1cec:31b7`. The setup code rewrites big-endian offsets into
+far pointers and also mutates pointed records in-place before the blitter reads
+them.
 
-### Frame pixel format (NOT yet decoded — blocker)
+### Menu cursor sprite format (confirmed)
 
-A frame's bytes (e.g. `0x46e4`, 124 bytes) do **not** parse as a clean
-planar/chunky bitmap, and the 6×u16 consumer header (field0 clamped to 3, field1
-flags `0x40`/`0x20`, field4 `>>` 2·field5 = pixel-data size; from `1000:93d8` →
-`1cec:2ced`) is read at a **runtime-relocated** address, so the static file bytes
-don't line up with it. The actual blit (`1000:942a` → `1cec:31b7` →
-`func_0x0002fcad`/`func_0x0002fc2d`) is **hand-written assembly** the decompiler
-left unresolved.
+Static disassembly note: the requested absolute targets `0x2fcad` and
+`0x2fc2d` are loaded-memory addresses, not physical offsets in the 112336-byte
+`analysis/generated/BUMPY.UNPACKED.EXE`. They resolve to `1cec:2ded` and
+`1cec:2d6d` after Ghidra's `0x10000` load base. `1cec:31b7` calls them in order.
 
-Cheap static guessing of the format did not converge. The efficient unblock is
-**dynamic capture** via the DOSBox-X harness: dump the relocated archive and the
-rendered VGA framebuffer of the menu, then match bytes to ground-truth pixels.
-The menu selection marker is frame index 0 of this archive (see
-`menu-behavior.md`).
+The menu cursor is not BUMSPJEU offset `0x800`. `FUN_1000_0a07` loads level-table
+resource index 9 into the `0x898`-byte buffer `DAT_203b_6c2c:6c2e`; the resource
+table at `203b:0090` names index 9 as `FLECHE.BIN` and gives size `0x0898`.
+`FUN_1000_35a5` sets command block `203b:792e` fields 3 and 4 to that buffer,
+uses frame index 0, and draws it at `(0x30, 0x70 + row*0x10)`.
+
+For VGA mode (`DAT_203b_541d == 1`), `FUN_1000_93d8 -> 1cec:2ced` dispatches to
+`1cec:0c34`. That helper reads a big-endian 32-bit frame pointer, normalizes it
+to the loaded buffer with an `+0x800` offset, calls `1cec:0c77` to byte-swap the
+six header words and perform native in-place setup, and advances to the next
+pointer until a zero pointer is reached. `1cec:2ded` later resolves
+`command.frame_table[command.frame_index]`, copies the six header fields from the
+12 bytes immediately before the resolved pixel pointer, and expands only frames
+whose flag byte has `0x40` set. The cursor frame has no compressed flag.
+
+Frame table entries are therefore big-endian 32-bit offsets to pixel data:
+
+```text
+resolved_data_offset = 0x800 + be32(frame_table[frame_index])
+header_offset        = resolved_data_offset - 12
+```
+
+Frame headers are six big-endian 16-bit words:
+
+| Word | Meaning |
+|---:|---|
+| 0 | Auxiliary mask/prefix count copied by `1cec:2ded` and clamped to at most 3. Cursor frame 0 uses 0. |
+| 1 | Format flags. Bits `0x40` and `0x20` select the compressed expansion paths in `1cec:2ded`; cursor frame 0 uses `0x0003`, so pixels are raw planar data. |
+| 2 | X origin/hotspot used by the blitter clipping math. Cursor frame 0 uses 0. |
+| 3 | Y origin/hotspot used by the blitter clipping math. Cursor frame 0 uses 0. |
+| 4 | Width units. Pixel width is `word4 * 4`; the VGA setup processes `word4 >> 2` 16-pixel groups per row. Cursor frame 0 uses 4, i.e. 16 pixels. |
+| 5 | Height in pixels. Cursor frame 0 uses 16. |
+
+Uncompressed archive pixel data follows the 12-byte header. It is row-interleaved
+four-plane VGA data. For each row, plane 0 bytes come first, then planes 1, 2,
+and 3. Each plane contributes `width / 8` bytes per row, and bits are consumed
+most-significant first. The four bits form the 4-bit colour index
+`p0 | p1<<1 | p2<<2 | p3<<3`. Colour index 0 is transparent for sprite
+composition; the port maps it to `0xff` before drawing.
+
+Pseudocode:
+
+```text
+pointer = be32(archive[frame_index * 4 : frame_index * 4 + 4])
+assert pointer != 0
+data = 0x800 + pointer
+header = be16[6] at data - 12
+assert (header[1] & 0xc0) == 0
+
+width = header[4] * 4
+height = header[5]
+plane_bytes = width / 8
+row_stride = plane_bytes * 4
+for y in 0..height-1:
+    for x in 0..width-1:
+        colour = 0
+        for plane in 0..3:
+            b = archive[data + y*row_stride + plane*plane_bytes + x/8]
+            colour |= ((b >> (7 - (x & 7))) & 1) << plane
+        output[y][x] = 0xff if colour == 0 else colour
+```
+
+Worked cursor frame-0 example from `FLECHE.BIN`:
+
+```text
+0x0000 frame table:
+0000000c 00000000
+
+resolved_data_offset = 0x800 + 0x0000000c = 0x080c
+header at 0x0800:
+0000 0003 0000 0000 0004 0010
+
+width = 0x0004 * 4 = 16 pixels
+height = 0x0010 = 16 pixels
+pixel bytes = 0x0004 * 0x0010 * 2 = 128
+
+first visible row bytes at 0x0824:
+00 00 08 00 08 00 08 00
+```
+
+For that row, plane 1, 2, and 3 have bit 4 set while plane 0 is clear, so pixel
+`x=4` decodes to colour `0x0e`. The full non-transparent mask is:
+
+```text
+................
+................
+................
+....#...........
+....##..........
+....###.........
+....####........
+....#####.......
+....######......
+....#####.......
+....####........
+....###.........
+....##..........
+....#...........
+................
+................
+```

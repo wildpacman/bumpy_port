@@ -39,6 +39,7 @@ public:
     [[nodiscard]] const std::array<std::uint32_t, 3>& root_offsets() const noexcept { return root_offsets_; }
     [[nodiscard]] const std::vector<SpriteGroupTable>& group_tables() const noexcept { return group_tables_; }
     [[nodiscard]] const std::vector<SpriteChildBlock>& child_blocks() const noexcept { return child_blocks_; }
+    [[nodiscard]] std::span<const std::uint8_t> bytes() const noexcept { return bytes_; }
     [[nodiscard]] std::span<const std::uint8_t> child(std::size_t index) const;
 
 private:
@@ -52,6 +53,7 @@ struct MenuResources {
     VecResource title;
     VecResource mask_bump;
     SpriteArchive bumper_sprites;
+    std::vector<std::uint8_t> cursor_sprites;
 
     static MenuResources load_from(const std::filesystem::path& root);
 };

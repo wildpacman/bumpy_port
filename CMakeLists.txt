@@ -21,6 +21,7 @@ add_library(bumpy_core
   src/resources/binary_reader.cpp
   src/resources/vec.cpp
   src/resources/menu_resources.cpp
+  src/resources/sprite_frame.cpp
   src/video/menu_renderer.cpp)
 target_include_directories(bumpy_core PUBLIC src)
 target_link_libraries(bumpy_core PUBLIC bcrypt)
@@ -43,6 +44,7 @@ add_executable(bumpy_tests
   tests/cpp/asset_manifest_test.cpp
   tests/cpp/binary_reader_test.cpp
   tests/cpp/vec_test.cpp
+  tests/cpp/sprite_frame_test.cpp
   tests/cpp/menu_resources_test.cpp
   tests/cpp/menu_renderer_test.cpp
   tests/cpp/menu_test.cpp)

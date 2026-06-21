@@ -165,6 +165,7 @@ MenuResources MenuResources::load_from(const std::filesystem::path& root) {
         decode_vec_resource(root / "TITRE.VEC"),
         decode_vec_resource(root / "MASKBUMP.VEC"),
         decode_sprite_archive(root / "BUMSPJEU.BIN"),
+        read_file(root / "FLECHE.BIN"),
     };
 }
 

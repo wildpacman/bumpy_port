@@ -178,14 +178,16 @@ int main(int argc, char* argv[]) {
     try {
         const auto asset_root =
             find_asset_root(argc > 0 ? std::string_view(argv[0]) : std::string_view{});
-        if (argc == 3 && std::string_view(argv[1]) == "--render-title") {
-            return render_title_to_bmp(asset_root, argv[2]);
+        if ((argc == 2 || argc == 3) && std::string_view(argv[1]) == "--render-title") {
+            const auto out_path = argc == 3 ? std::filesystem::path(argv[2])
+                                            : asset_root / "analysis/generated/menu_with_marker.bmp";
+            return render_title_to_bmp(asset_root, out_path);
         }
         if (argc == 3 && std::string_view(argv[1]) == "--dump-title-raw") {
             return dump_title_raw(asset_root, argv[2]);
         }
         if (argc != 1) {
-            std::cerr << "usage: bumpy_port.exe [--render-title out.bmp | --dump-title-raw out.bin]\n";
+            std::cerr << "usage: bumpy_port.exe [--render-title [out.bmp] | --dump-title-raw out.bin]\n";
             return 2;
         }
         return run_sdl_menu(asset_root);

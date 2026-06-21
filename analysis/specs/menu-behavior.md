@@ -21,8 +21,10 @@ Fully recovered from `FUN_1000_35a5` (the VGA game-menu loop):
   48-byte RGB palette at `0x33`; likely the attribute-controller index map).
 - The **selection marker is a sprite**: command block at data `0x792e`
   (`DAT_203b_8884`), frame index 0, drawn via `1000:942a` at x `0x30` (48),
-  y `0x70 + cursor_row * 0x10` (112 + row·16). Source base is the relocated
-  `BUMSPJEU.BIN` (`DAT_203b_6c2c:6c2e`). `cursor_row` is `local_7`.
+  y `0x70 + cursor_row * 0x10` (112 + row·16). During the marker draw,
+  `FUN_1000_35a5` points the command at the preprocessed `FLECHE.BIN` workspace
+  (`DAT_203b_6c2c:6c2e`), not raw `BUMSPJEU.BIN`; it restores the BUMSPJEU base
+  afterwards. `cursor_row` is `local_7`.
 - Each loop iteration also blits a level-dependent `(6,2)` patch (source from the
   3-entry table at data `0x75e`/`0x760`, indexed by the LEVEL value
   `DAT_203b_79b5`) to dest `(11,18)` — the `LEVEL: EASY/…` indicator, NOT the
