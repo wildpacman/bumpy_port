@@ -21,13 +21,18 @@ MapRenderStats render_map(std::span<const std::uint8_t> monde_screen, const Worl
         return stats;  // avatar frame unavailable -> map renders without it
     }
 
+    // The node position is the ring centre, and the avatar frame fills its 32x21
+    // bounds (no transparent margin), so centre the frame on the node -- verified by
+    // eye against screenshots/bumpy_001.png, where Bumpy sits centred in node 1's ring.
+    const int top_x = view.avatar_x - avatar.width / 2;
+    const int top_y = view.avatar_y - avatar.height / 2;
     for (int py = 0; py < avatar.height; ++py) {
-        const int ty = view.avatar_y + py;
+        const int ty = top_y + py;
         if (ty < 0 || ty >= target.height()) {
             continue;
         }
         for (int px = 0; px < avatar.width; ++px) {
-            const int tx = view.avatar_x + px;
+            const int tx = top_x + px;
             if (tx < 0 || tx >= target.width()) {
                 continue;
             }
