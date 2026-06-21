@@ -29,10 +29,11 @@ struct BoardRenderStats {
 // is a stacked marker that stamps (uint8_t)(-obj-5) tiles taken from the following
 // cell bytes, all at the same cell. Colour index 0 is transparent.
 //
-// The backdrop screen supplies the per-world VGA palette (the working hypothesis
-// for the gameplay palette). draw_map overlays the MONDE screen pixels instead of
-// the faithful flat clear -- but that screen is the world-select map, so it is a
-// debug aid only, off by default.
+// The gameplay palette is the board's OWN palette (LevelBoard::palette(), decoded
+// from the DEC board header) -- the playfield does not inherit the brown MONDE map
+// palette. backdrop_screen is used only by draw_map, which overlays the world-select
+// MONDE screen (pixels + its palette) instead of the faithful flat clear, as a debug
+// aid; it is off by default.
 BoardRenderStats render_board(const LevelResources& level, std::size_t board_index,
                               std::span<const std::uint8_t> backdrop_screen,
                               IndexedFramebuffer& target, bool draw_map = false);

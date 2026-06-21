@@ -208,13 +208,20 @@ context-specific table, in VGA mode:
 | `2fac` (menu/score backdrop) | `0x63a` |
 | `08d1` / `0d9d` / `0f7a` / `11eb` | `0x70e` / `0x71e` |
 
-The **playfield loads no backdrop of its own** (its base is a flat colour-0 clear;
-see level-formats.md), so it **inherits the world map's per-world MONDE palette**.
-That is why world 1's board renders brown — it is the world-1 palette, and is
-faithful. The port currently applies only the DAC palette (`0x33`); the 16-byte
-`0x23` patch (an EGA-register remap) is not applied, but `MONDE1.VEC` matches the
-real capture by eye without it, so it appears identity/inert for the VGA DAC path.
-A DOSBox in-level capture would confirm the playfield palette exactly.
+The **playfield loads no backdrop screen of its own** (its base is a flat colour-0
+clear; see level-formats.md), but it does **not** inherit the world map's MONDE
+palette. It has its **own per-board palette** baked into the DEC board header:
+`FUN_1000_0604` → `FUN_1000_063b` reads 16 big-endian words from the board record
+and `FUN_1000_08d1`'s VGA branch builds a DAC palette from them (R = high byte,
+G = low nibble-pair, B = low nibble, each `<< 3`). So world 1's board is **dark
+blue**, matching `screenshots/bumpy_002.png` — not the brown MONDE map palette of
+`screenshots/bumpy_001.png`. Full recovery + the word format are in
+level-formats.md ("D?.DEC board palette"); implemented in `LevelBoard::palette()` /
+`render_board`.
+
+(An earlier note here wrongly concluded the brown was "faithful" because the board
+inherits MONDE — that was an unverified hypothesis, corrected once the board was
+rendered with the recovered per-board palette and compared to the original.)
 
 ## What this means for the port
 

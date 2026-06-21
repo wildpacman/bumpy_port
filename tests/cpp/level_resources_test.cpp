@@ -39,6 +39,30 @@ TEST_CASE("level 1 decodes a 15-board DEC, matching BUM, and a 320x192 object sh
     REQUIRE(any_object);
 }
 
+TEST_CASE("level 1 board 0 carries its own blue gameplay palette in the DEC header") {
+    const auto level = bumpy::LevelResources::load(root, 1);
+    const auto dac = level.board(0).palette();  // 16 RGB triplets of 6-bit DAC values
+
+    REQUIRE(dac.size() == bumpy::LevelBoard::palette_colors * 3);
+
+    // Decoded from the board-0 header words (see analysis/specs/level-formats.md):
+    // index 0 is black (the background base, word 0x0000); index 6 is the dark red of
+    // the platforms (word 0x0400 -> R6=32); index 11 is the bright balloon blue
+    // (word 0x0027 -> G6=16, B6=56). These are blue/colourful, not the brown of the
+    // MONDE map palette -- proving the level does not inherit the map's colours.
+    REQUIRE(dac[0] == 0);
+    REQUIRE(dac[1] == 0);
+    REQUIRE(dac[2] == 0);
+
+    REQUIRE(dac[6 * 3 + 0] == 32);  // R
+    REQUIRE(dac[6 * 3 + 1] == 0);   // G
+    REQUIRE(dac[6 * 3 + 2] == 0);   // B
+
+    REQUIRE(dac[11 * 3 + 0] == 0);   // R
+    REQUIRE(dac[11 * 3 + 1] == 16);  // G
+    REQUIRE(dac[11 * 3 + 2] == 56);  // B
+}
+
 TEST_CASE("level 4 is the 12-board (small) variant with a matching 12-board BUM") {
     const auto level = bumpy::LevelResources::load(root, 4);
     REQUIRE(level.board_count() == 12);

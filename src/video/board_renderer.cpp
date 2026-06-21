@@ -2,23 +2,47 @@
 
 #include "resources/entity_sprites.h"
 #include "resources/sprite_frame.h"
+#include "video/menu_renderer.h"  // vga_dac_to_rgba_component
 #include "video/screen_image.h"
 
 #include <stdexcept>
 
 namespace bumpy {
 
+namespace {
+
+// Set framebuffer palette entries 0..15 from a board's own 16-colour DAC palette
+// (16 RGB triplets of 6-bit values), the gameplay palette the original builds from
+// the DEC board header (FUN_1000_063b / 08d1). Mirrors apply_screen_image_palette.
+void apply_board_palette(const LevelBoard& board, IndexedFramebuffer& target) {
+    const auto dac = board.palette();
+    for (int color = 0; color < LevelBoard::palette_colors; ++color) {
+        const std::uint8_t* entry = dac.data() + static_cast<std::size_t>(color) * 3;
+        target.set_palette(static_cast<std::uint8_t>(color),
+                           Rgba{vga_dac_to_rgba_component(entry[0]),
+                                vga_dac_to_rgba_component(entry[1]),
+                                vga_dac_to_rgba_component(entry[2]), 0xff});
+    }
+}
+
+}  // namespace
+
 BoardRenderStats render_board(const LevelResources& level, std::size_t board_index,
                               std::span<const std::uint8_t> backdrop_screen,
                               IndexedFramebuffer& target, bool draw_map) {
-    if (!is_screen_image(backdrop_screen)) {
-        throw std::runtime_error("backdrop is not a 320x200 screen-format VEC");
-    }
-    apply_screen_image_palette(backdrop_screen, target);
     if (draw_map) {
-        draw_screen_image(backdrop_screen, target);  // debug: overlay the world-select map
+        // Debug overlay only: paint the world-select MONDE screen with its own
+        // palette so the board layout can be eyeballed against the map art.
+        if (!is_screen_image(backdrop_screen)) {
+            throw std::runtime_error("backdrop is not a 320x200 screen-format VEC");
+        }
+        apply_screen_image_palette(backdrop_screen, target);
+        draw_screen_image(backdrop_screen, target);
     } else {
-        target.clear(0);  // faithful base-tile pass: every cell cleared to colour index 0
+        // Faithful playfield: the board's own DEC-header palette, then the base-tile
+        // pass as a flat colour-index-0 clear (the recovered base-tile behaviour).
+        apply_board_palette(level.board(board_index), target);
+        target.clear(0);
     }
 
     BoardRenderStats stats;

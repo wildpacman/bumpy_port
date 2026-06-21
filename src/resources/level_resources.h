@@ -26,12 +26,26 @@ struct LevelBoard {
     static constexpr int grid_offset = 0x20;          // cells follow the 32-byte board header
     static constexpr std::size_t record_size = 0x32c; // 812
 
+    static constexpr int palette_colors = 16;
+
     std::array<std::uint8_t, record_size> bytes{};
 
     // The three raw bytes of a cell; bytes[0] is the object index.
     [[nodiscard]] std::span<const std::uint8_t> cell(int col, int row) const;
     // Object index for a cell: 0 = empty, 1..0xf0 = single object, >=0xf1 = stacked.
     [[nodiscard]] std::uint8_t object_index(int col, int row) const;
+
+    // The board's own in-level VGA palette: 16 RGB triplets of 6-bit DAC values
+    // (r,g,b,r,g,b,...), the same layout as a screen's embedded 0x33 DAC palette.
+    //
+    // The 32-byte board header is NOT opaque -- it is 16 big-endian words, one per
+    // colour. The original builds the palette in FUN_1000_063b (byteswap each word
+    // into DS:0x578) and uploads it in FUN_1000_08d1's VGA branch, decoding every
+    // word as R = high byte, G = bits 4..7, B = bits 0..3, each << 3 into a 6-bit
+    // DAC register. This is per board (rebuilt on board entry via FUN_1000_0604) and
+    // is the real gameplay palette -- the playfield does NOT inherit the brown MONDE
+    // map palette. See analysis/specs/level-formats.md ("D?.DEC board palette").
+    [[nodiscard]] std::array<std::uint8_t, palette_colors * 3> palette() const;
 };
 
 // One board's dynamic entities, decoded from a D?.BUM record (194 bytes). The

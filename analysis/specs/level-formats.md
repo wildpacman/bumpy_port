@@ -58,9 +58,10 @@ matching the MONDE1 teddy-bear theme. The draw routine `FUN_1000_0a90` builds a
 blit command from `PAV_buffer + 6` (hence the 6-byte header) and stamps tiles
 from this sheet onto the playfield, indexed by the level grid.
 
-PAV has no embedded palette; objects render in natural tones under the matching
-`MONDE?.VEC` palette. Whether the level palette is the MONDE palette or comes
-from DEC is not yet confirmed (Hypothesis: shared with MONDE).
+PAV has no embedded palette. The level palette comes from the **DEC board header**,
+not from MONDE — see "D?.DEC board palette" below. (The earlier hypothesis that the
+playfield shares the MONDE map palette was wrong: world 1's board is dark blue, not
+brown.)
 
 ## MONDE?.VEC — per-world background screen (Confirmed)
 
@@ -105,7 +106,7 @@ rather than cross-validating them; the DEC count is the playfield board count.
 
 | Region | Offset | Size | Meaning |
 |---|---:|---:|---|
-| board header | `0x00` | 32 | 16 words of board metadata (read as `6bca + n*2`; e.g. word `0x1c` gated in `FUN_1000_2cf*`). |
+| board palette | `0x00` | 32 | **16 big-endian packed-RGB words** — the board's in-level VGA palette (see "D?.DEC board palette"). |
 | cell grid | `0x20` | 780 | **20 columns × 13 rows**, 3 bytes/cell, column-major. |
 
 The renderer `FUN_1000_2a0a` iterates `x = 0..19` (col, stride `0x27`=39) and
@@ -145,6 +146,39 @@ and height-units to **8 px** (`×8` scanlines). A playfield cell has dest
 `+0x1e = 1` (16 px wide) and `+0x20 = 2` (16 px tall); the clipped bottom row uses
 `+0x20 = 1` (16×8). The PAV sheet (320×192) is therefore **20 columns × 12 rows of
 16×16 tiles**, addressed by object index as above.
+
+### D?.DEC board palette (Confirmed + Implemented)
+
+The 32-byte board header is the board's **own 16-colour VGA palette** — the real
+gameplay palette. The playfield loads no backdrop screen of its own, so an earlier
+note assumed it inherited the per-world MONDE palette ("world 1 is brown, and
+faithful"). That was wrong: world 1's board is **dark blue**, and the colours come
+from here.
+
+Recovery chain (board setup in `FUN_1000_0c18`, after the world map returns):
+
+- `FUN_1000_0604` → `FUN_1000_063b` reads **16 big-endian words** from the current
+  board record (`6bca + n*2`, i.e. the 32-byte header) and byteswaps each into the
+  scratch palette `DS:0x578`. It is gated by `FUN_1000_0604`: build only while
+  `DAT_75cf == 0` **and** header word `0x1c` (index 14) ≠ 0; otherwise set
+  `DAT_75cf = 1` (keep the previous palette). `DAT_75cf` is reset to 0 in the
+  init `FUN_1000_0282`, and for every D1 board word `0x1c` is non-zero, so **each
+  board rebuilds its own palette** on entry.
+- `FUN_1000_08d1` uploads it. The VGA DAC branch decodes each word to a 6-bit RGB
+  DAC triplet: **R = high byte, G = low byte bits 4..7, B = low byte bits 0..3,
+  each `<< 3`** (held to the DAC's 6 bits). For D1 every channel is 0..7, so the
+  packed word is effectively `0RGB` with 3 bits per channel.
+
+Spot-check (D1 board 0 header words → 6-bit DAC): word `0x0000` → black (background
+index 0); `0x0400` → R 32 (the dark-red platforms, index 6); `0x0027` → G 16 / B 56
+(the bright balloon blue, index 11). The result is the blue night palette of
+`screenshots/bumpy_002.png`, not the brown MONDE map palette of
+`screenshots/bumpy_001.png`.
+
+Implemented in `LevelBoard::palette()` (`src/resources/level_resources`) and applied
+by `render_board` (`src/video/board_renderer`), replacing the MONDE palette for the
+gameplay path; validated by `level_resources_test` and by eye
+(`analysis/generated/board_L1_B0_paletted.png`).
 
 ## D?.BUM — dynamic per-board entities ("bumpers") (Confirmed)
 
@@ -238,11 +272,11 @@ positions; they are **not** the original sprites — see the blocker below.
 - **Base tile** — a flat colour-index-0 clear, not a floor sprite (above).
 - **Static board** — composed in the port (`src/resources/level_resources`,
   `src/video/board_renderer`, `--render-board`): base index-0 clear + DEC-placed
-  PAV objects (single + stacked) on the per-world palette. Verified by eye against
-  the original art (`analysis/generated/board_L1_B0.bmp`).
-- **Gameplay palette** — the per-world `MONDE?.VEC` palette renders the objects in
-  correct natural tones (Hypothesis upgraded to confirmed-by-eye). `MONDE?.VEC`
-  itself is the world-select map screen, not the in-level backdrop.
+  PAV objects (single + stacked) on the board's own palette. Verified by eye against
+  the original art (`analysis/generated/board_L1_B0_paletted.png`).
+- **Gameplay palette** — the **per-board** palette in the DEC board header (see
+  "D?.DEC board palette"), NOT the MONDE map palette. World 1's board is dark blue;
+  applied by `render_board` and verified by eye against `screenshots/bumpy_002.png`.
 - **BUM entity layout** — three 8×6 entity layers + 6 params, with the faithful
   cell→pixel coordinate table (above). Decoded into `BumEntities` and validated
   against `D1` data and by eye via the marker overlay.
@@ -286,9 +320,9 @@ recovered from ground-truth disassembly but **unused by the supplied assets**
    nodes) → playfield; the port jumps straight to the playfield and pages boards
    with `←/→`. The map screen (`FUN_1000_3852`, per-world `MONDE{world}.VEC` +
    node graph) is fully traced in `analysis/specs/screen-flow.md` but not yet
-   implemented. (Palette is **resolved**: the playfield has no backdrop of its own
-   and faithfully inherits the per-world MONDE palette — world 1 is brown by
-   design, not a bug. See screen-flow.md "Palette mechanism".)
+   implemented. (Palette is **resolved**: the playfield loads no backdrop screen,
+   but it has its own **per-board** palette in the DEC board header — see "D?.DEC
+   board palette" — so world 1 is dark blue, not the brown MONDE map palette.)
 2. Layer B sprite source: its `0x3ad2` records yield small frame indices that do
    not resolve in the same `BUMSPJEU` master table region as layers A/C; the bank
    region / base for layer B is not yet pinned (it is empty on `D1` board 0).

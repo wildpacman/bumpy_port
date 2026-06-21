@@ -37,6 +37,24 @@ std::uint8_t LevelBoard::object_index(int col, int row) const {
     return cell(col, row)[0];
 }
 
+std::array<std::uint8_t, LevelBoard::palette_colors * 3> LevelBoard::palette() const {
+    // 16 big-endian words in the board header (offsets 0x00..0x1f); each word packs
+    // one colour. Faithful to FUN_1000_08d1's VGA DAC build: R = high byte, G = the
+    // low byte's high nibble, B = its low nibble, each << 3 and held to 6 bits (the
+    // VGA DAC register width). See FUN_1000_063b / the level-formats spec.
+    std::array<std::uint8_t, palette_colors * 3> dac{};
+    for (int color = 0; color < palette_colors; ++color) {
+        const std::uint8_t hi = bytes[static_cast<std::size_t>(color) * 2];
+        const std::uint8_t lo = bytes[static_cast<std::size_t>(color) * 2 + 1];
+        dac[static_cast<std::size_t>(color) * 3 + 0] = static_cast<std::uint8_t>((hi << 3) & 0x3f);
+        dac[static_cast<std::size_t>(color) * 3 + 1] =
+            static_cast<std::uint8_t>(((lo >> 4) << 3) & 0x3f);
+        dac[static_cast<std::size_t>(color) * 3 + 2] =
+            static_cast<std::uint8_t>(((lo & 0x0f) << 3) & 0x3f);
+    }
+    return dac;
+}
+
 namespace {
 
 // Shared bounds-checked lookup for a BUM layer: cell = row*8 + col, offset into

@@ -48,9 +48,11 @@ only a platform adapter.
   (`MONDE1.VEC` + the Bumpy avatar on node 1); the arrows move between linked nodes;
   fire enters that node's board; Escape returns to the menu (see "Stage 3 world-map
   screen" below). The flow now matches the original's **menu → world map →
-  playfield**; the temporary ←/→ board paging is retired. Remaining: physics,
-  collision, win/loss; the in-level gameplay palette; the map's score/lives HUD. The
-  sprite-frame decoder from Stage 2 is the reusable foundation for gameplay sprites.
+  playfield**; the temporary ←/→ board paging is retired. The **in-level palette is
+  now correct** — the board uses its own per-board palette from the DEC header
+  (dark blue), not the brown MONDE map palette. Remaining: physics, collision,
+  win/loss; the map's score/lives HUD. The sprite-frame decoder from Stage 2 is the
+  reusable foundation for gameplay sprites.
 
 ## Current state
 
@@ -213,6 +215,22 @@ functions), DOSBox-X reference harness.
   Design + plan: `docs/superpowers/specs/2026-06-21-world-map-screen-design.md`,
   `docs/superpowers/plans/2026-06-21-world-map-screen.md`.
 
+**Stage 3 in-level palette (recovered + implemented):**
+- The playfield uses its **own per-board palette**, baked into the 32-byte DEC board
+  header as **16 big-endian packed-RGB words** — NOT the brown MONDE map palette an
+  earlier note assumed. Recovered from the board setup in `FUN_1000_0c18`:
+  `FUN_1000_0604` → `FUN_1000_063b` byteswaps the 16 header words into `DS:0x578`,
+  and `FUN_1000_08d1`'s VGA branch decodes each word to a 6-bit DAC triplet
+  (R = high byte, G = low byte bits 4..7, B = bits 0..3, each `<< 3`). Each board
+  rebuilds its own palette on entry (`DAT_75cf` guard; word `0x1c` ≠ 0).
+- Implemented in **`LevelBoard::palette()`** (`src/resources/level_resources`) and
+  applied by **`render_board`** (`src/video/board_renderer`), replacing the MONDE
+  palette for the gameplay path (the world-map debug overlay still uses MONDE). The
+  live SDL board and `--render-board` now render world 1 **dark blue**, matching
+  `screenshots/bumpy_002.png` by eye (`analysis/generated/board_L1_B0_paletted.png`).
+  70 C++ tests pass; originals verify clean. Spec:
+  `analysis/specs/level-formats.md` ("D?.DEC board palette").
+
 **Stage 3 world-map cloud-jump animation (builds and runs on master):**
 - Fire on a node now plays the original's **fire-to-enter cloud-jump** before the board
   loads, recovered from `FUN_1000_3cf7` + the 22-record script at **DS:0x1114** (each
@@ -308,21 +326,21 @@ node navigation and board selection; the `←/→` paging stand-in is retired. T
 static composed board, the BUM entity layout, and the real entity sprites are all
 DONE as well.
 
+The in-level palette is now **DONE** (see "Stage 3 in-level palette" above): the
+board renders under its own per-board DEC palette (world 1 is dark blue), matching
+the original.
+
 The next milestone is **making the board come alive** — the live gameplay loop:
 
 1. **Physics + collision + win/loss** — Bumpy movement, bumping objects, the
    board-clear condition, and advancing through a level's 15/12 boards. Recover the
-   in-level loop body in `FUN_1000_0c18` (after `FUN_1000_3852` returns the selected
-   node) and the per-tick update/draw/input routines it calls.
+   in-level loop body in `FUN_1000_0c18` (the inner `while` after `FUN_1000_3852`
+   returns and `DAT_7310 = DAT_854e - 1`) and the per-tick update/draw/input
+   routines it calls (`FUN_1000_138c`/`13b2`/`13df`/`165e`/`17c7`/`19a1`/… ).
 2. **Run the board loop in-window** — replace the static `Screen::level` display
    (currently `render_board` + `draw_bum_entities`) with the live board loop, and
    return to the world map (then menu) on win/loss instead of only on Escape. The
    `src/game/app` shell and the `WorldMap → board node-1` selection are the hooks.
-3. **In-level gameplay palette** — the board still renders under the MONDE *map*
-   palette (so world 1 looks brown). Trace the real in-level palette load (the
-   `0x23` EGA-register patch vs the DAC palette; see `screen-flow.md` "Palette
-   mechanism"). The brown is **not a bug** — it is the faithful per-world MONDE
-   palette — but the gameplay screen likely re-patches it.
 
 World-map follow-ups (deferred this slice, low priority): the score/lives HUD on the
 map (`FUN_1000_0816` digit formatter), completed-node markers (frame `0x1da`,
