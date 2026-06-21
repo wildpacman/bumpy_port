@@ -41,9 +41,11 @@ only a platform adapter.
   screen deplanes with its embedded VGA palette, and the selection cursor (the
   `FLECHE.BIN` arrow sprite) draws at the active row and tracks `cursor_row`.
   Resource bundle, menu state machine, and SDL3 shell build and run.
-- **Stage 3 — First level — next.** `.BUM`/`.DEC`/`.PAV` formats, physics,
-  collision, objects; win/loss; return to menu. The sprite-frame decoder from
-  Stage 2 (see below) is the reusable foundation for gameplay sprites.
+- **Stage 3 — First level — IN PROGRESS.** Level data formats recovered and
+  visually verified (see "Stage 3 progress" below). Remaining: grid/object
+  placement semantics, physics, collision, objects; win/loss; return to menu.
+  The sprite-frame decoder from Stage 2 is the reusable foundation for gameplay
+  sprites.
 
 ## Current state
 
@@ -78,6 +80,25 @@ functions), DOSBox-X reference harness.
   31 C++ test cases pass. `--render-title [out.bmp]` dumps the menu;
   `--dump-title-raw out.bin` dumps the raw decoded title bytes.
 
+**Stage 3 progress (level formats recovered, visually verified):**
+- All level blobs are **layered-VEC containers** decoded by the existing
+  `src/resources/vec` decoder. Per-level init+draw is `FUN_1000_2d14`, which
+  patches the level digit into `?.PAV`/`?.DEC`/`?.BUM` (level table `203b:0090`,
+  indices 0/1/8) and decodes each via `FUN_1000_7b5a` (= the VEC decoder).
+  Decoded sizes are fixed per type; full spec: `analysis/specs/level-formats.md`.
+- **D?.PAV** = 6-byte header + **320×192 plane-sequential 4-plane VGA image** =
+  the per-world object/sprite sheet (bear, balloon, candies, presents…),
+  colour 0 transparent. Confirmed by eye. Drawn by `FUN_1000_0a90` from
+  `PAV_buffer + 6`.
+- **MONDE?.VEC** (9 files) = 32099-byte **screen-format** backgrounds (same as
+  `TITRE.VEC`): per-world art + a 4×5 grid of node rings. Render successfully.
+- **D?.BUM** = `0x100e` header + 1-byte object/tile-index grid (cells 0–0x2e).
+  `D6.BUM`/`D9.BUM` ship **raw/pre-decoded** (no VEC wrapper). Grid dims TBD.
+- **D?.DEC** = `0x000e` header + palette-ish bytes + 3-byte placement records.
+  Record layout TBD.
+- New dev/inspection flags on `bumpy_port.exe`: `--decode-vec`, `--render-screen`,
+  `--render-pav` (see spec). 31 C++ tests still pass; originals verify clean.
+
 **Placeholders / remaining work:**
 - Compressed sprite frames (flags `0x40`/`0x20`) are rejected, not decoded — the
   menu cursor does not need them, but other sprites may.
@@ -91,6 +112,9 @@ functions), DOSBox-X reference harness.
 cmake --build --preset windows-debug
 & build/windows-debug/Debug/bumpy_port.exe                       # menu window
 & build/windows-debug/Debug/bumpy_port.exe --render-title out.bmp  # headless dump
+& build/windows-debug/Debug/bumpy_port.exe --decode-vec D1.PAV out.bin          # decode any VEC/PAV/DEC/BUM
+& build/windows-debug/Debug/bumpy_port.exe --render-screen MONDE1.VEC out.bmp   # 320x200 screen-format VEC
+& build/windows-debug/Debug/bumpy_port.exe --render-pav D1.PAV MONDE1.VEC out.bmp planeseq 320 192 6
 ```
 
 ## Reverse-engineering workflow
@@ -110,6 +134,7 @@ cmake --build --preset windows-debug
 - Data segment is the load-relative `0x103b` (Ghidra shows `0x203b`, `+0x1000`).
 - Resource/loader pipeline: `analysis/RESOURCE_PIPELINE.md`.
 - `.VEC` and sprite formats: `analysis/specs/menu-resource-formats.md`.
+- Level formats (PAV/DEC/BUM, MONDE): `analysis/specs/level-formats.md`.
 
 ## Safety rules
 
@@ -120,19 +145,25 @@ cmake --build --preset windows-debug
 
 ## Next step
 
-The menu vertical slice is visually complete (title → palette → interactive
-cursor). **Begin Stage 3 (first level).** Two natural entry points:
+Stage 3 level **formats** are recovered and visually verified (above). The next
+concrete milestone is a **static composed level**: MONDE background + PAV objects
+placed by the BUM grid, rendered in the port and compared to the original by eye.
+To do that, the remaining recovery is:
 
-1. **Gameplay sprites** — reuse the recovered `src/resources/sprite_frame`
-   decoder on `BUMSPJEU.BIN` (bumpers; already proven to decode, see
-   `analysis/generated/sprite_sheet.png`) and the level sprite files
-   (`SPRITE.BIN`, `BUMPYSPR.BIN`). Implement the **compressed frame path**
-   (header flags `0x40`/`0x20`, expanded in `1cec:2ded`) — needed for frames the
-   cursor's uncompressed path skips.
-2. **Level data** — decode `D?.PAV` / `D?.DEC` / `GRILLE.VEC` (level table at
-   `203b:0090`; `?` is the level digit patched at runtime by `FUN_1000_2d14`) and
-   wire `start_first_level`. Per-level init/draw lives at `FUN_1000_2d14`; the
-   gameplay loop is `FUN_1000_0c18`.
+1. **Grid + placement semantics** — confirm the BUM grid dimensions and the DEC
+   3-byte record layout from the gameplay consumers (`FUN_1000_3467`, the
+   per-frame draw chain in `FUN_1000_0c18`, buffers `203b:75de`/`6bca`), and the
+   level palette source (MONDE vs DEC). See `analysis/specs/level-formats.md`
+   open questions.
+2. **Compose + render** — add a `level` module (decode PAV/DEC/BUM with the
+   raw-BUM fallback for D6/D9) + a level renderer; dump a static level frame and
+   compare by eye.
+3. **Then** physics, collision, objects, win/loss, and return to menu; wire
+   `start_first_level`.
+
+Gameplay sprite note: the **compressed frame path** (sprite-frame flags
+`0x40`/`0x20`, expanded in `1cec:2ded`) is still unimplemented and will be needed
+for animated gameplay sprites (`BUMSPJEU.BIN`, `BUMPYSPR.BIN`).
 
 Optional menu polish: implement compressed sprites + per-glyph text to bring up
 the HIGH-SCORE / PASSWORD sub-screens (`FUN_1000_0d9d` / `0f7a` / `11eb`).
