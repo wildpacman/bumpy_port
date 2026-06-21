@@ -53,6 +53,35 @@ MASKBUMP.VEC embedded after method 4:
 000019a0 fbd58e23 000c 6c5a
 ```
 
+## Decoded screen image format (320x200 planar VGA)
+
+Every supplied `.VEC` decodes to exactly 32099 bytes. For `TITRE.VEC` this buffer
+is a full-screen 320x200 VGA image, laid out as:
+
+| Region | Offset | Size | Meaning |
+|---|---:|---:|---|
+| header | `0x00` | 51 | screen metadata (mostly zero in `TITRE.VEC`) |
+| palette | `0x33` (51) | 48 | 16 RGB triplets, 6-bit VGA DAC values (0..63) |
+| pixel data | `0x63` (99) | 32000 | four 8000-byte bit-planes |
+
+The pixel data is four **plane-sequential** bit-planes of 8000 bytes each
+(`320*200/8`). Pixel *n* (row-major, `n = y*320 + x`) takes its byte at
+`n >> 3` within each plane and its bit at `7 - (n & 7)` (**most-significant bit
+first**); the four extracted bits form the 4-bit colour index `bit0 | bit1<<1 |
+bit2<<2 | bit3<<3`. Each palette component expands to 8-bit via
+`(v << 2) | (v >> 4)`.
+
+Confirmed for `TITRE.VEC` by deplaning and comparing to the original title by eye:
+golden "BUMPY'S" logo, red "ARCADE FANTASY", green menu items over a blue
+gradient. Implemented in `src/video/menu_renderer.cpp` (`deplane_screen`,
+`apply_screen_palette`). The other 32099-byte screens (`MONDE1..9.VEC`,
+`BUMPRESE.VEC`, `DESSFIN.VEC`) are assumed to share this header layout but are not
+yet each visually checked.
+
+Note: an earlier note placed the palette at offset `0x23`; the recovered offset
+is `0x33` (51), directly preceding the pixel data. No EXE DAC trace was needed —
+the palette travels inside the decoded screen.
+
 ## BUMSPJEU.BIN offset-delimited sprite archive
 
 `BUMSPJEU.BIN` is the sprite archive loaded immediately before the game menu.

@@ -1,21 +1,71 @@
 #include "video/menu_renderer.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <span>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace {
 
-constexpr int confirmed_title_width = 320;
-constexpr int confirmed_title_height = 100;
-constexpr int confirmed_title_pixel_count = confirmed_title_width * confirmed_title_height;
-constexpr int cursor_source_x = 11;
-constexpr int cursor_source_y = 18;
-constexpr int cursor_width = 6;
-constexpr int cursor_height = 2;
-constexpr int cursor_destination_x = 0x30;
-constexpr int cursor_destination_y = 0x70;
-constexpr int cursor_row_stride = 0x10;
+// The decoded menu screens (TITRE.VEC and the per-world .VEC files) are full
+// 320x200 frames stored as a 99-byte header followed by four 8000-byte VGA
+// bit-planes (plane-sequential, most-significant bit first). The header carries
+// the 16-colour VGA DAC palette as 16 RGB triplets ending right before the pixel
+// data. Recovered by deplaning TITRE.VEC and comparing the result by eye to the
+// original title screen; see analysis/specs/menu-resource-formats.md.
+constexpr int screen_width = 320;
+constexpr int screen_height = 200;
+constexpr int plane_count = 4;
+constexpr std::size_t plane_size =
+    static_cast<std::size_t>(screen_width) * static_cast<std::size_t>(screen_height) / 8;  // 8000
+constexpr std::size_t pixel_data_offset = 99;
+constexpr int palette_color_count = 16;
+constexpr std::size_t palette_offset = pixel_data_offset - palette_color_count * 3;  // 51
+
+bumpy::MenuImage deplane_screen(std::span<const std::uint8_t> decoded) {
+    const std::size_t required = pixel_data_offset + plane_count * plane_size;
+    if (decoded.size() < required) {
+        throw std::runtime_error("decoded menu screen is shorter than four 320x200 bit-planes");
+    }
+    const std::uint8_t* planes = decoded.data() + pixel_data_offset;
+    bumpy::MenuImage image{
+        screen_width,
+        screen_height,
+        std::vector<std::uint8_t>(static_cast<std::size_t>(screen_width) * screen_height),
+    };
+    for (std::size_t pixel = 0; pixel < image.pixels.size(); ++pixel) {
+        const std::size_t byte = pixel >> 3U;
+        const unsigned shift = 7U - static_cast<unsigned>(pixel & 7U);
+        std::uint8_t value = 0;
+        for (int plane = 0; plane < plane_count; ++plane) {
+            const std::uint8_t bit = (planes[plane * plane_size + byte] >> shift) & 1U;
+            value = static_cast<std::uint8_t>(value | (bit << plane));
+        }
+        image.pixels[pixel] = value;
+    }
+    return image;
+}
+
+void apply_screen_palette(std::span<const std::uint8_t> decoded, bumpy::IndexedFramebuffer& target) {
+    if (decoded.size() < palette_offset + palette_color_count * 3) {
+        throw std::runtime_error("decoded menu screen is too short to hold the 16-colour palette");
+    }
+    const std::uint8_t* palette = decoded.data() + palette_offset;
+    for (int color = 0; color < palette_color_count; ++color) {
+        const std::uint8_t* entry = palette + color * 3;
+        target.set_palette(
+            static_cast<std::uint8_t>(color),
+            bumpy::Rgba{
+                bumpy::vga_dac_to_rgba_component(entry[0]),
+                bumpy::vga_dac_to_rgba_component(entry[1]),
+                bumpy::vga_dac_to_rgba_component(entry[2]),
+                0xff,
+            });
+    }
+}
 
 void validate_image(const bumpy::MenuImage& image) {
     if (image.width < 0 || image.height < 0) {
@@ -89,47 +139,23 @@ MenuRenderer::MenuRenderer(const MenuResources& resources) : resources_(resource
 void MenuRenderer::render(const MenuView& view, IndexedFramebuffer& target) const {
     target.clear(0);
     const auto title = resources_.title.decoded_bytes();
-    if (title.size() < confirmed_title_pixel_count) {
-        throw std::runtime_error("decoded title resource is shorter than confirmed title pixel plane");
-    }
+
+    // The screen carries its own VGA palette; install it before compositing so the
+    // indexed frame resolves to the original colours.
+    apply_screen_palette(title, target);
 
     if (view.draw_title) {
-        MenuImage title_image{
-            confirmed_title_width,
-            confirmed_title_height,
-            std::vector<std::uint8_t>(title.begin(), title.begin() + confirmed_title_pixel_count),
-        };
         draw_menu_command(
-            MenuDrawCommand{
-                std::move(title_image),
-                0,
-                0,
-                confirmed_title_width,
-                confirmed_title_height,
-                0,
-                0,
-            },
+            MenuDrawCommand{deplane_screen(title), 0, 0, screen_width, screen_height, 0, 0},
             target);
     }
 
-    if (view.draw_cursor_marker) {
-        MenuImage cursor_source{
-            confirmed_title_width,
-            confirmed_title_height,
-            std::vector<std::uint8_t>(title.begin(), title.begin() + confirmed_title_pixel_count),
-        };
-        MenuDrawCommand cursor_command{
-            std::move(cursor_source),
-            cursor_source_x,
-            cursor_source_y,
-            cursor_width,
-            cursor_height,
-            cursor_destination_x,
-            cursor_destination_y + view.cursor_row * cursor_row_stride,
-        };
-        cursor_command.transparent_index = 0;
-        draw_menu_command(cursor_command, target);
-    }
+    // The original draws a selection indicator for the highlighted row, but the
+    // mechanism (palette flash vs. a copied marker) is not recovered yet, so we
+    // composite only the authentic static screen for now. view.cursor_row drives
+    // navigation in the menu state machine and will feed the indicator once the
+    // highlight behaviour is reverse-engineered.
+    (void)view.cursor_row;
 }
 
 }  // namespace bumpy

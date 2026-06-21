@@ -75,32 +75,6 @@ void warn_if_assets_changed(const std::filesystem::path& asset_root) {
     }
 }
 
-// Placeholder VGA palette so the indexed title is inspectable. The original DAC
-// setup (the 16-byte table copied into the decoded title at offset 0x23) is not
-// wired in yet, so this is a preview, not equivalence evidence.
-void apply_preview_palette(bumpy::IndexedFramebuffer& frame) {
-    constexpr std::array<bumpy::Rgba, 16> ega_palette{
-        bumpy::Rgba{0x00, 0x00, 0x00, 0xff}, bumpy::Rgba{0x00, 0x00, 0xaa, 0xff},
-        bumpy::Rgba{0x00, 0xaa, 0x00, 0xff}, bumpy::Rgba{0x00, 0xaa, 0xaa, 0xff},
-        bumpy::Rgba{0xaa, 0x00, 0x00, 0xff}, bumpy::Rgba{0xaa, 0x00, 0xaa, 0xff},
-        bumpy::Rgba{0xaa, 0x55, 0x00, 0xff}, bumpy::Rgba{0xaa, 0xaa, 0xaa, 0xff},
-        bumpy::Rgba{0x55, 0x55, 0x55, 0xff}, bumpy::Rgba{0x55, 0x55, 0xff, 0xff},
-        bumpy::Rgba{0x55, 0xff, 0x55, 0xff}, bumpy::Rgba{0x55, 0xff, 0xff, 0xff},
-        bumpy::Rgba{0xff, 0x55, 0x55, 0xff}, bumpy::Rgba{0xff, 0x55, 0xff, 0xff},
-        bumpy::Rgba{0xff, 0xff, 0x55, 0xff}, bumpy::Rgba{0xff, 0xff, 0xff, 0xff},
-    };
-    constexpr std::array<std::uint8_t, 16> menu_palette_indices{
-        0, 0, 0, 0, 0, 0, 0, 2, 10, 4, 6, 6, 12, 14, 15, 15,
-    };
-    for (int index = 0; index < 256; ++index) {
-        const auto value = static_cast<std::uint8_t>(index);
-        frame.set_palette(value, {value, value, value, 255});
-    }
-    for (std::size_t index = 0; index < menu_palette_indices.size(); ++index) {
-        frame.set_palette(static_cast<std::uint8_t>(index), ega_palette[menu_palette_indices[index]]);
-    }
-}
-
 void write_u16(std::ostream& output, std::uint16_t value) {
     output.put(static_cast<char>(value & 0xffU));
     output.put(static_cast<char>((value >> 8U) & 0xffU));
@@ -163,7 +137,6 @@ bumpy::IndexedFramebuffer render_menu_frame(const std::filesystem::path& asset_r
     const bumpy::MenuRenderer renderer(resources);
     bumpy::Menu menu;
     bumpy::IndexedFramebuffer frame(320, 200);
-    apply_preview_palette(frame);
     renderer.render(menu.view(), frame);
     return frame;
 }
@@ -174,13 +147,25 @@ int render_title_to_bmp(const std::filesystem::path& asset_root, const std::file
     return 0;
 }
 
+// Dump the raw decoded TITRE.VEC bytes for offline format analysis.
+int dump_title_raw(const std::filesystem::path& asset_root, const std::filesystem::path& out_path) {
+    const auto resources = bumpy::MenuResources::load_from(asset_root);
+    const auto bytes = resources.title.decoded_bytes();
+    std::ofstream output(out_path, std::ios::binary | std::ios::trunc);
+    if (!output) {
+        throw std::runtime_error("cannot create dump: " + out_path.string());
+    }
+    output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    std::cout << "wrote " << bytes.size() << " bytes to " << out_path.string() << '\n';
+    return 0;
+}
+
 int run_sdl_menu(const std::filesystem::path& asset_root) {
     warn_if_assets_changed(asset_root);
     const auto resources = bumpy::MenuResources::load_from(asset_root);
     const bumpy::MenuRenderer renderer(resources);
     bumpy::Menu menu;
     bumpy::IndexedFramebuffer frame(320, 200);
-    apply_preview_palette(frame);
     renderer.render(menu.view(), frame);
 
     bumpy::SdlApp app;
@@ -196,8 +181,11 @@ int main(int argc, char* argv[]) {
         if (argc == 3 && std::string_view(argv[1]) == "--render-title") {
             return render_title_to_bmp(asset_root, argv[2]);
         }
+        if (argc == 3 && std::string_view(argv[1]) == "--dump-title-raw") {
+            return dump_title_raw(asset_root, argv[2]);
+        }
         if (argc != 1) {
-            std::cerr << "usage: bumpy_port.exe [--render-title out.bmp]\n";
+            std::cerr << "usage: bumpy_port.exe [--render-title out.bmp | --dump-title-raw out.bin]\n";
             return 2;
         }
         return run_sdl_menu(asset_root);

@@ -74,19 +74,45 @@ TEST_CASE("menu renderer decodes the title into a non-blank 320x200 indexed fram
     REQUIRE(any_different);
 }
 
-TEST_CASE("menu renderer places the confirmed cursor marker at the selected row") {
+TEST_CASE("menu renderer deplanes the title to the full 16-index range") {
     const auto resources = bumpy::MenuResources::load_from(".");
     bumpy::MenuRenderer renderer(resources);
     bumpy::IndexedFramebuffer frame(320, 200);
-    bumpy::MenuView view{};
-    view.draw_title = false;
-    view.draw_cursor_marker = true;
-    view.cursor_row = 2;
 
-    renderer.render(view, frame);
+    renderer.render(bumpy::MenuView{}, frame);
 
-    const auto marker_y = 0x70 + 2 * 0x10 + 1;
-    for (int x = 0; x < 6; ++x) {
-        REQUIRE(frame.pixels()[static_cast<std::size_t>(marker_y * 320 + 0x30 + x)] == 0x55);
+    // The deplaned 4-plane screen uses every VGA colour index.
+    std::array<bool, 16> seen{};
+    for (const auto value : frame.pixels()) {
+        REQUIRE(value < 16);
+        seen[value] = true;
     }
+    for (const auto present : seen) {
+        REQUIRE(present);
+    }
+}
+
+TEST_CASE("menu renderer installs the screen's own VGA palette") {
+    const auto resources = bumpy::MenuResources::load_from(".");
+    bumpy::MenuRenderer renderer(resources);
+    bumpy::IndexedFramebuffer frame(320, 200);
+
+    renderer.render(bumpy::MenuView{}, frame);
+
+    const auto& palette = frame.palette();
+    // Colour 0 is black and the title is colourful, so the palette is not uniform.
+    REQUIRE(palette[0].r == 0);
+    REQUIRE(palette[0].g == 0);
+    REQUIRE(palette[0].b == 0);
+    bool any_colour = false;
+    for (int index = 1; index < 16; ++index) {
+        if (palette[index].r != 0 || palette[index].g != 0 || palette[index].b != 0) {
+            any_colour = true;
+        }
+    }
+    REQUIRE(any_colour);
+    // Recovered palette entry 1 is the darkest background blue (DAC 0,0,16 -> 0,0,65).
+    REQUIRE(palette[1].r == 0);
+    REQUIRE(palette[1].g == 0);
+    REQUIRE(palette[1].b == 65);
 }

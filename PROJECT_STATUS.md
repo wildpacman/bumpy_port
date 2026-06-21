@@ -1,6 +1,6 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-06-19.
+Source of truth for new sessions. Last updated: 2026-06-21.
 
 ## Goal
 
@@ -37,9 +37,11 @@ only a platform adapter.
 
 - **Stage 1 — `.VEC` container + title screen — DONE.** `.VEC` decoder and the
   title bitmap render natively.
-- **Stage 2 — Menu — mostly done.** Resource bundle, menu state machine, cursor
-  logic, and SDL3 shell exist and build. Remaining: the real VGA DAC palette and
-  sprite pixel rendering.
+- **Stage 2 — Menu — title screen renders authentically.** Resource bundle, menu
+  state machine, and SDL3 shell exist and build. The full 320×200 menu screen
+  deplanes correctly with its embedded VGA palette. Remaining: the selection
+  highlight (how the original marks the active row is not yet recovered) and menu
+  sprite rendering.
 - **Stage 3 — First level — next.** `.BUM`/`.DEC`/`.PAV` formats, physics,
   collision, objects; win/loss; return to menu.
 
@@ -54,18 +56,22 @@ functions), DOSBox-X reference harness.
   checksum, multi-layer, **method 4** (marker-RLE) and **method 12**
   (marker-mask). All 13 supplied `.VEC` decode to the expected bytes (verified by
   SHA in `tests/cpp/vec_test.cpp`).
-- `TITRE.VEC` → 320×200 four-plane planar bitmap, rendered through
-  `IndexedFramebuffer` (`src/video/menu_renderer`).
+- `TITRE.VEC` → full 320×200 screen: 99-byte header (16-colour VGA palette at
+  offset `0x33`) + four 8000-byte plane-sequential bit-planes, deplaned and
+  rendered through `IndexedFramebuffer` (`src/video/menu_renderer`:
+  `deplane_screen` / `apply_screen_palette`). Format spec:
+  `analysis/specs/menu-resource-formats.md`.
 - `BUMSPJEU.BIN` sprite archive layout (`src/resources/menu_resources`): 3 groups
   × 33 = 99 offset-delimited children.
 - Menu state machine (`src/game/menu`) and SDL3 shell (`src/platform_sdl3`).
-- `bumpy_port.exe` renders the title and runs the menu window; 28 C++ test cases
-  pass. `bumpy_port.exe --render-title out.bmp` dumps the title headlessly.
+- `bumpy_port.exe` renders the authentic title and runs the menu window; 29 C++
+  test cases pass. `--render-title out.bmp` dumps the screen; `--dump-title-raw
+  out.bin` dumps the raw decoded bytes for format work.
 
 **Placeholders / remaining work:**
-- **Palette is a preview** (`apply_preview_palette` in `main.cpp`). The real VGA
-  DAC palette — the 16-byte table copied into the decoded title at offset `0x23`
-  — is not wired in yet, so colors are not authentic.
+- The **selection highlight** is not drawn yet — the original's mechanism (palette
+  flash vs. a copied marker sprite) is not recovered. The prior chunky-buffer
+  "cursor marker" copy was wrong and has been removed.
 - Sprites are decoded structurally but not yet rendered to pixels.
 - `start_first_level` is a stub; no level loading yet.
 
@@ -104,8 +110,8 @@ cmake --build --preset windows-debug
 
 ## Next step
 
-Recover the real VGA DAC palette (the 16-byte table at decoded title offset
-`0x23` and its DAC mapping; trace `1000:7b93` / `1000:08d1`) and wire it into the
-renderer for authentic colors. Then render the menu sprites, then begin Stage 3
-(level 1). See `docs/superpowers/plans/stage-1-vec-and-title-screen.md` for the
-recovered context.
+Recover the menu's **selection highlight** — how the original marks the active
+row (`PLAY` / `HIGH-SCORE` / `LEVEL` / `PASSWORD`) and how `LEVEL` cycles its
+value. The screen is static art, so the indicator is drawn or palette-animated at
+runtime; trace it in the menu loop. Then render the menu sprites (`BUMSPJEU.BIN`,
+consumer at `1000:93d8`), then begin Stage 3 (level 1).
