@@ -110,8 +110,12 @@ cmake --build --preset windows-debug
 
 ## Next step
 
-Recover the menu's **selection highlight** — how the original marks the active
-row (`PLAY` / `HIGH-SCORE` / `LEVEL` / `PASSWORD`) and how `LEVEL` cycles its
-value. The screen is static art, so the indicator is drawn or palette-animated at
-runtime; trace it in the menu loop. Then render the menu sprites (`BUMSPJEU.BIN`,
-consumer at `1000:93d8`), then begin Stage 3 (level 1).
+**Decode the `BUMSPJEU.BIN` sprite frame format**, which gates the menu selection
+marker (it is sprite frame index 0, drawn at x 48, y 112 + row·16 — logic fully
+recovered in `analysis/specs/menu-behavior.md`). The archive structure is known
+(per-child be32 frame-pointer tables → one shared pixel blob), but the per-frame
+pixel encoding is not: the blit is hand-written assembly and the header is read at
+a runtime-relocated address, so static guessing stalled. Unblock with a **DOSBox-X
+dynamic capture** (dump the relocated archive + the rendered menu VGA framebuffer
+and match bytes to pixels), or by disassembling the blit at `1cec:31b7` /
+`func_0x0002fcad`. Once frames decode, render the marker, then begin Stage 3.

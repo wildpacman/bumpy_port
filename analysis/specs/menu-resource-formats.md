@@ -135,3 +135,29 @@ group 0 entry 0: 00000198 .. 0000021c  (132 bytes)
 group 0 entry 1: 0000021c .. 000002a0  (132 bytes)
 group 2 entry 32: 00004678 .. 00015c1c (71172 bytes, ends at EOF)
 ```
+
+### Second level: frame-pointer tables and the shared pixel blob (Confirmed structure)
+
+The 99 children are NOT 99 sprites. Each child *except the last* is a
+variable-length table of **big-endian 32-bit frame pointers** (child sizes vary:
+52–524 bytes, i.e. 13–131 entries). The **last child** (group 2 entry 32,
+`0x4678..EOF`, ~71076 bytes) is a single shared **pixel-data blob**; every frame
+pointer in every table points into it. (child 0 = 33 frame pointers:
+`0x46e4, 0x4760, 0x47ec, …`, frame sizes 124/140/124/156…). The loader relocates
+these big-endian offsets into far pointers at load time.
+
+### Frame pixel format (NOT yet decoded — blocker)
+
+A frame's bytes (e.g. `0x46e4`, 124 bytes) do **not** parse as a clean
+planar/chunky bitmap, and the 6×u16 consumer header (field0 clamped to 3, field1
+flags `0x40`/`0x20`, field4 `>>` 2·field5 = pixel-data size; from `1000:93d8` →
+`1cec:2ced`) is read at a **runtime-relocated** address, so the static file bytes
+don't line up with it. The actual blit (`1000:942a` → `1cec:31b7` →
+`func_0x0002fcad`/`func_0x0002fc2d`) is **hand-written assembly** the decompiler
+left unresolved.
+
+Cheap static guessing of the format did not converge. The efficient unblock is
+**dynamic capture** via the DOSBox-X harness: dump the relocated archive and the
+rendered VGA framebuffer of the menu, then match bytes to ground-truth pixels.
+The menu selection marker is frame index 0 of this archive (see
+`menu-behavior.md`).
