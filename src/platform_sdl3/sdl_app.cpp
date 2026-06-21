@@ -1,6 +1,7 @@
 #include "platform_sdl3/sdl_app.h"
 
 #include "video/board_renderer.h"
+#include "video/map_renderer.h"
 
 #include <stdexcept>
 
@@ -99,6 +100,8 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
 
         if (app.screen() == Screen::menu) {
             menu_renderer.render(app.menu().view(), frame);
+        } else if (app.screen() == Screen::map) {
+            render_map(backdrop_screen, app.world_map().view(), sprite_bank, frame);
         } else {
             render_board(level, app.board_index(), backdrop_screen, frame);
             draw_bum_entities(level.bum_entities(app.board_index()), sprite_bank, frame);

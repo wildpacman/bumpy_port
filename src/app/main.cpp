@@ -8,7 +8,9 @@
 #include "resources/level_resources.h"
 #include "resources/menu_resources.h"
 #include "resources/vec.h"
+#include "game/world_map.h"
 #include "video/board_renderer.h"
+#include "video/map_renderer.h"
 #include "video/menu_renderer.h"
 
 #include <algorithm>
@@ -314,6 +316,22 @@ int render_board_to_bmp(const std::filesystem::path& asset_root, int level_numbe
     return 0;
 }
 
+// Compose the world-map screen (MONDE backdrop + the Bumpy avatar at node 1) and
+// dump it to a BMP for by-eye comparison with the original world-select capture.
+int render_map_to_bmp(const std::filesystem::path& asset_root, const std::filesystem::path& monde_path,
+                      const std::filesystem::path& out_path) {
+    const auto backdrop = bumpy::decode_vec_resource(monde_path);
+    const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+    bumpy::WorldMap map;  // node 1
+    bumpy::IndexedFramebuffer frame(320, 200);
+    const auto stats = bumpy::render_map(backdrop.decoded_bytes(), map.view(), bank.bytes(), frame);
+    write_24bit_bmp(out_path, frame);
+    std::cout << "wrote " << out_path.string() << " (avatar "
+              << (stats.avatar_drawn ? "drawn" : "skipped") << " at node "
+              << map.current_node() << ")\n";
+    return 0;
+}
+
 int run_sdl_menu(const std::filesystem::path& asset_root) {
     warn_if_assets_changed(asset_root);
     const auto resources = bumpy::MenuResources::load_from(asset_root);
@@ -358,6 +376,12 @@ int main(int argc, char* argv[]) {
         }
         if (argc == 4 && std::string_view(argv[1]) == "--render-screen") {
             return render_screen_vec(argv[2], argv[3]);
+        }
+        if (argc == 5 && std::string_view(argv[1]) == "--render-map") {
+            // --render-map <world> <MONDE.VEC> <out.bmp>
+            // world is currently informational (world 1 only); MONDE.VEC supplies the
+            // backdrop + palette, and the avatar is drawn at node 1.
+            return render_map_to_bmp(asset_root, argv[3], argv[4]);
         }
         if ((argc == 6 || argc == 7) && std::string_view(argv[1]) == "--render-board") {
             // --render-board <level> <MONDE.VEC> <board_index> <out.bmp> [map|entities]
