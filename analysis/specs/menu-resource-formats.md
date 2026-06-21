@@ -188,12 +188,23 @@ Frame headers are six big-endian 16-bit words:
 | 4 | Width units. Pixel width is `word4 * 4`; the VGA setup processes `word4 >> 2` 16-pixel groups per row. Cursor frame 0 uses 4, i.e. 16 pixels. |
 | 5 | Height in pixels. Cursor frame 0 uses 16. |
 
-Uncompressed archive pixel data follows the 12-byte header. It is row-interleaved
-four-plane VGA data. For each row, plane 0 bytes come first, then planes 1, 2,
-and 3. Each plane contributes `width / 8` bytes per row, and bits are consumed
-most-significant first. The four bits form the 4-bit colour index
-`p0 | p1<<1 | p2<<2 | p3<<3`. Colour index 0 is transparent for sprite
+Uncompressed archive pixel data follows the 12-byte header. It is four-plane VGA
+data laid out in **16-pixel groups**: a row of `width` pixels is `width/16` groups
+(`= width_units >> 2`), and each group is 4 planes × 2 bytes = **8 bytes**, ordered
+`P0 P1 P2 P3` for that group's 16 pixels. So a row is
+`[group0: P0 P1 P2 P3][group1: P0 P1 P2 P3]…`, **not** plane-major across the whole
+row. Bits are consumed most-significant first; the four plane bits form the colour
+index `p0 | p1<<1 | p2<<2 | p3<<3`. Colour index 0 is transparent for sprite
 composition; the port maps it to `0xff` before drawing.
+
+`width` is always a multiple of 16 (`width_units % 4 == 0`). For a 16px frame (one
+group) the group layout is identical to plain plane-major, which is why narrow
+frames (the cursor, the Bumpy faces, the 16px collectibles) always decoded
+correctly — while 32px frames (bumpers, the Bumpy-on-cloud avatar) came out
+scrambled until the group layout was applied. This per-group ordering is the
+reshuffle `1cec:0c77` performs on uncompressed pixels (line "leaves the pixel
+stream untouched … for compressed frames" implies it *does* reshuffle uncompressed
+ones), and it matches the compressed format's group description below.
 
 Pseudocode:
 
@@ -204,15 +215,17 @@ data = 0x800 + pointer
 header = be16[6] at data - 12
 assert (header[1] & 0xc0) == 0
 
-width = header[4] * 4
+width = header[4] * 4          # always a multiple of 16
 height = header[5]
-plane_bytes = width / 8
-row_stride = plane_bytes * 4
+groups_per_row = width / 16    # = width_units >> 2
+row_stride = groups_per_row * 8
 for y in 0..height-1:
     for x in 0..width-1:
+        group = x / 16
+        xg = x % 16
         colour = 0
         for plane in 0..3:
-            b = archive[data + y*row_stride + plane*plane_bytes + x/8]
+            b = archive[data + y*row_stride + group*8 + plane*2 + xg/8]
             colour |= ((b >> (7 - (x & 7))) & 1) << plane
         output[y][x] = 0xff if colour == 0 else colour
 ```

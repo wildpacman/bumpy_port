@@ -14,6 +14,17 @@ constexpr std::size_t relocated_resource_base = 0x800;
 constexpr int sprite_plane_count = 4;
 constexpr int pixels_per_width_unit = 4;
 constexpr int pixels_per_plane_byte = 8;
+// Pixels are stored in 16-pixel groups, each group = 4 planes x 2 bytes = 8 bytes,
+// laid out [g0:P0 P1 P2 P3][g1:P0 P1 P2 P3]... across a row -- NOT plane-major over
+// the whole row. Width is always a multiple of 16 (width_units % 4 == 0). For a
+// 16px frame (one group) this is identical to plane-major, which is why narrow
+// frames (cursor, faces, collectibles) always decoded correctly while 32px frames
+// (bumpers, the Bumpy-on-cloud avatar) came out scrambled. This is the per-group
+// reshuffle 1cec:0c77 applies to uncompressed pixels; see
+// analysis/specs/menu-resource-formats.md.
+constexpr int group_pixels = 16;
+constexpr int plane_bytes_per_group = group_pixels / pixels_per_plane_byte;          // 2
+constexpr int group_bytes = plane_bytes_per_group * sprite_plane_count;              // 8
 
 [[noreturn]] void fail_sprite(std::size_t offset, const char* message) {
     std::ostringstream output;
@@ -102,8 +113,8 @@ MenuImage decode_sprite_frame(std::span<const std::uint8_t> archive_data, int fr
 
     const int width = static_cast<int>(header.width_units) * pixels_per_width_unit;
     const int height = static_cast<int>(header.height);
-    const std::size_t plane_bytes_per_row = static_cast<std::size_t>(width) / pixels_per_plane_byte;
-    const std::size_t row_stride = plane_bytes_per_row * sprite_plane_count;
+    const int groups_per_row = width / group_pixels;  // = width_units >> 2
+    const std::size_t row_stride = static_cast<std::size_t>(groups_per_row) * group_bytes;
 
     MenuImage image{
         width,
@@ -112,11 +123,14 @@ MenuImage decode_sprite_frame(std::span<const std::uint8_t> archive_data, int fr
     };
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
+            const int group = x / group_pixels;
+            const int x_in_group = x % group_pixels;
             std::uint8_t color = 0;
             for (int plane = 0; plane < sprite_plane_count; ++plane) {
                 const auto byte_offset = data_offset + static_cast<std::size_t>(y) * row_stride +
-                                         static_cast<std::size_t>(plane) * plane_bytes_per_row +
-                                         static_cast<std::size_t>(x / pixels_per_plane_byte);
+                                         static_cast<std::size_t>(group) * group_bytes +
+                                         static_cast<std::size_t>(plane) * plane_bytes_per_group +
+                                         static_cast<std::size_t>(x_in_group / pixels_per_plane_byte);
                 const auto bit = static_cast<std::uint8_t>(
                     (archive_data[byte_offset] >> (7U - static_cast<unsigned>(x % pixels_per_plane_byte))) & 1U);
                 color = static_cast<std::uint8_t>(color | (bit << plane));
