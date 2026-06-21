@@ -159,6 +159,39 @@ the original visibly does not do.) The blit routine itself is an unresolved far-
 (`FUN_1cec_31b7 → func_0x0002fc2d`), so this placement is recovered from the sprite
 data + the verified resting capture, not from the blitter.
 
+## Frame timing — vertical-retrace paced (Confirmed from disassembly)
+
+The game advances its logic **once per displayed frame** and paces each frame on the
+**vertical retrace**, not on a timer. The wait is `FUN_1000_7bdd(1)` →
+`FUN_1ab9_0351`, which clears a frame flag and tail-dispatches per video mode:
+`mov bp,[DAT_541d]; shl bp,1; jmp word ptr [bp+0x5475]`. The dispatch target is the
+only vertical-retrace poll in the whole image (unpacked-EXE file offset `0x11405`):
+
+```asm
+BA DA 03   mov dx, 0x03DA      ; VGA/CGA Input Status #1
+EC         in  al, dx
+A8 08      test al, 8          ; bit 3 = vertical retrace
+74 FB      jz  $-5             ; spin until retrace begins
+EC         in  al, dx
+A8 08      test al, 8
+75 FB      jnz $-5             ; spin until retrace ends
+C3         ret
+```
+
+(An adjacent twin polls `0x3BA` bit 7 for the mono/Hercules path; `DAT_541d` selects
+which.) So **the slide, the cloud-jump, and gameplay all step at the display's vertical
+refresh**. For the pinned VGA 320×200 16-colour mode that is **70.086 Hz** (EGA: 60 Hz),
+so e.g. the 24-frame cloud-jump lasts `24 / 70.086 ≈ 0.342 s`.
+
+Beware a red herring: the game **reprograms the PIT (`FUN_1000_7f9a`, `out 0x43,0x36`)
+to ~19.2 kHz** from a reload table at `DS:0x54de` — that is the **PC-speaker sample
+timer**, not the frame clock. Frame pacing is purely the retrace poll above.
+
+The port reproduces this with a fixed **70.086 Hz** game tick in
+`src/platform_sdl3/sdl_app` (one logic update per frame, sleep/spin to the next
+boundary), decoupled from the host monitor — replacing the earlier ~60 Hz
+`SDL_Delay(16)` loop.
+
 ## Palette mechanism
 
 Every full screen (TITRE / MONDE / menu) carries its own **16-colour VGA DAC

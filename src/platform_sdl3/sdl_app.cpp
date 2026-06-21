@@ -40,6 +40,15 @@ void update_key_state(bumpy::MenuInput& input, SDL_Keycode key, bool pressed) {
     }
 }
 
+// The original advances its game logic exactly once per displayed frame, pacing each
+// frame on the VGA vertical retrace -- a two-phase poll of port 0x3DA bit 3, reached via
+// the per-video-mode dispatch at the tail of FUN_1ab9_0351 (the `7bdd` wait); see
+// analysis/specs/screen-flow.md ("Frame timing"). For VGA's 320x200 16-colour mode the
+// vertical refresh is 70.086 Hz, so the world-map slide, the cloud-jump, and (later)
+// gameplay all step at that rate. We reproduce it with a fixed tick, decoupled from the
+// host monitor's refresh, rather than the old ~60 Hz SDL_Delay(16).
+constexpr double kVgaRefreshHz = 70.086;
+
 }  // namespace
 
 namespace bumpy {
@@ -80,6 +89,14 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
                 std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& frame) {
     bool running = true;
     MenuInput input{};
+
+    // Fixed-rate pacing at the VGA vertical refresh (see kVgaRefreshHz). One game tick
+    // per loop iteration, then sleep/spin to the next frame boundary so the logic runs
+    // at the original's rate regardless of how fast the host can render.
+    const Uint64 perf_freq = SDL_GetPerformanceFrequency();
+    const Uint64 tick_period = static_cast<Uint64>(static_cast<double>(perf_freq) / kVgaRefreshHz);
+    Uint64 next_frame = SDL_GetPerformanceCounter();
+
     while (running) {
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {
@@ -114,7 +131,23 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
         require(SDL_RenderTexture(renderer_, texture_, nullptr, nullptr));
         require(SDL_RenderPresent(renderer_));
 
-        SDL_Delay(16);
+        // Wait until the next 70.086 Hz frame boundary: sleep the bulk (1ms granularity)
+        // then spin the final sub-millisecond for an accurate cadence. If a frame ran
+        // long, resync instead of accumulating debt.
+        next_frame += tick_period;
+        const Uint64 now = SDL_GetPerformanceCounter();
+        if (now < next_frame) {
+            const Uint64 remaining = next_frame - now;
+            const Uint64 remaining_ms = (remaining * 1000) / perf_freq;
+            if (remaining_ms > 1) {
+                SDL_Delay(static_cast<Uint32>(remaining_ms - 1));
+            }
+            while (SDL_GetPerformanceCounter() < next_frame) {
+                // spin the last <=1ms
+            }
+        } else {
+            next_frame = now;  // behind schedule -> resync
+        }
     }
     return 0;
 }

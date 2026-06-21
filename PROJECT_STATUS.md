@@ -282,6 +282,11 @@ menu, map → menu, menu → quit).
 
 - Built with **Turbo C++ 1990 (Borland)**, 16-bit real mode, large model. DOS
   calls appear as `swi(0x21)` in the decompilation.
+- **Frame timing is vertical-retrace paced** (one logic tick per displayed frame,
+  `7bdd` → `FUN_1ab9_0351` → the `0x3DA`-bit-3 retrace poll at file `0x11405`). For
+  VGA 320×200 that is **70.086 Hz**. The PIT's ~19.2 kHz reprogramming is the
+  PC-speaker sample timer, **not** the frame clock. The port paces the loop at
+  70.086 Hz (`src/platform_sdl3/sdl_app`); see `screen-flow.md` ("Frame timing").
 - Data segment is the load-relative `0x103b` (Ghidra shows `0x203b`, `+0x1000`).
 - Resource/loader pipeline: `analysis/RESOURCE_PIPELINE.md`.
 - `.VEC` and sprite formats: `analysis/specs/menu-resource-formats.md`.
