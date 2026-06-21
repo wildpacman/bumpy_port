@@ -187,19 +187,24 @@ functions), DOSBox-X reference harness.
   for world 1. **`src/game/world_map`** is a pure, SDL-free state machine over the
   baked world-1 node graph + positions (extracted from `BUMPY.UNPACKED.EXE`: graph
   `DS:0x09e6`, positions `DS:0x0a80`, `base + N*9` records; all 15 nodes verified
-  against `analysis/specs/screen-flow.md`). Arrows snap between linked nodes, fire
-  selects board `node−1`, Escape returns to the menu. Recovered from `FUN_1000_3852`
-  / `3a88` / `3ab2…3bc9` / `1cb2`.
+  against `analysis/specs/screen-flow.md`). Pressing a direction **glides** the
+  avatar 4px/tick along the connecting line to the linked neighbour (input ignored
+  mid-slide), fire selects board `node−1`, Escape returns to the menu. Recovered from
+  `FUN_1000_3852` / `3a88` / `3ab2…3bc9` (the `dist>>2`-steps-of-4px animation) /
+  `1cb2`.
 - **`src/video/map_renderer`** composes the map: the `MONDE1.VEC` backdrop (via the
   factored **`src/video/screen_image`** deplane helper, shared with `board_renderer`)
-  plus the Bumpy avatar = `BUMSPJEU` frame `0x21` (`FUN_1000_1cb2`/`DAT_824a`),
-  centred on the current node's ring. Verified by eye against
-  `screenshots/bumpy_001.png` (Bumpy centred on node 1) and a backdrop-diff
-  measurement.
+  plus the **Bumpy avatar**, centred on the current node's ring. The original draws
+  the avatar from the **player** sprite bank (`BUMPYSPR.BIN`/`SPRITE.BIN`, frame
+  `0x21`) — **which are not shipped** with these assets; reading `0x21` from the
+  supplied `BUMSPJEU.BIN` is unrelated garbage. `BUMSPJEU` carries equivalent Bumpy
+  player faces at frames `0x00..0x0c`, so the port substitutes the forward-facing
+  idle **frame `0x08`**, matched by eye to `screenshots/bumpy_001.png` (Bumpy centred
+  in node 1's ring). Frame geometry/centring verified by a backdrop-diff measurement.
 - **`src/game/app`** gains `Screen::map` between menu and level; the temporary ←/→
   board paging is **retired** (node selection replaces it). Held-key guards stop a
   held fire/cancel bouncing across a transition. **`--render-map <world> <MONDE.VEC>
-  <out.bmp>`** dumps the map headlessly. 65 C++ tests pass; originals verify clean.
+  <out.bmp>`** dumps the map headlessly. 67 C++ tests pass; originals verify clean.
   Design + plan: `docs/superpowers/specs/2026-06-21-world-map-screen-design.md`,
   `docs/superpowers/plans/2026-06-21-world-map-screen.md`.
 
@@ -213,9 +218,10 @@ functions), DOSBox-X reference harness.
   via the same archive) are not implemented.
 - The in-window level screen is **static** — it shows the composed board with its
   BUM entity sprites but has no physics, collision, or win/loss yet (Stage 3
-  remainder). The world map navigates and selects boards, but its score/lives HUD
-  overlays and the per-completed-node markers (frame `0x1da`) are not drawn, and the
-  avatar does not yet animate the 4px slide between nodes (snaps instead).
+  remainder). The world map navigates (with the gliding avatar) and selects boards,
+  but its score/lives HUD overlays and the per-completed-node markers (frame `0x1da`)
+  are not drawn. The avatar is a faithful substitute (BUMSPJEU frame `0x08`) because
+  the original player bank `BUMPYSPR.BIN`/`SPRITE.BIN` is not shipped.
 
 ## How to run
 
@@ -287,10 +293,11 @@ The next milestone is **making the board come alive** — the live gameplay loop
 
 World-map follow-ups (deferred this slice, low priority): the score/lives HUD on the
 map (`FUN_1000_0816` digit formatter), completed-node markers (frame `0x1da`,
-`FUN_1000_3c4f`), the 4px-per-step avatar slide animation (currently snaps), and
-**worlds 2–9** (extract the per-world graphs/positions at `0x10c8[world]` /
-`0x10ec[world]`, load MONDE/level on demand — unlocked once win/loss advances
-worlds).
+`FUN_1000_3c4f`), the avatar's walk-cycle animation during the slide (it glides as a
+single idle frame for now), the real player avatar (needs the unshipped
+`BUMPYSPR.BIN`), and **worlds 2–9** (extract the per-world graphs/positions at
+`0x10c8[world]` / `0x10ec[world]`, load MONDE/level on demand — unlocked once
+win/loss advances worlds).
 
 Optional menu polish: implement compressed sprites + per-glyph text to bring up
 the HIGH-SCORE / PASSWORD sub-screens (`FUN_1000_0d9d` / `0f7a` / `11eb`).
