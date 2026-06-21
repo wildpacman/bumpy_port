@@ -34,14 +34,18 @@ struct MapNode {
 };
 
 // SDL-independent world-map state machine (world 1). Owns the current node and the
-// avatar position; navigation snaps to linked neighbours. Debounces its own input
-// (one action per key press) like Menu does. App drives it on Screen::map.
+// avatar position. Pressing a direction with a linked neighbour starts a slide: the
+// avatar glides 4px/tick along the connecting line to the neighbour (the original's
+// FUN_1000_3ab2..3bc9 animate dist>>2 steps of 4px), and input is ignored until it
+// arrives -- so update() must be called every tick. Debounces its own input (one
+// slide/action per key press) like Menu does. App drives it on Screen::map.
 class WorldMap {
 public:
     WorldMap();  // world 1, avatar on node 1
 
-    // Reset to node 1 and require all keys released before the next action. App
-    // calls this on each menu->map entry so a held fire/cancel cannot carry across.
+    // Reset to node 1 (snap, no slide) and require all keys released before the next
+    // action. App calls this on each menu->map entry so a held fire/cancel cannot
+    // carry across.
     void enter() noexcept;
 
     WorldMapAction update(const MenuInput& input) noexcept;
@@ -49,12 +53,19 @@ public:
     [[nodiscard]] const WorldMapView& view() const noexcept { return view_; }
     [[nodiscard]] int current_node() const noexcept { return view_.current_node; }
     [[nodiscard]] std::size_t node_count() const noexcept;
+    // True while the avatar is gliding between nodes (input is ignored meanwhile).
+    [[nodiscard]] bool is_sliding() const noexcept { return sliding_; }
 
 private:
-    void move_to(int node) noexcept;  // set current node + avatar position
+    void move_to(int node) noexcept;     // snap current node + avatar position
+    void start_slide(int node) noexcept; // set target node; begin the glide
+    void advance_slide() noexcept;       // step the avatar 4px toward the target
 
     WorldMapView view_{};
     bool waiting_for_release_{false};  // a fresh map acts on first input; enter() arms the guard
+    bool sliding_{false};
+    int slide_to_x_{};
+    int slide_to_y_{};
 };
 
 // The baked world-1 node table (index 0 is an unused sentinel; nodes 1..15).

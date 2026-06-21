@@ -16,6 +16,14 @@ void enter_level(bumpy::App& app) {
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);  // release
 }
 
+// Tick the App until the world-map avatar finishes any in-progress slide.
+void finish_slide(bumpy::App& app) {
+    int guard = 0;
+    while (app.world_map().is_sliding() && guard++ < 1000) {
+        REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    }
+}
+
 }  // namespace
 
 TEST_CASE("app starts on the menu at board zero") {
@@ -39,7 +47,8 @@ TEST_CASE("firing on a map node enters that node's board") {
 
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // -> map
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
-    REQUIRE(app.update(bumpy::MenuInput{.right = true}) == bumpy::AppOutcome::running);    // node 2
+    REQUIRE(app.update(bumpy::MenuInput{.right = true}) == bumpy::AppOutcome::running);    // slide to node 2
+    finish_slide(app);                                                                     // glide there
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // fire
     REQUIRE(app.screen() == bumpy::Screen::level);
@@ -58,7 +67,8 @@ TEST_CASE("re-entering the map resets the avatar to node 1") {
     bumpy::App app(15);
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // -> map
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
-    REQUIRE(app.update(bumpy::MenuInput{.right = true}) == bumpy::AppOutcome::running);    // node 2
+    REQUIRE(app.update(bumpy::MenuInput{.right = true}) == bumpy::AppOutcome::running);    // slide to node 2
+    finish_slide(app);                                                                     // glide there
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
     REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);   // -> menu
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);

@@ -60,9 +60,42 @@ void WorldMap::move_to(int node) noexcept {
     view_.current_node = node;
     view_.avatar_x = n.x;
     view_.avatar_y = n.y;
+    sliding_ = false;
+}
+
+void WorldMap::start_slide(int node) noexcept {
+    // The logical node updates immediately (FUN_1000_3ab2 sets DAT_854e first), then
+    // the avatar glides from its current pixel position to the neighbour's.
+    const MapNode& n = kWorld1[static_cast<std::size_t>(node)];
+    view_.current_node = node;
+    slide_to_x_ = n.x;
+    slide_to_y_ = n.y;
+    sliding_ = view_.avatar_x != slide_to_x_ || view_.avatar_y != slide_to_y_;
+}
+
+void WorldMap::advance_slide() noexcept {
+    constexpr int step = 4;  // 4px per tick; node spacing (80/48px) is a multiple of 4
+    if (view_.avatar_x < slide_to_x_) {
+        view_.avatar_x = view_.avatar_x + step < slide_to_x_ ? view_.avatar_x + step : slide_to_x_;
+    } else if (view_.avatar_x > slide_to_x_) {
+        view_.avatar_x = view_.avatar_x - step > slide_to_x_ ? view_.avatar_x - step : slide_to_x_;
+    }
+    if (view_.avatar_y < slide_to_y_) {
+        view_.avatar_y = view_.avatar_y + step < slide_to_y_ ? view_.avatar_y + step : slide_to_y_;
+    } else if (view_.avatar_y > slide_to_y_) {
+        view_.avatar_y = view_.avatar_y - step > slide_to_y_ ? view_.avatar_y - step : slide_to_y_;
+    }
+    if (view_.avatar_x == slide_to_x_ && view_.avatar_y == slide_to_y_) {
+        sliding_ = false;
+    }
 }
 
 WorldMapAction WorldMap::update(const MenuInput& input) noexcept {
+    if (sliding_) {
+        advance_slide();  // glide toward the target node; input is ignored mid-slide
+        return {};
+    }
+
     const bool any = input.up || input.down || input.left || input.right ||
                      input.confirm || input.cancel;
     if (!any) {
@@ -77,13 +110,13 @@ WorldMapAction WorldMap::update(const MenuInput& input) noexcept {
     const MapNode& n = kWorld1[static_cast<std::size_t>(view_.current_node)];
     // Original priority (FUN_1000_3852): up, down, left, right, fire, then escape.
     if (input.up && n.up != 0) {
-        move_to(n.up);
+        start_slide(n.up);
     } else if (input.down && n.down != 0) {
-        move_to(n.down);
+        start_slide(n.down);
     } else if (input.left && n.left != 0) {
-        move_to(n.left);
+        start_slide(n.left);
     } else if (input.right && n.right != 0) {
-        move_to(n.right);
+        start_slide(n.right);
     } else if (input.confirm) {
         return {WorldMapResult::select_board, static_cast<std::size_t>(view_.current_node - 1)};
     } else if (input.cancel) {
