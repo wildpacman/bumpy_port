@@ -10,7 +10,7 @@ bool is_screen_image(std::span<const std::uint8_t> screen) noexcept {
 
 void apply_screen_image_palette(std::span<const std::uint8_t> screen, IndexedFramebuffer& target) {
     const std::uint8_t* palette = screen.data() + screen_image_palette_offset;
-    for (int color = 0; color < 16; ++color) {
+    for (int color = 0; color < screen_image_palette_colors; ++color) {
         const std::uint8_t* entry = palette + color * 3;
         target.set_palette(static_cast<std::uint8_t>(color),
                            Rgba{vga_dac_to_rgba_component(entry[0]),

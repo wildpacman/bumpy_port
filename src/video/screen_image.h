@@ -15,8 +15,10 @@ inline constexpr int screen_image_width = 320;
 inline constexpr int screen_image_height = 200;
 inline constexpr std::size_t screen_image_plane =
     static_cast<std::size_t>(screen_image_width) * screen_image_height / 8;  // 8000
+inline constexpr int screen_image_palette_colors = 16;
 inline constexpr std::size_t screen_image_pixel_offset = 99;
-inline constexpr std::size_t screen_image_palette_offset = screen_image_pixel_offset - 16 * 3;  // 51
+inline constexpr std::size_t screen_image_palette_offset =
+    screen_image_pixel_offset - screen_image_palette_colors * 3;  // 51
 
 // True when `screen` is large enough to be a 320x200 screen-format VEC.
 [[nodiscard]] bool is_screen_image(std::span<const std::uint8_t> screen) noexcept;
