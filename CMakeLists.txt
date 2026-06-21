@@ -26,6 +26,7 @@ add_library(bumpy_core
   src/resources/level_resources.cpp
   src/resources/entity_sprites.cpp
   src/video/menu_renderer.cpp
+  src/video/screen_image.cpp
   src/video/board_renderer.cpp
   src/game/world_map.cpp)
 target_include_directories(bumpy_core PUBLIC src)

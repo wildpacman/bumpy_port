@@ -2,60 +2,21 @@
 
 #include "resources/entity_sprites.h"
 #include "resources/sprite_frame.h"
-#include "video/menu_renderer.h"  // vga_dac_to_rgba_component
+#include "video/screen_image.h"
 
 #include <stdexcept>
-
-namespace {
-
-// Screen-format VEC geometry (TITRE/MONDE?): 99-byte header carrying the
-// 16-colour VGA palette ending at the pixel data, then four 8000-byte
-// plane-sequential bit-planes. Matches src/video/menu_renderer.cpp.
-constexpr int screen_width = 320;
-constexpr int screen_height = 200;
-constexpr std::size_t screen_plane = static_cast<std::size_t>(screen_width) * screen_height / 8;  // 8000
-constexpr std::size_t pixel_data_offset = 99;
-constexpr int palette_colors = 16;
-constexpr std::size_t palette_offset = pixel_data_offset - palette_colors * 3;  // 51
-
-void apply_palette(std::span<const std::uint8_t> screen, bumpy::IndexedFramebuffer& target) {
-    const std::uint8_t* palette = screen.data() + palette_offset;
-    for (int color = 0; color < palette_colors; ++color) {
-        const std::uint8_t* entry = palette + color * 3;
-        target.set_palette(static_cast<std::uint8_t>(color),
-                           bumpy::Rgba{bumpy::vga_dac_to_rgba_component(entry[0]),
-                                       bumpy::vga_dac_to_rgba_component(entry[1]),
-                                       bumpy::vga_dac_to_rgba_component(entry[2]), 0xff});
-    }
-}
-
-void deplane_backdrop(std::span<const std::uint8_t> screen, bumpy::IndexedFramebuffer& target) {
-    const std::uint8_t* planes = screen.data() + pixel_data_offset;
-    for (std::size_t pixel = 0; pixel < static_cast<std::size_t>(screen_width) * screen_height; ++pixel) {
-        const std::size_t byte = pixel >> 3U;
-        const unsigned shift = 7U - static_cast<unsigned>(pixel & 7U);
-        std::uint8_t value = 0;
-        for (int plane = 0; plane < 4; ++plane) {
-            value = static_cast<std::uint8_t>(
-                value | (((planes[plane * screen_plane + byte] >> shift) & 1U) << plane));
-        }
-        target.pixel(static_cast<int>(pixel % screen_width), static_cast<int>(pixel / screen_width)) = value;
-    }
-}
-
-}  // namespace
 
 namespace bumpy {
 
 BoardRenderStats render_board(const LevelResources& level, std::size_t board_index,
                               std::span<const std::uint8_t> backdrop_screen,
                               IndexedFramebuffer& target, bool draw_map) {
-    if (backdrop_screen.size() < pixel_data_offset + 4 * screen_plane) {
+    if (!is_screen_image(backdrop_screen)) {
         throw std::runtime_error("backdrop is not a 320x200 screen-format VEC");
     }
-    apply_palette(backdrop_screen, target);
+    apply_screen_image_palette(backdrop_screen, target);
     if (draw_map) {
-        deplane_backdrop(backdrop_screen, target);  // debug: overlay the world-select map
+        draw_screen_image(backdrop_screen, target);  // debug: overlay the world-select map
     } else {
         target.clear(0);  // faithful base-tile pass: every cell cleared to colour index 0
     }
