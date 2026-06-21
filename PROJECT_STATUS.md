@@ -165,9 +165,27 @@ functions), DOSBox-X reference harness.
   original entity sprites.
 - 50 C++ tests pass; originals verify clean.
 
+**Stage 3 real entity sprites (recovered + implemented):**
+- The BUM entity sprites are drawn from the **uncompressed** `BUMSPJEU.BIN` bank.
+  The selection chains were recovered from `FUN_1000_2a78`/`FUN_1000_165e` and the
+  static descriptor tables in `BUMPY.UNPACKED.EXE`: layer A `value → 0x3d3a →
+  DS:0x37be {count, frame}` (peg → frame `0x40`), layer C `frame = value + 0x179`.
+  The master frame table is addressed directly by frame index — the existing
+  `decode_sprite_frame(bumspjeu, idx)` already does `be32(idx*4)+0x800`.
+- **`src/resources/entity_sprites`** holds the recovered tables + resolution;
+  **`draw_bum_entities`** (`src/video/board_renderer`) blits the real frames at
+  their faithful positions (`--render-board <level> <MONDE.VEC> <board> out.bmp
+  sprites`, and live in the SDL window). Validated on `D1` board 0 (27 pegs + 6
+  collectibles, 0 skipped) by test and by eye
+  (`analysis/generated/board_L1_B0_sprites.png`). 53 C++ tests pass; originals
+  verify clean. Full spec: `analysis/specs/level-formats.md` ("Entity sprite bank").
+
 **Placeholders / remaining work:**
-- Compressed sprite frames (flags `0x40`/`0x20`) are rejected, not decoded — the
-  menu cursor does not need them, but other sprites may.
+- Compressed sprite frames (flags `0x40`/`0x20`, `1cec:2ded`) are **fully recovered
+  from disassembly but unused by the supplied assets** — `BUMSPJEU` is all
+  uncompressed and the compressed `BUMPYSPR.BIN`/`SPRITE.BIN` are not shipped. The
+  decoder is documented (`analysis/specs/menu-resource-formats.md`) but not
+  transcribed into the port (nothing to decode/validate).
 - The menu sub-screens (HIGH-SCORE / PASSWORD draw per-glyph character sprites
   via the same archive) are not implemented.
 - The in-window level screen is **static** — it shows the composed board but has
@@ -224,12 +242,13 @@ Escape → menu, ←/→ page boards; see "Stage 3 in-window wiring" above), and
 cell coordinates; see "Stage 3 BUM entities" above). The next milestone is
 **making that board come alive**:
 
-1. **Entity sprites (the spawn blocker).** The entity *positions* are recovered,
-   but the *sprites* (layers A/B/C select via descriptor tables `0x3d3a`/`0x4086`
-   and layer C's `value + 0x179`) live in an overlay/`BUMSPJEU` bank that needs
-   the source traced and the **compressed sprite-frame decoder** (flags
-   `0x40`/`0x20`) implemented. Until then entities render as inspection markers,
-   not the real art.
+1. **Entity sprites — DONE.** The real BUM entity sprites (pegs + collectibles)
+   now render from the uncompressed `BUMSPJEU` bank at their faithful positions
+   (`src/resources/entity_sprites`, `draw_bum_entities`), in both `--render-board
+   ... sprites` and the live SDL board. The compressed decoder turned out to be
+   unneeded (no supplied asset uses it). Remaining sprite gaps: the **in-level
+   gameplay palette** (the board currently uses the MONDE map palette, so world 1
+   looks brown rather than colourful) and **layer B**'s bank region.
 2. **Physics + collision + win/loss** — Bumpy movement, bumping objects, the
    board-clear condition, and advancing through a level's 15/12 boards.
 3. **Run the board loop** — the menu → level → menu shell exists (`src/game/app`);
@@ -248,11 +267,14 @@ Notes for that work:
   bears, and the baked-in 4×5 node grid all match. The map's runtime overlays
   (score `0000000`, the Bumpy avatar in the active node, the lives row) are drawn
   on top at runtime and are not yet implemented.
-- The **compressed sprite-frame path** (flags `0x40`/`0x20`, expanded in
-  `1cec:2ded`) is still unimplemented and will be needed for animated gameplay
-  sprites (`BUMSPJEU.BIN`, `BUMPYSPR.BIN`).
-- Per-world palette plumbing: the MONDE palette matches by eye, but the exact
-  resource the live game installs as the gameplay palette is not yet traced.
+- The **compressed sprite-frame path** (flags `0x40`/`0x20`, `1cec:2ded`) is fully
+  recovered from disassembly but **not needed**: `BUMSPJEU.BIN` is entirely
+  uncompressed and the compressed `BUMPYSPR.BIN`/`SPRITE.BIN` are not supplied.
+  Documented in `analysis/specs/menu-resource-formats.md`.
+- Per-world palette plumbing: the MONDE *map* palette matches the world-select
+  screen by eye, but the in-level **gameplay** palette is a different (untraced)
+  resource — the entity/PAV board currently renders brown-tinted under the MONDE
+  palette. Tracing the real gameplay palette load is the next visual fix.
 
 Optional menu polish: implement compressed sprites + per-glyph text to bring up
 the HIGH-SCORE / PASSWORD sub-screens (`FUN_1000_0d9d` / `0f7a` / `11eb`).

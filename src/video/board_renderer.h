@@ -47,11 +47,29 @@ struct EntityOverlayStats {
 // inspection of the recovered layout. A marker is drawn per occupied cell at its
 // faithful DS:0x274 screen position (see bum_cell_position): layer A (pegs) a
 // small centred dot, layer B a filled square, layer C (collectibles) a hollow
-// box. These are NOT the original entity sprites -- those live in an
-// overlay/BUMSPJEU sprite bank that needs the compressed-sprite decoder -- so the
-// markers validate only the decoded grid and positions, not the final art.
+// box. These are inspection markers, not the original art -- use draw_bum_entities
+// for the real sprites.
 EntityOverlayStats overlay_bum_entities(const BumEntities& bum, IndexedFramebuffer& target,
                                         std::uint8_t color_a = 15, std::uint8_t color_b = 9,
                                         std::uint8_t color_c = 14);
+
+// Draw the real BUM entity sprites onto an already-composed board, reading frames
+// directly from the uncompressed BUMSPJEU.BIN bank. Each occupied cell resolves to
+// a bank frame index (entity_sprites.h) which is decoded via decode_sprite_frame
+// and blitted at its faithful screen position: layers A/B use DS:0xf4 (x=col*40,
+// y=24+row*32 + the sprite's count offset), layer C uses DS:0x274
+// (bum_cell_position). Colour index 0 is transparent. Mirrors the spawn loop
+// FUN_1000_2a78 (per cell: layer A, then B, then C; layer B never draws col 7).
+// Frames that fail to decode are skipped (counted in skipped). The sprite_bank
+// span is the whole BUMSPJEU.BIN.
+struct EntitySpriteStats {
+    int layer_a{};
+    int layer_b{};
+    int layer_c{};
+    int skipped{};  // cells whose frame index did not decode
+};
+EntitySpriteStats draw_bum_entities(const BumEntities& bum,
+                                    std::span<const std::uint8_t> sprite_bank,
+                                    IndexedFramebuffer& target);
 
 }  // namespace bumpy

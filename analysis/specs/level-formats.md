@@ -247,19 +247,51 @@ positions; they are **not** the original sprites — see the blocker below.
   cell→pixel coordinate table (above). Decoded into `BumEntities` and validated
   against `D1` data and by eye via the marker overlay.
 
-## Open questions / next blockers
+## Entity sprite bank (Recovered + Implemented)
 
-1. **Entity sprite bank (the spawn blocker).** Layers A/B/C select sprites via
-   descriptor tables (`0x3d3a`, `0x4086`) and layer C's `value + 0x179`. These are
-   overlay/`BUMSPJEU`-resident sprites, so drawing the *real* entity art needs the
-   sprite source traced and the **compressed sprite-frame decoder** (flags
-   `0x40`/`0x20`) implemented. Until then the port draws the recovered grid as
-   inspection markers, not the original sprites.
-2. Param roles `0x92/0x94/0x95` and byte `0x96`'s `0x2546` table — structure is
+The entity sprites all come from the **uncompressed** `BUMSPJEU.BIN` bank, drawn
+through `FUN_1000_2a78` → per layer → `DAT_8884 = [x, y, frame_index]` →
+`FUN_1000_942a` → `1cec:31b7` → `1cec:2ded`. The bank's **master frame table** is
+addressed directly by frame index: the existing `decode_sprite_frame(bumspjeu,
+idx)` already does it (`be32(bytes, idx*4) + 0x800` → 12-byte header + planar
+pixels). The selection chains, recovered from the static descriptor tables in
+`BUMPY.UNPACKED.EXE` (data segment `0x103b`; file offset = `0x11440 + DS_offset`):
+
+- **Layer A** (pegs/bumpers): `value → 0x3d3a[value] = sprite_index → record at
+  DS:0x37be + (sprite_index-1)*4 = {count, frame_index}`. The peg code `1` → frame
+  `0x40` (a 32×6 bumper). Draw position is `DS:0xf4` (`x = col*40`, `y = 24 +
+  row*32`), with `count` added to `y` (`DAT_8884[1]` in `FUN_1000_165e`).
+- **Layer B**: `value → 0x4086[value] → record at DS:0x3ad2`. Its frame indices are
+  small and reference a bank region not yet pinned (it is empty on `D1` board 0);
+  decode defensively. Column 7 is never drawn.
+- **Layer C** (collectibles): `frame_index = value + 0x179`; position from `DS:0x274`
+  (`x = 8 + col*40`, `y = 8 + row*32`). The `D1` board-0 codes
+  `0x1b,0x03,0x17,0x29,0x0f,0x0e` decode to a flag, popsicle, pizza, sundae, etc.
+  (16×16 each), confirmed by eye.
+
+Implemented in `src/resources/entity_sprites` (recovered tables + resolution) and
+`draw_bum_entities` in `src/video/board_renderer`; wired into `--render-board
+<level> <MONDE.VEC> <board> out.bmp sprites` and the live SDL board. Validated on
+`D1` board 0 (27 pegs + 6 collectibles, 0 skipped) in
+`tests/cpp/entity_sprites_test.cpp` and by eye
+(`analysis/generated/board_L1_B0_sprites.png`).
+
+The **compressed** sprite-frame path (flags `0x40`/`0x20`, `1cec:2ded`) is fully
+recovered from ground-truth disassembly but **unused by the supplied assets**
+(`BUMSPJEU` is 404+ frames all flags `0x0003`; the compressed `BUMPYSPR.BIN` /
+`SPRITE.BIN` are not shipped). See `analysis/specs/menu-resource-formats.md`.
+
+## Open questions / next blockers
+1. Per-world palette plumbing: confirm which resource the live game installs as
+   the gameplay palette. The entity sprites and PAV objects currently render under
+   the `MONDE?.VEC` map palette (world 1 = brown-tinted); the in-level gameplay
+   palette is likely a different resource and is not yet traced. This is the main
+   reason the rendered board looks monochrome-brown rather than colourful.
+2. Layer B sprite source: its `0x3ad2` records yield small frame indices that do
+   not resolve in the same `BUMSPJEU` master table region as layers A/C; the bank
+   region / base for layer B is not yet pinned (it is empty on `D1` board 0).
+3. Param roles `0x92/0x94/0x95` and byte `0x96`'s `0x2546` table — structure is
    known; exact gameplay meaning (counts vs flags) is not yet pinned.
-3. Per-world palette plumbing: confirm which resource the live game installs as
-   the gameplay palette (the MONDE palette matches by eye, but the exact source
-   load is not yet traced).
 4. Then: physics, collision, win/loss. The menu → level → menu shell is already
    wired (`src/game/app`, `src/platform_sdl3`): confirming "start" shows the
    static board in-window and Escape returns to the menu; what remains is the live

@@ -235,6 +235,42 @@ first visible row bytes at 0x0824:
 00 00 08 00 08 00 08 00
 ```
 
+### Compressed sprite frames (Recovered from disassembly; unused by supplied assets)
+
+Frames whose flags word has bit `0x40` set are RLE-of-zero-planes compressed and
+expanded by `1cec:2ded` into a scratch buffer before the normal blit. The
+algorithm was recovered from the ground-truth machine code (saved in
+`analysis/generated/static_blitter_bytes.json`, disassembled with capstone in
+16-bit real mode), not from the noisy Ghidra pseudocode. Per-frame relocation is
+`1cec:0c34`: each big-endian-32 frame-table entry `L` becomes a far pointer whose
+linear address is `archive_base + L + 0x800` — i.e. **pixel data is at file offset
+`entry + 0x800`** (the same `+0x800` convention as the uncompressed cursor).
+`1cec:0c77` byte-swaps the 12-byte header to native LE and, **for compressed
+frames, leaves the pixel stream untouched** (it only reshuffles uncompressed
+pixels), so the on-disk compressed stream is exactly what `2ded` consumes.
+
+Stream layout (after the 12-byte header): the frame is `width = width_units*4`
+px × `height` rows; a "group" is 16 px across all 4 planes = 8 plane-bytes.
+`nGroups = (width_units>>2) * height` **control bytes** come first, then a
+**data stream**. Each control byte's 8 bits (MSB first) map to the 8 plane-bytes
+of one group: a set bit means "read the next data byte" and a clear bit means
+"this plane-byte is 0" (transparent). Read data bytes pass through a 256-entry
+lookup table built by `1cec:3137`; for VGA (`DAT_203b_541d != 0`) that table is
+`table[i] = bitreverse8(i)`. Flag bit `0x20` (given `0x40`) selects a second
+variant (`@2ee9`) that uses the reverse table and a different per-group byte
+order; without `0x20` (`@3003`) the bytes are emitted directly. `cs:[0xded]`
+(= the VGA flag) gates an additional plane byte-swap.
+
+**No supplied asset uses this path.** `BUMSPJEU.BIN` (the gameplay sprite bank)
+is 404+ frames all with flags `0x0003`; `FLECHE.BIN` is uncompressed; the files
+the loader names for compressed sprites (`BUMPYSPR.BIN`, `SPRITE.BIN`) are not in
+the asset set. The decoder is therefore recovered and documented but deliberately
+not transcribed into the port (nothing to decode, nothing to validate against).
+The level entity sprites all resolve to **uncompressed** `BUMSPJEU` frames — see
+`analysis/specs/level-formats.md` ("Entity sprite bank").
+
+### Uncompressed cursor frame (worked example)
+
 For that row, plane 1, 2, and 3 have bit 4 set while plane 0 is clear, so pixel
 `x=4` decodes to colour `0x0e`. The full non-transparent mask is:
 

@@ -75,7 +75,8 @@ SdlApp::~SdlApp() {
 }
 
 int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResources& level,
-                std::span<const std::uint8_t> backdrop_screen, IndexedFramebuffer& frame) {
+                std::span<const std::uint8_t> backdrop_screen,
+                std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& frame) {
     bool running = true;
     MenuInput input{};
     while (running) {
@@ -100,6 +101,7 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
             menu_renderer.render(app.menu().view(), frame);
         } else {
             render_board(level, app.board_index(), backdrop_screen, frame);
+            draw_bum_entities(level.bum_entities(app.board_index()), sprite_bank, frame);
         }
 
         const auto rgba = frame.to_rgba();

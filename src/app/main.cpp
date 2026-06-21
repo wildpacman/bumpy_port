@@ -289,7 +289,8 @@ int render_pav(const std::filesystem::path& pav_path, const std::string& pal_pat
 // grid) and dump it to a BMP for by-eye comparison with the original.
 int render_board_to_bmp(const std::filesystem::path& asset_root, int level_number,
                         const std::filesystem::path& monde_path, std::size_t board_index,
-                        const std::filesystem::path& out_path, bool draw_map, bool draw_entities) {
+                        const std::filesystem::path& out_path, bool draw_map, bool draw_entities,
+                        bool draw_sprites) {
     const auto level = bumpy::LevelResources::load(asset_root, level_number);
     const auto backdrop = bumpy::decode_vec_resource(monde_path);
     bumpy::IndexedFramebuffer frame(320, 200);
@@ -298,9 +299,14 @@ int render_board_to_bmp(const std::filesystem::path& asset_root, int level_numbe
     std::cout << "wrote " << out_path.string() << " (level " << level_number << " board "
               << board_index << ": " << stats.objects_drawn << " objects, " << stats.stacked_cells
               << " stacked cells -> " << stats.stacked_tiles << " tiles";
-    if (draw_entities) {
+    if (draw_sprites) {
+        const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+        const auto ent = bumpy::draw_bum_entities(level.bum_entities(board_index), bank.bytes(), frame);
+        std::cout << "; entity sprites: " << ent.layer_a << " A / " << ent.layer_b << " B / "
+                  << ent.layer_c << " C (" << ent.skipped << " skipped)";
+    } else if (draw_entities) {
         const auto ent = bumpy::overlay_bum_entities(level.bum_entities(board_index), frame);
-        std::cout << "; BUM entities: " << ent.layer_a << " A / " << ent.layer_b << " B / "
+        std::cout << "; BUM markers: " << ent.layer_a << " A / " << ent.layer_b << " B / "
                   << ent.layer_c << " C";
     }
     write_24bit_bmp(out_path, frame);
@@ -321,12 +327,16 @@ int run_sdl_menu(const std::filesystem::path& asset_root) {
     const auto backdrop = bumpy::decode_vec_resource(asset_root / "MONDE1.VEC");
     const auto backdrop_bytes = backdrop.decoded_bytes();
 
+    // The BUM entity sprites are drawn from the uncompressed BUMSPJEU.BIN bank; it
+    // must outlive run() because the sprite span is a view into it.
+    const auto sprite_bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+
     bumpy::App app(level.board_count());
     bumpy::IndexedFramebuffer frame(320, 200);
     renderer.render(app.menu().view(), frame);
 
     bumpy::SdlApp sdl;
-    return sdl.run(app, renderer, level, backdrop_bytes, frame);
+    return sdl.run(app, renderer, level, backdrop_bytes, sprite_bank.bytes(), frame);
 }
 
 }  // namespace
@@ -355,13 +365,15 @@ int main(int argc, char* argv[]) {
             // PAV objects compose the board over it, using the MONDE per-world palette.
             // The optional "map" token overlays the MONDE world-select screen instead
             // of the flat clear (a debug aid; that screen is not the playfield).
-            // "entities" overlays the decoded BUM entity grid as inspection markers.
+            // "entities" overlays the decoded BUM entity grid as inspection markers;
+            // "sprites" draws the real BUM entity sprites from BUMSPJEU.BIN.
             const auto token = argc == 7 ? std::string_view(argv[6]) : std::string_view{};
             const bool draw_map = token == "map";
             const bool draw_entities = token == "entities";
+            const bool draw_sprites = token == "sprites";
             return render_board_to_bmp(asset_root, std::stoi(argv[2]), argv[3],
                                        static_cast<std::size_t>(std::stoi(argv[4])), argv[5],
-                                       draw_map, draw_entities);
+                                       draw_map, draw_entities, draw_sprites);
         }
         if (argc == 9 && std::string_view(argv[1]) == "--render-pav") {
             // --render-pav <pav> <pal|DEBUG> <out.bmp> <layout> <w> <h> <hdr>

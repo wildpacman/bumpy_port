@@ -20,10 +20,12 @@ public:
     SdlApp& operator=(const SdlApp&) = delete;
 
     // Drive the top-level App: render the menu when on the menu screen and the
-    // static level board (over the per-world backdrop palette) when on the level
-    // screen, presenting each frame until the App requests quit.
+    // level board (over the per-world backdrop palette, with the real BUM entity
+    // sprites from the sprite_bank) when on the level screen, presenting each frame
+    // until the App requests quit. sprite_bank is the whole BUMSPJEU.BIN.
     int run(App& app, const MenuRenderer& menu_renderer, const LevelResources& level,
-            std::span<const std::uint8_t> backdrop_screen, IndexedFramebuffer& frame);
+            std::span<const std::uint8_t> backdrop_screen,
+            std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& frame);
 
 private:
     SDL_Window* window_{};

@@ -1,5 +1,7 @@
 #include "video/board_renderer.h"
 
+#include "resources/entity_sprites.h"
+#include "resources/sprite_frame.h"
 #include "video/menu_renderer.h"  // vga_dac_to_rgba_component
 
 #include <stdexcept>
@@ -177,6 +179,71 @@ EntityOverlayStats overlay_bum_entities(const BumEntities& bum, IndexedFramebuff
             if (bum.layer_c(col, row) != 0) {
                 box_outline(target, pos.x, pos.y, 16, 16, color_c);  // collectible footprint
                 ++stats.layer_c;
+            }
+        }
+    }
+    return stats;
+}
+
+namespace {
+
+// Decode bank frame `index` and blit it at (x,y); sprite colour index 0 is
+// transparent (decode_sprite_frame maps it to sprite_transparent_index). Returns
+// false if the frame did not decode (out-of-range/compressed/invalid).
+bool blit_bank_frame(std::span<const std::uint8_t> bank, int index, int x, int y,
+                     IndexedFramebuffer& target) {
+    MenuImage frame;
+    try {
+        frame = decode_sprite_frame(bank, index);
+    } catch (const std::exception&) {
+        return false;
+    }
+    for (int py = 0; py < frame.height; ++py) {
+        for (int px = 0; px < frame.width; ++px) {
+            const auto color = frame.pixels[static_cast<std::size_t>(py) * frame.width + px];
+            if (color != sprite_transparent_index) {
+                plot(target, x + px, y + py, color);
+            }
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
+EntitySpriteStats draw_bum_entities(const BumEntities& bum,
+                                    std::span<const std::uint8_t> sprite_bank,
+                                    IndexedFramebuffer& target) {
+    EntitySpriteStats stats;
+    // Faithful to FUN_1000_2a78: row-major, per cell draw layer A, then B, then C.
+    for (int row = 0; row < BumEntities::rows; ++row) {
+        for (int col = 0; col < BumEntities::columns; ++col) {
+            if (const auto a = entity_layer_a_sprite(bum.layer_a(col, row)); a.present()) {
+                const auto pos = entity_layer_ab_position(col, row);
+                if (blit_bank_frame(sprite_bank, a.frame_index, pos.x, pos.y + a.y_offset, target)) {
+                    ++stats.layer_a;
+                } else {
+                    ++stats.skipped;
+                }
+            }
+            if (const std::uint8_t bv = bum.layer_b(col, row); bv != 0 && col != 7) {
+                if (const auto b = entity_layer_b_sprite(bv); b.present()) {
+                    const auto pos = entity_layer_ab_position(col, row);
+                    if (blit_bank_frame(sprite_bank, b.frame_index, pos.x, pos.y + b.y_offset,
+                                        target)) {
+                        ++stats.layer_b;
+                    } else {
+                        ++stats.skipped;
+                    }
+                }
+            }
+            if (const std::uint8_t cv = bum.layer_c(col, row); cv != 0) {
+                const auto pos = bum_cell_position(col, row);
+                if (blit_bank_frame(sprite_bank, entity_layer_c_frame(cv), pos.x, pos.y, target)) {
+                    ++stats.layer_c;
+                } else {
+                    ++stats.skipped;
+                }
             }
         }
     }

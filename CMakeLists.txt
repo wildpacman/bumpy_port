@@ -24,6 +24,7 @@ add_library(bumpy_core
   src/resources/menu_resources.cpp
   src/resources/sprite_frame.cpp
   src/resources/level_resources.cpp
+  src/resources/entity_sprites.cpp
   src/video/menu_renderer.cpp
   src/video/board_renderer.cpp)
 target_include_directories(bumpy_core PUBLIC src)
@@ -52,6 +53,7 @@ add_executable(bumpy_tests
   tests/cpp/menu_renderer_test.cpp
   tests/cpp/level_resources_test.cpp
   tests/cpp/board_renderer_test.cpp
+  tests/cpp/entity_sprites_test.cpp
   tests/cpp/menu_test.cpp
   tests/cpp/app_test.cpp)
 target_link_libraries(bumpy_tests PRIVATE bumpy_core Catch2::Catch2WithMain)
