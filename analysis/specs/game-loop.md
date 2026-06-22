@@ -150,6 +150,58 @@ Death (0x2e), pipe-enter (0x1c), death-anim (0x23/0x24), cleared (0x30) are set
 directly via `4263`, routed through the second (animation) table at `DS:0x43c0`
 (`238e`: row = state ×0x22, col = `792a` step counter), not via `0x7ca`.
 
+### Animation-step dispatch — `FUN_1000_238e` → table at `DS:0x43c0` (Confirmed)
+
+The decide table above only runs at rest (`824d==0`). **While a scripted move
+plays (`824d!=0`), `1d26` calls `238e` instead**, which dispatches a second
+function-pointer table at `DS:0x43c0` indexed by `state*0x22 + 792a*2` (so 17
+step-slots per state; `792a` is the step counter `13df` advances). The decide
+handlers also call `238e` once right after `4263` to run **step 0** of the new
+move. This per-step table is where the ball's *cell* advances and where input is
+re-read mid-move to chain the next action — without it, motion and control are
+incomplete. Resolve it with `tools/re/dump_player_dispatch.py`.
+
+Per-step **micro-op vocabulary** (each slot is a tiny handler; Confirmed unless
+noted):
+
+| Handler | Effect |
+|---|---|
+| `7111` | no-op: render the current frame only (leaf stub, not decompiled) |
+| `64e2`/`64ff` | `856e -= 8` / `+= 8` — advance the ball one **row** (UP / DOWN) |
+| `651c`/`6535` | `856e -= 1` / `+= 1` — advance the ball one **col** (LEFT / RIGHT) |
+| `6611`/`65e5`/`65fb` | input-mask: `8244 &= 0x0f` / `&= 0x10` (keep fire) / `&= 0x1d` (drop RIGHT) |
+| `6717` | latch `856f=856e`, run the pickup check `6d26` (collect when over a plane-C cell) |
+| `654e` | if fire/left held and not already latched, start a held-bump (`695e`) |
+| `6587` | the `0x02`-lane + RIGHT-held special (sets the `79b4=0x34` auto-roll) |
+| `4437`/`4344` | the **input-decode tree** (below); re-reads input to chain the next move |
+| `6648`/`6699`/`66d8`/`6748`/`6789`/`673a`/`6305` | per-state step-0 entry: set sprite (`6d6a`/`6d94`), play the bump sfx (`6a89`/`6e11`) — sprite/sfx detail = Hypothesis |
+
+So the **cell tracks the pixel move**: e.g. roll-right (state `0x02`) row =
+`[entry, nop, nop, nop, 6372, 6535, 6717, 654e, 6587, 65e5, 6627, nop, 65fb]` —
+at step 5 `6535` flips `856e` to the next column (mid-way through the 13-step
+`+40px` roll), step 6 collects, steps 7-8 re-arm from input. Roll-left (`0x01`)
+is the mirror with `651c` at step 5; hop-up (`0x03`) uses `64e2` at step 3;
+hop-down (`0x04`) uses `64ff` at step 0.
+
+### Input-decode tree (the `0x43c0` chaining) (Confirmed)
+
+`4437`/`4344` walk a fixed-priority tree over the `8244` input bits, each branch
+either arming a move or falling through to the next direction:
+
+```
+4437 → fire(0x10)? 440c : 4398
+4398 → LEFT(0x01)? 4454 : 43b5         4454: hop UP    (state 0x1d) if cell above clear, else try RIGHT
+43b5 → RIGHT(0x02)? 448a : 43d2        448a: hop DOWN  (state 0x1e) if cell below clear, else try UP
+43d2 → UP(0x04)?   44c0 : 43ef         44c0: hop up-LEFT  (2634) if left  cell occupied (45cf/4605), else 0x1f
+43ef → DOWN(0x08)? 4532 : 440c         4532: hop up-RIGHT (26a1) if right cell occupied, else 0x20
+440c → (no dir) settle/pipe (6d94 0x2f / 4305)
+```
+
+`45cf(cell)` = plane-A at cell is non-zero and not `0x19`; `4605(cell)` = plane-B
+at `cell+0x30` is non-zero and not `0x13` (i.e. "is there structure to bump
+against / land on"). This is a diamond control scheme: the four inputs bump the
+ball UP / DOWN / up-left / up-right depending on what neighbouring cells hold.
+
 ### The key helper — `FUN_1000_4263(newState)`
 
 How a handler both transitions and arms a move in one call:
