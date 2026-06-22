@@ -108,6 +108,93 @@ TEST_CASE("score uses the documented per-tile values") {
     CHECK(g.score() == 10000);
 }
 
+TEST_CASE("an idle ball springs the lane it rests on") {
+    // While resting the ball idle-blinks (states 0x3c-0x3f), whose step-0 handler
+    // FUN_1000_6648 springs the tile underneath via kIdleSpringA. On a 0x01 lane that
+    // is event 0x04, which plays the peg bumper frame 0x40 at the ball's own cell.
+    LevelGame game(lane_board(0x14));
+    std::array<ObjectAnimSprite, 7> anims{};
+    bool sprang = false;
+    std::uint8_t cell = 0xff;
+    std::uint16_t frame = 0;
+    for (int i = 0; i < 400; ++i) {
+        game.tick(none);
+        const std::size_t n = game.object_anims(anims);
+        CHECK(n <= anims.size());
+        for (std::size_t k = 0; k < n; ++k) {
+            if (!anims[k].layer_b && anims[k].frame_index != kAnimHiddenFrame) {
+                sprang = true;
+                cell = anims[k].cell;
+                frame = anims[k].frame_index;
+            }
+        }
+    }
+    CHECK(sprang);          // the resting lane reacted
+    CHECK(cell == 0x14);    // ... at the ball's cell
+    CHECK(frame == 0x40);   // ... drawing the peg bumper frame
+}
+
+TEST_CASE("bumping a lane while rolling springs it (held bump)") {
+    // Rolling with fire/up held latches a held-bump (FUN_1000_654e -> 695e), which
+    // springs the lane under the ball (kHeldBump[0x01] = event 0x03).
+    LevelGame game(lane_board(0x14));
+    const LevelInput left_fire{true, false, false, false, true};
+    std::array<ObjectAnimSprite, 7> anims{};
+    bool sprang = false;
+    for (int i = 0; i < 20; ++i) {
+        game.tick(left_fire);
+        const std::size_t n = game.object_anims(anims);
+        for (std::size_t k = 0; k < n; ++k) {
+            if (!anims[k].layer_b && anims[k].frame_index != kAnimHiddenFrame) {
+                sprang = true;
+            }
+        }
+    }
+    CHECK(sprang);
+}
+
+TEST_CASE("rolling off a platform springs it even without fire held") {
+    // The "land and slide off" reaction: starting a roll (states 0x01/0x02/0x12/...)
+    // recoils the lane via FUN_1000_6699/66d8 -> 6d6a, independent of the held-bump
+    // path (which needs fire/up). Holding only LEFT must still spring the lane.
+    LevelGame game(lane_board(0x14));
+    std::array<ObjectAnimSprite, 7> anims{};
+    bool sprang = false;
+    for (int i = 0; i < 16; ++i) {
+        game.tick(left);  // LEFT only -- no fire, no up
+        const std::size_t n = game.object_anims(anims);
+        for (std::size_t k = 0; k < n; ++k) {
+            if (!anims[k].layer_b && anims[k].frame_index != kAnimHiddenFrame) {
+                sprang = true;
+            }
+        }
+    }
+    CHECK(sprang);
+}
+
+TEST_CASE("a spring animation steps one sprite per frame then ends") {
+    // Drive the ball idle until a spring arms, then confirm its frame_index changes
+    // over consecutive frames and the slot frees itself (the 0xff terminator).
+    LevelGame game(lane_board(0x14));
+    std::array<ObjectAnimSprite, 7> anims{};
+    bool seen = false;
+    bool done = false;
+    int active_frames = 0;
+    for (int i = 0; i < 400 && !done; ++i) {
+        game.tick(none);
+        if (game.object_anims(anims) > 0) {
+            seen = true;
+            ++active_frames;       // count the first contiguous spring's frames
+        } else if (seen) {
+            done = true;           // the spring finished -> slot freed
+        }
+    }
+    REQUIRE(seen);
+    CHECK(done);                 // it terminated (the 0xff stream terminator)
+    CHECK(active_frames >= 3);   // ... after playing several steps
+    CHECK(active_frames <= 20);
+}
+
 TEST_CASE("real D1 board 0 runs for many frames without escaping the grid") {
     // Loads the user-supplied originals from the project root (as the other asset
     // tests do). Drives the ball through every input direction and checks it never
@@ -120,9 +207,15 @@ TEST_CASE("real D1 board 0 runs for many frames without escaping the grid") {
     const LevelInput seq[] = {
         none, up, {true, false, false, false, false}, {false, true, false, false, false},
         {false, false, false, true, false}, {false, false, false, false, true}};
+    std::array<ObjectAnimSprite, 7> anims{};
     for (int i = 0; i < 1000; ++i) {
         g.tick(seq[i % 6]);
         REQUIRE(g.ball_cell() < 0x30);  // never rolls off the board
         REQUIRE(g.collectibles_left() <= g.grid()[0x92]);
+        const std::size_t n = g.object_anims(anims);  // springs stay within bounds
+        REQUIRE(n <= anims.size());
+        for (std::size_t k = 0; k < n; ++k) {
+            REQUIRE(anims[k].cell < 0x30);
+        }
     }
 }

@@ -293,6 +293,55 @@ tables and `value+0x179` collectible mapping).
 D-file board counts: BUM `0xb60` (2912) → `(2912-2)/194 = 15` boards (worlds
 1,2,3,7,8); the 2330-byte group → 12 boards (worlds 4,5).
 
+## Tile bump/spring animations — the pegs/blocks reacting (Confirmed)
+
+When the ball bumps a peg or block (and while it rests on one), the tile visibly
+springs/recoils. This is a small per-tile animation system, separate from the
+ball's own sprite, decoded by `tools/re/dump_object_anim.py` and ported to
+`src/game/object_anim.*` + the `LevelGame` slots.
+
+**Slots.** Three layer-A peg slots (`DS:0x4c70`) and four layer-B block slots
+(`DS:0x4cbc`). Each slot record: `[0]`=active, `[1]`=grid cell, `[2..5]`=stream
+cursor (far ptr), `[6]`=current frame byte, `[8]`=current `y_offset`, `[10]`=current
+frame. Stepped every frame by `FUN_1000_14e4` (layer A) / `FUN_1000_15a1` (layer B).
+
+**Stream.** Each step reads one byte: `0xff` frees the slot, `0x00` holds the
+previous sprite, otherwise the byte is a **sprite index** into the same record
+table the static draw uses — layer A `DS:0x37be`, layer B `DS:0x3ad2` — giving
+`{frame_index, y_offset}` (the record's "count" word is the Y anchor). Layer-B
+frames are submitted with **+0xf1** (`FUN_1000_17c7`), the bank region the static
+layer-B path also needs. A frame word with bit `0x200` is a hidden (blink-off)
+step. The squash comes from the frame art + its Y anchor: e.g. layer-B block
+value 2 rises `f03..f07`, compresses (`f07` at `y17`, held 4 frames), then springs
+back up through `y14→12→10→8→6→2`.
+
+**Arming.** `FUN_1000_69aa(id)` (layer A, cell `856f`) / `FUN_1000_6a89(id)` (layer
+B, cell `8570`) look up a descriptor (`DS:0x2ede` / `DS:0x3256`) = `{settle tile,
+stream ptr}`, write the **settle tile** into the grid plane (so the tile keeps its
+post-bump look — for the common `0x01` lane the settle is `0x01`, i.e. no change,
+which is why the port ran without it), and arm a free/matching slot.
+
+**Triggers** (event id → `69aa`/`6a89`):
+
+| Where | Trigger |
+|---|---|
+| rest/idle-blink (`6648`, states `0x00/0x11/0x3c-0x3f`) | `6987(0x3d0a[7924])` — spring the tile under the ball |
+| **roll start** (`6699`/`66d8`, when prev state ∉ {3,0xf}) | `6d6a` → `6987(0x3c7a[7924]` / `0x3caa[7924])` — the lane recoiling left/right as it deflects the ball (the "land and slide off" reaction) |
+| held bump (`654e`→`695e`) | `69aa(0x3cda[7924])` (same id drives the forced fall) |
+| `0x02`-lane + DOWN (`6587`) | `69aa(0x34)` |
+| hop entries (`6748/6789`) | `6d94(0x18/0x19)` (layer-A on ball cell) + layer-B select |
+| layer-B neighbour bump (`6699/66d8/67e2/6813/68fe/693a/6890/68bb`) | `6a89(0x35be..0x369e[8551])` keyed by the bumped block's plane-B value |
+| fall routing (`2810`) | `69aa(0x76b[79b9*2])` — the 2nd byte of each `DS:0x76a` pair |
+| chute top (`253f`), `0x0e` climb (`29a6`) | `69aa(0x24)` |
+| hole/warp (`4802`, `25ad`) | `69aa(0x27)` |
+| level-clear door (`233a`/`6c14`) | `69aa(0x59/0x5a)` (cosmetic, end of board) |
+
+**Render.** Back-to-front the slot draws over a restored-clean background, so the
+port suppresses the static tile under each active slot and overlays the slot's
+current `{frame, y_offset}` (`draw_object_anims`). World 1 is all plane-A lanes
+(no blocks), so its springs are entirely layer A. Verified by-eye: the lane under
+the ball bends into a U and recoils, matching the original.
+
 ## Collect, score, win/lose (Confirmed)
 
 - **Collect** (`6c14`): plays the pickup, clears the collectible cell
@@ -340,21 +389,26 @@ implement the per-frame loop as a platform-independent state machine:
 - ~~**Dispatch tables** `DS:0x7ca` + `DS:0x43c0`~~ **DONE** — both resolved by
   `tools/re/dump_player_dispatch.py` and documented above (decide table + the
   animation-step table + the `4437` input tree).
-- **Neighbour-reaction tables** for the hop handlers — NOT yet dumped. `2634`
-  (hop up-left) reads `DS:0x4256[plane-B of cell-1]`, `26a1` reads `DS:0x4276`,
-  `270c` reads `DS:0x4296`, `2776` reads `DS:0x42b6`; the looked-up code becomes
-  the next state (e.g. code `1` ⇒ auto-roll-left state `0x01`, with a `7921==0x0b`
-  special → `0x16`). These decide whether a player bump turns into an auto-roll,
-  a wall-bump, or a settle, so the port needs them. Also pending for a full port:
-  `0x3cda` (held-bump action, `695e`), `0x4396` (`6d26` structure trigger),
-  `0x76a` (`2810` fall-routing), `0x35be..0x369e` (per-step bump sprites), and the
-  `0x266e/0x269e/0x260e/0x263e/0x276e` sfx tables (sfx can be stubbed).
-- **Port progress (Stage 3):** `move_scripts`, `tile_reactions` and `ball_motion`
-  (arm/step/cell↔pixel) are ported + tested. Remaining = transcribe the handlers
-  into a platform-independent `LevelGame` (per-frame `13df`→`1d26` driving the
-  decide/animate dispatch over a mutable 3-plane grid), then integrate into `App`
-  + SDL. The roll-chaining (idle-blink ↔ `4437` input tree ↔ `a1a7` held-bump) is
-  subtle and is best verified by-eye against the original.
+- ~~**Neighbour-reaction tables** for the hop handlers~~ **DONE** — `2634`/`26a1`/
+  `270c`/`2776` read `DS:0x4256/0x4276/0x4296/0x42b6[plane-B of the neighbour]`;
+  the looked-up code becomes the next state (code `1` ⇒ auto-roll-left `0x01`, with
+  a `7921==0x0b` special → `0x16`). Baked into `level_game.cpp` (`kNeigh*`).
+- ~~**Tile bump/spring animations**~~ **DONE** — the per-tile recoil system
+  (`0x3cda` held-bump, `0x3d0a` idle spring, `0x76b` fall-routing spring,
+  `0x35be..0x369e` per-step bump sprites, the descriptor/stream tables
+  `0x2ede/0x3256`, and the record tables `0x37be/0x3ad2`). Extracted by
+  `tools/re/dump_object_anim.py` → `src/game/object_anim.gen.cpp`, ported to
+  `LevelGame` + `draw_object_anims`. See the "Tile bump/spring animations" section
+  above. Still open: `0x4396` (`6d26` structure trigger) and the
+  `0x266e/0x269e/0x260e/0x263e/0x276e` sfx tables (sfx stubbed).
+- **Port progress (Stage 3):** `move_scripts`, `tile_reactions`, `ball_motion`,
+  the full `LevelGame` decide/animate dispatch, and the tile bump/spring
+  animations are ported + tested + integrated into `App` + SDL. The roll-chaining
+  (idle-blink ↔ `4437` input tree ↔ `a1a7` held-bump) and the springs are verified
+  by-eye against the original (the lane recoils under the ball). Remaining polish:
+  the static **layer-B** draw still omits the `+0xf1` frame bias (no world-1
+  impact — world 1 has no blocks — but later-world blocks settle to a wrong static
+  frame after a spring); and entity AI (`DS:0x870`) for board-3 monsters.
 - ~~**Tile-value semantics**~~ **DONE** — confirmed against decoded D1 in
   [tile-semantics.md](tile-semantics.md): plane-A behavior is table-driven by
   structure code (5 reaction tables at `DS:0x36be..0x377e` + sprite map

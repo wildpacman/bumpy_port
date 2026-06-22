@@ -6,6 +6,7 @@
 #include "video/map_renderer.h"
 
 #include <algorithm>
+#include <array>
 #include <optional>
 #include <stdexcept>
 
@@ -172,8 +173,20 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
         } else {
             render_board(level, app.board_index(), backdrop_screen, frame);
             if (game) {
-                const BumEntities live = live_entities();
+                BumEntities live = live_entities();
+                // Tile bump/spring animations: pull the live slots, blank the static
+                // tile under each so only the moving spring sprite draws (matching the
+                // original's background restore), then overlay the spring frames.
+                std::array<ObjectAnimSprite, 7> anims{};
+                const std::size_t anim_count = game->object_anims(anims);
+                for (std::size_t k = 0; k < anim_count; ++k) {
+                    const std::size_t cell = anims[k].cell;
+                    const std::size_t off = anims[k].layer_b ? BumEntities::layer_b_offset
+                                                             : BumEntities::layer_a_offset;
+                    live.bytes[cell + off] = 0;
+                }
                 draw_bum_entities(live, sprite_bank, frame);
+                draw_object_anims({anims.data(), anim_count}, sprite_bank, frame);
                 draw_ball(sprite_bank, game->ball_frame(), game->ball_x(), game->ball_y(), frame);
             } else {
                 draw_bum_entities(level.bum_entities(app.board_index()), sprite_bank, frame);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/indexed_framebuffer.h"
+#include "game/object_anim.h"  // ObjectAnimSprite
 #include "resources/level_resources.h"
 
 #include <cstddef>
@@ -81,5 +82,15 @@ EntitySpriteStats draw_bum_entities(const BumEntities& bum,
 // true if the ball was drawn.
 bool draw_ball(std::span<const std::uint8_t> sprite_bank, int frame, int ball_x, int ball_y,
                IndexedFramebuffer& target);
+
+// Overlay the live tile bump/spring animations (LevelGame::object_anims) on top of
+// the static board. Each entry draws its bank frame at the cell's layer-A/B screen
+// slot (entity_layer_ab_position) plus the step's y_offset, exactly like the static
+// peg/block sprites; a kAnimHiddenFrame step (blink-off) and any frame that fails to
+// decode draw nothing. The animating cell's static tile should be suppressed by the
+// caller so only the moving sprite shows (mirrors the original's background restore).
+// Returns the number of frames actually drawn.
+int draw_object_anims(std::span<const ObjectAnimSprite> anims,
+                      std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& target);
 
 }  // namespace bumpy

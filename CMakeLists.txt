@@ -30,6 +30,7 @@ add_library(bumpy_core
   src/game/tile_reactions.gen.cpp
   src/game/ball_motion.cpp
   src/game/player_dispatch.gen.cpp
+  src/game/object_anim.gen.cpp
   src/game/level_game.cpp
   src/video/menu_renderer.cpp
   src/video/screen_image.cpp

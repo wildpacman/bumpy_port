@@ -1,6 +1,6 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-06-22.
+Source of truth for new sessions. Last updated: 2026-06-23.
 
 ## Goal
 
@@ -41,10 +41,15 @@ only a platform adapter.
   screen deplanes with its embedded VGA palette, and the selection cursor (the
   `FLECHE.BIN` arrow sprite) draws at the active row and tracks `cursor_row`.
   Resource bundle, menu state machine, and SDL3 shell build and run.
-- **Stage 3 — First level — IN PROGRESS.** Level data formats recovered and
-  visually verified, a **static composed board renders natively**, the **BUM entity
-  sprites** draw from the uncompressed bank, and the **world-map screen is now
-  wired in**: confirming "start" on the menu shows world 1's map
+- **Stage 3 — First level — IN PROGRESS (board 0 playable).** Level data formats
+  recovered and visually verified, the composed board renders natively, the **BUM
+  entity sprites** draw from the uncompressed bank, the **world-map screen** is
+  wired in, and the **in-level gameplay loop is live** — the ball state machine
+  (move/jump/roll/fall/warp), collect/score/lives/win, and the **tile bump/spring
+  animations** (pegs/platforms recoiling) all run in-window (see the two
+  in-level-loop sections below). Remaining: entity AI (node 3+), the map
+  score/lives HUD, worlds 2–9. The world-map screen is now
+  wired in: confirming "start" on the menu shows world 1's map
   (`MONDE1.VEC` + the Bumpy avatar on node 1); the arrows move between linked nodes;
   fire enters that node's board; Escape returns to the menu (see "Stage 3 world-map
   screen" below). The flow now matches the original's **menu → world map →
@@ -254,6 +259,52 @@ functions), DOSBox-X reference harness.
 - **`--render-jump <node> <MONDE.VEC> <out-prefix>`** dumps the animation as
   `<prefix>NN.bmp` for by-eye verification. 69 C++ tests pass; originals verify clean.
 
+**Stage 3 in-level gameplay loop (builds and runs on master):**
+- **`src/game/level_game`** is the platform-independent in-level loop transcribed
+  from `FUN_1000_0c18`'s playfield body + the `FUN_1000_1d26` player tick: a mutable
+  3-plane grid + a `BallMotion`, one `tick()` == one frame = `13df` (advance the
+  active move script) → `1d26` (sample tile `236f` / read input `1dde` /
+  `824d==0 ? decide 1e02 : animate 238e`). The whole board-0 handler set is ported
+  1:1: idle/hops/fall/roll/land/warp/hole/clear, the `4437` diamond input tree, the
+  special bumpers `1fbe/207d`, and the `DS:0x43c0` per-step micro-ops, plus
+  collect/score/lives/win. Dispatch + neighbour/routing tables are baked from the
+  binary (`tools/re/dump_player_dispatch.py`, `move_scripts.gen`, `tile_reactions.gen`).
+- **Motion is keyframe-scripted, not physics**: a state decides an action, `4263`
+  arms a `{count,mirror,ptr}` record, `13df` steps a `{frame,dx,dy}` script (cell
+  spacing 40×32). Loop exit flags `928d` quit / `856d` win / `9d30` death.
+- **Frame pacing is per-phase**: the `13df`-driven loops (in-level + the world-map
+  cloud-jump) run at **35.043 Hz** (one step per two retraces), menu/map navigation
+  at **70.086 Hz** (`src/platform_sdl3/sdl_app`, `half_rate`). Pinned by side-by-side
+  DOSBox comparison.
+- Wired into `App` + SDL: arrows move the ball, Enter/Space = fire; the ball sprite
+  and live collectibles render; `App::leave_level()` returns to the map on
+  win/lose. Full spec: `analysis/specs/game-loop.md`. Verified by tests + by eye
+  (`--render-play 1 MONDE1.VEC 0 <dir>` dumps gameplay frames to BMP).
+
+**Stage 3 tile bump/spring animations (recovered + implemented):**
+- The pegs/platforms now **recoil** when the ball bumps or rests on them. Recovered
+  system: 3 layer-A + 4 layer-B animation slots stepped by `FUN_1000_14e4`/`15a1`,
+  each playing a sprite-index **byte stream** (`0xff`=end, `0x00`=hold) whose bytes
+  index the same record tables as the static draw (`DS:0x37be` layer A, `DS:0x3ad2`
+  layer B, the latter **+0xf1**) → `{frame, y_offset}`. The squash is the frame art
+  + its Y anchor. Armed by `FUN_1000_69aa`/`6a89`, which also write a "settle tile"
+  into the grid (for the `0x01` lane the settle is `0x01`, so no control-flow change).
+- Triggers (all 1:1): rest/idle-blink (`6648`), **roll-start `6699/66d8→6d6a`** (the
+  lane recoiling left/right as it deflects the ball — `6d6a` looks like a ball-sprite
+  call but springs the tile), held-bump (`654e→695e`), `0x02`-lane (`6587`), hop
+  entries (`6748/6789→6d94`), fall routing (`2810`, the 2nd byte of the `0x76a`
+  pairs), chute/warp (`0x24/0x27`), layer-B neighbour bump (`0x35be..0x369e[8551]`).
+- Extracted by **`tools/re/dump_object_anim.py`** → `src/game/object_anim.{h,gen.cpp}`,
+  ported into `LevelGame` (slots + `f_14e4/15a1/69aa/6a89/6d6a`) and rendered by
+  **`draw_object_anims`** (`src/video/board_renderer`): suppress the static tile under
+  an active slot, overlay the slot's current frame. World 1 is all plane-A lanes, so
+  its springs are entirely layer A. **99 C++ tests pass**; verified by eye
+  (`--render-play 1 MONDE1.VEC 0 leftfire`): the lane bends into a U and recoils, and
+  rolling off a platform tilts it in the push direction — matching the original.
+  Follow-up: the static **layer-B** draw still lacks the `+0xf1` bias (no world-1
+  impact — no blocks there). Bonus find: the `+0xf1` is the "bank region not yet
+  pinned" note from `entity_sprites.h`.
+
 **Placeholders / remaining work:**
 - Compressed sprite frames (flags `0x40`/`0x20`, `1cec:2ded`) are **fully recovered
   from disassembly but unused by the supplied assets** — `BUMSPJEU` is all
@@ -262,12 +313,13 @@ functions), DOSBox-X reference harness.
   transcribed into the port (nothing to decode/validate).
 - The menu sub-screens (HIGH-SCORE / PASSWORD draw per-glyph character sprites
   via the same archive) are not implemented.
-- The in-window level screen is **static** — it shows the composed board with its
-  BUM entity sprites but has no physics, collision, or win/loss yet (Stage 3
-  remainder). The world map navigates (with the gliding Bumpy-on-cloud avatar),
-  **plays the fire-to-enter cloud-jump animation** (see below), and selects boards, but
-  its score/lives HUD overlays and the per-completed-node markers (frame `0x1da`) are
-  not drawn yet.
+- The in-window level screen is **live** (ball state machine + collect/score/win +
+  the tile bump/spring animations — see the two in-level-loop sections above). Still
+  missing in-level: **entity AI** (`DS:0x870`, only node 3+ has a monster), death by
+  entity collision, and the in-level score/lives HUD. The world map navigates (with
+  the gliding Bumpy-on-cloud avatar), **plays the fire-to-enter cloud-jump animation**,
+  and selects boards, but its score/lives HUD overlays and the per-completed-node
+  markers (frame `0x1da`) are not drawn yet.
 
 ## How to run
 
@@ -280,6 +332,7 @@ cmake --build --preset windows-debug
 & build/windows-debug/Debug/bumpy_port.exe --render-pav D1.PAV MONDE1.VEC out.bmp planeseq 320 192 6
 & build/windows-debug/Debug/bumpy_port.exe --render-board 1 MONDE1.VEC 0 board.bmp        # static board (add 'map' to overlay the world-select screen)
 & build/windows-debug/Debug/bumpy_port.exe --render-map 1 MONDE1.VEC map.bmp              # world-map screen (MONDE1 + Bumpy avatar on node 1)
+& build/windows-debug/Debug/bumpy_port.exe --render-play 1 MONDE1.VEC 0 leftfire play     # drive board 0 with an input (none/up/down/left/right/fire/leftfire), dump playNN.bmp + ball/spring log
 ```
 
 In the window: confirm "start" on the menu → world map; arrows move Bumpy between
@@ -330,17 +383,20 @@ The in-level palette is now **DONE** (see "Stage 3 in-level palette" above): the
 board renders under its own per-board DEC palette (world 1 is dark blue), matching
 the original.
 
-The next milestone is **making the board come alive** — the live gameplay loop:
+**The board is alive** — the in-level gameplay loop, collect/score/win, and the tile
+bump/spring animations all run in-window for world-1 boards (see the two
+in-level-loop sections above). The next milestones:
 
-1. **Physics + collision + win/loss** — Bumpy movement, bumping objects, the
-   board-clear condition, and advancing through a level's 15/12 boards. Recover the
-   in-level loop body in `FUN_1000_0c18` (the inner `while` after `FUN_1000_3852`
-   returns and `DAT_7310 = DAT_854e - 1`) and the per-tick update/draw/input
-   routines it calls (`FUN_1000_138c`/`13b2`/`13df`/`165e`/`17c7`/`19a1`/… ).
-2. **Run the board loop in-window** — replace the static `Screen::level` display
-   (currently `render_board` + `draw_bum_entities`) with the live board loop, and
-   return to the world map (then menu) on win/loss instead of only on Escape. The
-   `src/game/app` shell and the `WorldMap → board node-1` selection are the hooks.
+1. **Entity AI + death** — the `DS:0x870` monster movement (indexed by board header
+   byte `0x94`/`8562`) and ball↔entity collision death (`50fb`/`228d`). Only node 3+
+   (board index 2) has an active entity, so boards 0–1 already play fully.
+2. **Static layer-B `+0xf1`** — apply the recovered frame bias to the static
+   block draw too, so later-world blocks settle to the right sprite after a spring
+   (no world-1 impact — world 1 has no blocks).
+3. **HUD + world advance** — the in-level and world-map score/lives HUD
+   (`FUN_1000_0816` digit formatter), completed-node markers (frame `0x1da`), and
+   advancing across a level's 15/12 boards then to **worlds 2–9** (per-world graphs
+   `0x10c8[world]`/`0x10ec[world]`).
 
 World-map follow-ups (deferred this slice, low priority): the score/lives HUD on the
 map (`FUN_1000_0816` digit formatter), completed-node markers (frame `0x1da`,

@@ -261,4 +261,21 @@ bool draw_ball(std::span<const std::uint8_t> sprite_bank, int frame, int ball_x,
     return true;
 }
 
+int draw_object_anims(std::span<const ObjectAnimSprite> anims,
+                      std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& target) {
+    int drawn = 0;
+    for (const auto& a : anims) {
+        if (a.frame_index == kAnimHiddenFrame) {
+            continue;  // a blink-off step draws nothing (the original skips the raster)
+        }
+        const int col = a.cell % 8;
+        const int row = a.cell / 8;
+        const auto pos = entity_layer_ab_position(col, row);
+        if (blit_bank_frame(sprite_bank, a.frame_index, pos.x, pos.y + a.y_offset, target)) {
+            ++drawn;
+        }
+    }
+    return drawn;
+}
+
 }  // namespace bumpy

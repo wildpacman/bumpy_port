@@ -333,11 +333,11 @@ int render_play_to_bmps(const std::filesystem::path& asset_root, int level_numbe
 
     bumpy::LevelGame game(level.bum_entities(board_index));
     bumpy::LevelInput input{};
-    input.left = dir == "left";
+    input.left = dir == "left" || dir == "leftfire";
     input.right = dir == "right";
     input.up = dir == "up";
     input.down = dir == "down";
-    input.fire = dir == "fire";
+    input.fire = dir == "fire" || dir == "leftfire";
 
     auto dump = [&](int index) {
         bumpy::IndexedFramebuffer frame(320, 200);
@@ -345,7 +345,18 @@ int render_play_to_bmps(const std::filesystem::path& asset_root, int level_numbe
         bumpy::BumEntities live{};
         std::copy(game.grid().begin(), game.grid().begin() + bumpy::BumEntities::record_size,
                   live.bytes.begin());
+        // Tile bump/spring animations, drawn exactly as the SDL app does: blank the
+        // static tile under each animating cell, then overlay the spring frames.
+        std::array<bumpy::ObjectAnimSprite, 7> anims{};
+        const std::size_t anim_count = game.object_anims(anims);
+        for (std::size_t k = 0; k < anim_count; ++k) {
+            const std::size_t cell = anims[k].cell;
+            const std::size_t off = anims[k].layer_b ? bumpy::BumEntities::layer_b_offset
+                                                     : bumpy::BumEntities::layer_a_offset;
+            live.bytes[cell + off] = 0;
+        }
         bumpy::draw_bum_entities(live, bank.bytes(), frame);
+        bumpy::draw_object_anims({anims.data(), anim_count}, bank.bytes(), frame);
         bumpy::draw_ball(bank.bytes(), game.ball_frame(), game.ball_x(), game.ball_y(), frame);
         std::ostringstream name;
         name << prefix << std::setw(2) << std::setfill('0') << index << ".bmp";
@@ -354,15 +365,22 @@ int render_play_to_bmps(const std::filesystem::path& asset_root, int level_numbe
                   << static_cast<int>(game.ball_cell()) << " state 0x"
                   << static_cast<int>(game.player_state()) << " frame 0x" << game.ball_frame()
                   << std::dec << " at (" << game.ball_x() << "," << game.ball_y() << ") gems "
-                  << static_cast<int>(game.collectibles_left()) << " score " << game.score() << "\n";
+                  << static_cast<int>(game.collectibles_left()) << " score " << game.score()
+                  << " springs " << anim_count;
+        if (anim_count > 0) {
+            std::cout << " [cell 0x" << std::hex << static_cast<int>(anims[0].cell) << " frame 0x"
+                      << anims[0].frame_index << std::dec << (anims[0].layer_b ? " B]" : " A]");
+        }
+        std::cout << "\n";
     };
 
+    constexpr int kFrames = 40;
     dump(0);
-    for (int i = 1; i <= 16; ++i) {
+    for (int i = 1; i <= kFrames; ++i) {
         game.tick(input);
         dump(i);
     }
-    std::cout << "wrote 17 frames to " << prefix << "NN.bmp\n";
+    std::cout << "wrote " << (kFrames + 1) << " frames to " << prefix << "NN.bmp\n";
     return 0;
 }
 

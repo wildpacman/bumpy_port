@@ -37,8 +37,9 @@ constexpr std::uint8_t kNeigh4376[32] = {  // special bumper first cell (207d)
     0x1b, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x39, 0x1b, 0x39, 0x39, 0x39,
     0x39, 0x39, 0x39, 0x1b, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-// FUN_1000_2810 fall routing: {newstate, sfx} pairs indexed by the plane-A value
-// of the cell above (DAT_79b9). Only the state byte is used here. DS:0x76a.
+// FUN_1000_2810 fall routing: {newstate, springId} pairs indexed by the plane-A
+// value of the cell above (DAT_79b9). The state byte arms the fall; the second
+// byte (non-zero) is a layer-A spring event passed to FUN_1000_69aa. DS:0x76a.
 constexpr std::uint8_t kFallRoute[0x60] = {
     0x03, 0x00, 0x06, 0x40, 0x06, 0x41, 0x06, 0x42, 0x00, 0x00, 0x2b, 0x43, 0x2b, 0x44, 0x06, 0x45,
     0x06, 0x46, 0x06, 0x47, 0x06, 0x48, 0x07, 0x00, 0x06, 0x49, 0x06, 0x4a, 0x0a, 0x24, 0x06, 0x27,
@@ -122,7 +123,9 @@ std::uint8_t LevelGame::build_input_bits(const LevelInput& in) const {
 void LevelGame::tick(const LevelInput& input) {
     prng_next();   // FUN_1000_93b1
     ball_.step();  // FUN_1000_13df: advance the active move script
-    f_1d26(input); // player tick
+    f_14e4();      // step the layer-A peg/spring animations
+    f_15a1();      // step the layer-B block/spring animations
+    f_1d26(input); // player tick (may arm new spring animations)
 
     if (d_928d) {
         status_ = LevelStatus::quit;
@@ -222,12 +225,24 @@ void LevelGame::anim_dispatch(std::uint8_t state, std::uint8_t step) {
     case 0x654e: f_654e(); break;
     case 0x6587: f_6587(); break;
     case 0x6627: f_6627(); break;
-    // input-clearing entry/step handlers (sound elided); some are column-gated.
-    case 0x68fe: case 0x693a: case 0x67e2: case 0x6813: case 0x6832: case 0x684b:
-        d_8244 = 0; break;
-    case 0x68e6: case 0x6890: case 0x67ca: if (col != 0) d_8244 = 0; break;
-    case 0x6922: case 0x68bb: case 0x67fb: if (col != 7) d_8244 = 0; break;
-    default: break;  // 0x7111 filler + cosmetic sprite/sfx entry handlers
+    // Step-0 bump entries -- start the peg/block spring animations (and clear input
+    // where the original does). Layer-B selects are no-ops while no block is bumped.
+    case 0x6648: f_6648(); break;                                    // idle/rest peg spring
+    case 0x6699: f_6699(); break;                                    // hop up-left  block
+    case 0x66d8: f_66d8(); break;                                    // hop up-right block
+    case 0x6748: f_6748(); break;                                    // up-left  peg(0x18)+block
+    case 0x6789: f_6789(); break;                                    // up-right peg(0x19)+block
+    case 0x67e2: case 0x6832: f_686a(kBumpSelL2); break;
+    case 0x6813: case 0x684b: d_8570 = ball_.cell; f_686a(kBumpSelR2); break;
+    case 0x67ca: if (col != 0) f_686a(kBumpSelL2); break;
+    case 0x67fb: if (col != 7) { d_8570 = ball_.cell; f_686a(kBumpSelR2); } break;
+    case 0x68fe: f_686a(kBumpSelL3); break;
+    case 0x693a: f_686a(kBumpSelR3); break;
+    case 0x68e6: if (col != 0) f_686a(kBumpSelL3); break;
+    case 0x6922: if (col != 7) f_686a(kBumpSelR3); break;
+    case 0x6890: f_6890(); break;
+    case 0x68bb: f_68bb(); break;
+    default: break;  // 0x7111 filler + cosmetic ball-sprite/sfx step handlers
     }
 }
 
@@ -280,6 +295,7 @@ void LevelGame::f_29a6() {
     d_856f = static_cast<std::uint8_t>(ball_.cell - 8);
     if (grid_[d_856f] == 0x0e) {
         if ((d_8244 & 0x02) == 0) {
+            f_69aa(0x24);  // spring the 0x0e tile above before climbing into it
             f_4263(0x0a);
         } else {
             f_253f();
@@ -353,6 +369,7 @@ void LevelGame::f_47cb() {
 
 void LevelGame::f_4802() {
     d_856f = ball_.cell;
+    f_69aa(0x27);  // spring the hole as the ball drops in
     f_4263(0x0e);  // -> warp state
     f_238e();
 }
@@ -452,6 +469,9 @@ void LevelGame::f_2810() {
         d_856f = static_cast<std::uint8_t>(ball_.cell - 8);
         d_79b9 = grid_[d_856f];
         f_4263(d_79b9 < 0x30 ? kFallRoute[d_79b9 * 2] : 6);
+        if (d_79b9 < 0x30 && kFallRoute[d_79b9 * 2 + 1] != 0) {
+            f_69aa(kFallRoute[d_79b9 * 2 + 1]);  // spring the tile fallen onto
+        }
     }
 }
 
@@ -518,6 +538,7 @@ void LevelGame::f_253f() {
     d_8244 &= 0x1d;
     if (++d_824c == 9) {
         d_856f = static_cast<std::uint8_t>(ball_.cell - 8);
+        f_69aa(0x24);  // spring the tile above at the top of the chute climb
         d_824c = 0;
     }
     f_4263(0x0d);
@@ -546,6 +567,7 @@ void LevelGame::f_25ad() {  // warp: find the next hole and pop out of it
             ball_.cell = c;
             f_4906();
             ball_.y += 0xd;
+            f_69aa(0x27);  // spring the hole the ball pops out of
             f_4263(0x0f);
             f_238e();
             return;
@@ -676,6 +698,7 @@ void LevelGame::f_695e(std::uint8_t action) {
     d_856f = ball_.cell;
     if (action != 0) {
         d_a1a7 = action;
+        f_69aa(action);  // spring the bumped peg (same id drives the forced fall)
     }
 }
 
@@ -683,6 +706,7 @@ void LevelGame::f_6587() {
     if (d_a1a7 == 0 && d_7924 == 0x02 && (d_8244 & 0x02)) {
         d_856f = ball_.cell;
         d_79b4 = 0x34;
+        f_69aa(0x34);  // the 0x02-lane DOWN auto-roll spring
     }
 }
 
@@ -725,6 +749,175 @@ void LevelGame::f_6c95() {
     } else {  // +250 base
         d_a0d4 = bumped;
     }
+}
+
+// ---- tile bump/spring animations ---------------------------------------------
+// FUN_1000_14e4 / 15a1 step the active slots; FUN_1000_69aa / 6a89 arm one. A slot
+// plays a sprite-index byte stream (0x00 = hold, 0xff = end); each index resolves
+// through the per-layer record table to a {frame, y_offset}. See object_anim.h.
+
+void LevelGame::anim_step(AnimSlot& s, const AnimRecord* recs, std::size_t rec_count) {
+    if (!s.active) {
+        return;
+    }
+    const std::uint8_t b = s.stream[s.cursor++];
+    if (b == 0xff) {
+        s.active = false;  // terminator: free the slot
+        return;
+    }
+    if (b != 0 && b < rec_count) {  // b == 0 holds the previous step's sprite
+        s.frame_index = recs[b].frame_index;
+        s.y_offset = recs[b].y_offset;
+    }
+}
+
+void LevelGame::f_14e4() {
+    for (auto& s : anim_a_) {
+        anim_step(s, kAnimRecordA, kAnimRecordACount);
+    }
+}
+
+void LevelGame::f_15a1() {
+    for (auto& s : anim_b_) {
+        anim_step(s, kAnimRecordB, kAnimRecordBCount);
+    }
+}
+
+void LevelGame::anim_arm(AnimSlot* slots, std::size_t n, std::uint8_t cell, const BumpEvent& ev,
+                         const std::uint8_t* pool, std::size_t plane_off, const AnimRecord* recs,
+                         std::size_t rec_count) {
+    // Re-trigger the same cell's slot if one is live, else take a free slot; if all
+    // are busy the original simply drops the request.
+    AnimSlot* dst = nullptr;
+    for (auto* end = slots + n, *p = slots; p != end; ++p) {
+        if (p->active && p->cell == cell) {
+            dst = p;
+            break;
+        }
+    }
+    if (dst == nullptr) {
+        for (auto* end = slots + n, *p = slots; p != end; ++p) {
+            if (!p->active) {
+                dst = p;
+                break;
+            }
+        }
+    }
+    if (dst == nullptr) {
+        return;
+    }
+    grid_[cell + plane_off] = ev.new_tile;  // swap to the settled "pressed" tile
+    dst->active = true;
+    dst->cell = cell;
+    dst->stream = pool + ev.stream_offset;
+    dst->cursor = 0;
+    dst->frame_index = kAnimHiddenFrame;
+    dst->y_offset = 0;
+    anim_step(*dst, recs, rec_count);  // show step 0 this frame (see tick() ordering)
+}
+
+void LevelGame::f_69aa(std::uint8_t id) {
+    if (id == 0 || id >= kBumpEventACount || kBumpEventA[id].stream_len == 0) {
+        return;
+    }
+    anim_arm(anim_a_.data(), anim_a_.size(), d_856f, kBumpEventA[id], kBumpEventAStream,
+             0x00, kAnimRecordA, kAnimRecordACount);
+}
+
+void LevelGame::f_6a89(std::uint8_t id) {
+    if (id == 0 || id >= kBumpEventBCount || kBumpEventB[id].stream_len == 0) {
+        return;
+    }
+    anim_arm(anim_b_.data(), anim_b_.size(), d_8570, kBumpEventB[id], kBumpEventBStream,
+             0x30, kAnimRecordB, kAnimRecordBCount);
+}
+
+void LevelGame::f_6987(std::uint8_t id) {
+    d_856f = ball_.cell;
+    if (id != 0) {
+        f_69aa(id);
+    }
+}
+
+void LevelGame::f_6d94(std::uint8_t id) {
+    d_856f = ball_.cell;
+    f_69aa(id);
+}
+
+void LevelGame::f_6d6a(const std::uint8_t* tile_map) {
+    // FUN_1000_6d6a: while not sub-step-locked, spring the lane under the ball,
+    // keyed by the tile there. This is the platform recoil when a roll begins.
+    if (ball_.substep_lock == 0) {
+        f_6987(d_7924 < 0x30 ? tile_map[d_7924] : 0);
+    }
+}
+
+void LevelGame::f_686a(std::uint8_t row) {
+    f_6a89(kBumpSelectB[row][d_8551 & 0x1f]);
+    d_8244 = 0;
+}
+
+void LevelGame::f_6648() { f_6987(d_7924 < 0x30 ? kIdleSpringA[d_7924] : 0); }
+
+void LevelGame::f_6699() {
+    if (d_8552 != 0x03 && d_8552 != 0x0f) {  // not already rolling -> recoil the lane
+        f_6d6a(kRollSpringL);
+    }
+    if (ball_.cell_col != 0) {
+        f_6a89(kBumpSelectB[kBumpSelL0][d_8551 & 0x1f]);
+    }
+}
+
+void LevelGame::f_66d8() {
+    if (d_8552 != 0x03 && d_8552 != 0x0f) {
+        f_6d6a(kRollSpringR);
+    }
+    if (ball_.cell_col != 7) {
+        f_6a89(kBumpSelectB[kBumpSelR0][d_8551 & 0x1f]);
+    }
+}
+
+void LevelGame::f_6748() {
+    f_6d94(0x18);
+    if (ball_.cell_col != 0) {
+        f_6a89(kBumpSelectB[kBumpSelL1][d_8551 & 0x1f]);
+    }
+}
+
+void LevelGame::f_6789() {
+    f_6d94(0x19);
+    if (ball_.cell_col != 7) {
+        f_6a89(kBumpSelectB[kBumpSelR1][d_8551 & 0x1f]);
+    }
+}
+
+void LevelGame::f_6890() {
+    if (ball_.cell_col != 0) {
+        f_6a89(kBumpSelectB[kBumpSelL1][d_8551 & 0x1f]);
+        d_8244 = 0;
+    }
+}
+
+void LevelGame::f_68bb() {
+    if (ball_.cell_col != 7) {
+        f_6a89(kBumpSelectB[kBumpSelR1][d_8551 & 0x1f]);
+        d_8244 = 0;
+    }
+}
+
+std::size_t LevelGame::object_anims(std::array<ObjectAnimSprite, 7>& out) const {
+    std::size_t n = 0;
+    for (const auto& s : anim_a_) {
+        if (s.active) {
+            out[n++] = ObjectAnimSprite{s.cell, s.frame_index, s.y_offset, false};
+        }
+    }
+    for (const auto& s : anim_b_) {
+        if (s.active) {
+            out[n++] = ObjectAnimSprite{s.cell, s.frame_index, s.y_offset, true};
+        }
+    }
+    return n;
 }
 
 // ---- input-decode tree (the 0x43c0 chaining) ---------------------------------

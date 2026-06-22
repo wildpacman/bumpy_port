@@ -1,9 +1,11 @@
 #pragma once
 
 #include "game/ball_motion.h"
+#include "game/object_anim.h"  // AnimRecord, ObjectAnimSprite
 #include "resources/level_resources.h"  // BumEntities
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace bumpy {
@@ -62,12 +64,31 @@ public:
     // renderer. Only [0, 0x96) is meaningful.
     [[nodiscard]] const std::array<std::uint8_t, 0x100>& grid() const noexcept { return grid_; }
 
+    // Currently-running tile bump/spring animations (the pegs/blocks reacting to
+    // the ball), for the renderer to overlay. At most 3 layer-A + 4 layer-B run at
+    // once. Fills `out` and returns the count. A frame_index of kAnimHiddenFrame is
+    // a blink-off step (draw nothing). See object_anim.h / FUN_1000_14e4/15a1.
+    std::size_t object_anims(std::array<ObjectAnimSprite, 7>& out) const;
+
 private:
     // --- mirrored DS:0x* globals (kept named for 1:1 auditability) ---
     // 0x96 live bytes (3 planes A/B/C + header) padded to 0x100 so an out-of-range
     // cell index (e.g. a +0x60 plane-C read at a stray cell) can't read past the end.
     std::array<std::uint8_t, 0x100> grid_{};  // a0d8
     BallMotion ball_{};                      // 792c/824d/792a/9bae/8242/824a/9290/9292/856e/855c/855e
+
+    // One object-animation slot (a DS:0x4c70 / 0x4cbc record). While active it
+    // plays a sprite-index byte stream, one step per frame (FUN_1000_14e4/15a1).
+    struct AnimSlot {
+        bool active{};                                 // record[0]
+        std::uint8_t cell{};                           // record[1] -- grid cell 0..47
+        const std::uint8_t* stream{};                  // record[2..5] -- stream cursor base
+        std::uint8_t cursor{};                         // bytes consumed from stream
+        std::uint16_t frame_index{kAnimHiddenFrame};   // current sprite (record[10] -> frame)
+        std::uint8_t y_offset{};                       // current Y anchor (record[8])
+    };
+    std::array<AnimSlot, 3> anim_a_{};  // layer-A peg slots  (4c70)
+    std::array<AnimSlot, 4> anim_b_{};  // layer-B block slots (4cbc)
 
     std::uint8_t d_8244{};   // current action bits (sticky)
     std::uint8_t d_7924{};   // plane-A value under the ball
@@ -127,6 +148,28 @@ private:
     void f_6627();                              // pickup collectible if present
     void f_6c14();                              // collect: clear cell, score, win check
     void f_6c95();                              // score the collectible
+
+    // --- tile bump/spring animations (object_anim.h) ---
+    void anim_arm(AnimSlot* slots, std::size_t n, std::uint8_t cell, const BumpEvent& ev,
+                  const std::uint8_t* pool, std::size_t plane_off,
+                  const AnimRecord* recs, std::size_t rec_count);
+    static void anim_step(AnimSlot& s, const AnimRecord* recs, std::size_t rec_count);
+    void f_69aa(std::uint8_t id);   // start a layer-A peg spring at d_856f
+    void f_6a89(std::uint8_t id);   // start a layer-B block spring at d_8570
+    void f_14e4();                  // step the 3 layer-A slots
+    void f_15a1();                  // step the 4 layer-B slots
+    void f_6987(std::uint8_t id);   // d_856f = cell; spring (idle/rest peg)
+    void f_6d94(std::uint8_t id);   // d_856f = cell; spring (ball-cell peg)
+    void f_6d6a(const std::uint8_t* tile_map);  // spring the lane under the ball (roll entry)
+    void f_686a(std::uint8_t row);  // layer-B neighbour spring via kBumpSelectB[row]
+    // The DS:0x43c0 step-0 bump entries (layer-A 6d94/6987 + layer-B 6a89 select):
+    void f_6648();                  // idle/rest entry  -> 6987(kIdleSpringA)
+    void f_6699();                  // hop up-left  layer-B (kBumpSelL0)
+    void f_66d8();                  // hop up-right layer-B (kBumpSelR0)
+    void f_6748();                  // hop up-left  6d94(0x18) + layer-B (kBumpSelL1)
+    void f_6789();                  // hop up-right 6d94(0x19) + layer-B (kBumpSelR1)
+    void f_6890();                  // col!=0 -> layer-B (kBumpSelL1)
+    void f_68bb();                  // col!=7 -> layer-B (kBumpSelR1)
 
     // --- decide handlers (0x7ca) ---
     void f_28f9();  // idle hub
