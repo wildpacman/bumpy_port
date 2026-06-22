@@ -321,9 +321,27 @@ implement the per-frame loop as a platform-independent state machine:
 
 - ~~**Move-script tables** at `DS:0x2252`~~ **DONE** — extracted to
   [move-scripts.md](move-scripts.md) (decoder `tools/re/dump_move_scripts.py`,
-  calibrated against the cloud-jump script). Confirmed the playfield cell spacing
-  is **40px x 32px**: every move script's net displacement is a whole number of
-  cells.
+  also baked to C++ in `src/game/move_scripts.gen.cpp`). Confirmed the playfield
+  cell spacing is **40px x 32px**: every move script's net displacement is a whole
+  number of cells.
+- ~~**Dispatch tables** `DS:0x7ca` + `DS:0x43c0`~~ **DONE** — both resolved by
+  `tools/re/dump_player_dispatch.py` and documented above (decide table + the
+  animation-step table + the `4437` input tree).
+- **Neighbour-reaction tables** for the hop handlers — NOT yet dumped. `2634`
+  (hop up-left) reads `DS:0x4256[plane-B of cell-1]`, `26a1` reads `DS:0x4276`,
+  `270c` reads `DS:0x4296`, `2776` reads `DS:0x42b6`; the looked-up code becomes
+  the next state (e.g. code `1` ⇒ auto-roll-left state `0x01`, with a `7921==0x0b`
+  special → `0x16`). These decide whether a player bump turns into an auto-roll,
+  a wall-bump, or a settle, so the port needs them. Also pending for a full port:
+  `0x3cda` (held-bump action, `695e`), `0x4396` (`6d26` structure trigger),
+  `0x76a` (`2810` fall-routing), `0x35be..0x369e` (per-step bump sprites), and the
+  `0x266e/0x269e/0x260e/0x263e/0x276e` sfx tables (sfx can be stubbed).
+- **Port progress (Stage 3):** `move_scripts`, `tile_reactions` and `ball_motion`
+  (arm/step/cell↔pixel) are ported + tested. Remaining = transcribe the handlers
+  into a platform-independent `LevelGame` (per-frame `13df`→`1d26` driving the
+  decide/animate dispatch over a mutable 3-plane grid), then integrate into `App`
+  + SDL. The roll-chaining (idle-blink ↔ `4437` input tree ↔ `a1a7` held-bump) is
+  subtle and is best verified by-eye against the original.
 - ~~**Tile-value semantics**~~ **DONE** — confirmed against decoded D1 in
   [tile-semantics.md](tile-semantics.md): plane-A behavior is table-driven by
   structure code (5 reaction tables at `DS:0x36be..0x377e` + sprite map
