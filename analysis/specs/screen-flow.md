@@ -21,7 +21,7 @@ LAB_0c2c:                              <- menu restart point
           FUN_1000_3852()               // *** WORLD MAP *** (navigate nodes, pick one)
               // escape on the map sets DAT_928d = -1 -> FUN_11eb; goto LAB_0c2c (menu)
           DAT_7310 = DAT_854e - 1        // board index = selected node - 1
-          ... board setup + the in-level gameplay loop (draw layers, physics, input) ...
+          ... board setup + the in-level gameplay loop ...   // see game-loop.md
           // on win: FUN_3e8a; DAT_79b2++ (next world); == 10 -> FUN_3ed4 (game end)
       }
       FUN_0d9d()

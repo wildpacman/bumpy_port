@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Dump BUMPY's plane-A tile reaction tables and (optionally) cross-check them
+against a decoded D?.BUM.
+
+The in-level ball reads the plane-A structure value under it (`a0d8[cell]`,
+FUN_1000_236f) and reacts via five consecutive 48-byte tables indexed by that
+value (FUN_1000_465e/467d/469c read 0x36be/0x36ee/0x371e; FUN_1000_4747 reads
+0x374e for the cell above; 0x377e is the on-0x0a state-indexed variant). The
+looked-up byte is a reaction code mapped to an action by FUN_1000_46bb. The
+sprite for a structure value comes from 0x3d3a[value]. See
+analysis/specs/tile-semantics.md.
+
+Data-segment offsets resolve in BUMPY.UNPACKED.EXE at file offset 0x11440 + off.
+
+Usage:
+    python tools/re/dump_tile_tables.py [BUMPY.UNPACKED.EXE] [decoded_D1.BUM]
+The decoded BUM is produced with the port's tested VEC decoder, e.g.:
+    bumpy_port.exe --decode-vec analysis/generated/reference/run/D1.BUM d1_bum.bin
+"""
+import sys
+from collections import Counter
+
+ACT = {0: "ROLL", 1: "hop-UL", 2: "hop-UR", 3: "FALL",
+       8: "bounce(270c)", 9: "bounce(2776)", 0x1a: "special(1fbe)", 0x1b: "special(207d)"}
+TABLES = {"none": 0x36be, "up": 0x36ee, "down": 0x371e, "rollAbove": 0x374e}
+
+
+def act(code):
+    return ACT.get(code, f"->state {code:#04x}")
+
+
+def main():
+    exe = sys.argv[1] if len(sys.argv) > 1 else r"analysis/generated/BUMPY.UNPACKED.EXE"
+    f = open(exe, "rb").read()
+    DATA = 0x11440
+
+    def bt(off):
+        return f[DATA + off]
+
+    bumpath = sys.argv[2] if len(sys.argv) > 2 else None
+    occurs = None
+    if bumpath:
+        bum = open(bumpath, "rb").read()
+        REC = 194
+        boards = [bum[2 + i * REC: 2 + (i + 1) * REC] for i in range((len(bum) - 2) // REC)]
+        occurs = Counter()
+        for r in boards:
+            for v in r[0:0x30]:
+                if v:
+                    occurs[v] += 1
+        print(f"# {bumpath}: {len(boards)} boards")
+        # win-condition invariant
+        ok = all(sum(1 for v in r[0x60:0x90] if v not in (0, 0x01, 0x23)) == r[0x92]
+                 for r in boards)
+        print(f"# win-count invariant (header[0x92] == plane-C cells excl. 0x01,0x23): "
+              f"{'HOLDS' if ok else 'FAILS'} for all boards")
+
+    print("\nval  | none        up          down        rollAbove   | sprite | D1 count")
+    print("-" * 78)
+    rng = sorted(occurs) if occurs else range(1, 0x30)
+    for v in rng:
+        cells = [f"{bt(base + v):#04x} {act(bt(base + v))}" for base in TABLES.values()]
+        cnt = occurs[v] if occurs else "-"
+        print(f"{v:#04x} | " + " ".join(f"{c:<11}" for c in cells)
+              + f"| {bt(0x3d3a + v):#04x}   | {cnt}")
+
+
+if __name__ == "__main__":
+    main()
