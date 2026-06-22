@@ -29,6 +29,8 @@ add_library(bumpy_core
   src/game/tile_reactions.cpp
   src/game/tile_reactions.gen.cpp
   src/game/ball_motion.cpp
+  src/game/player_dispatch.gen.cpp
+  src/game/level_game.cpp
   src/video/menu_renderer.cpp
   src/video/screen_image.cpp
   src/video/board_renderer.cpp
@@ -67,7 +69,8 @@ add_executable(bumpy_tests
   tests/cpp/map_renderer_test.cpp
   tests/cpp/move_scripts_test.cpp
   tests/cpp/tile_reactions_test.cpp
-  tests/cpp/ball_motion_test.cpp)
+  tests/cpp/ball_motion_test.cpp
+  tests/cpp/level_game_test.cpp)
 target_link_libraries(bumpy_tests PRIVATE bumpy_core Catch2::Catch2WithMain)
 add_test(NAME bumpy_tests COMMAND bumpy_tests)
 set_tests_properties(bumpy_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
