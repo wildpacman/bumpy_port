@@ -235,4 +235,30 @@ EntitySpriteStats draw_bum_entities(const BumEntities& bum,
     return stats;
 }
 
+bool draw_ball(std::span<const std::uint8_t> sprite_bank, int frame, int ball_x, int ball_y,
+               IndexedFramebuffer& target) {
+    if (frame == 100) {  // the blitter skips the hidden sentinel (FUN_1000_1cb2)
+        return false;
+    }
+    MenuImage sprite;
+    try {
+        sprite = decode_sprite_frame(sprite_bank, frame);
+    } catch (const std::exception&) {
+        return false;
+    }
+    // The anchor (ball_x, ball_y) is the cell slot + (7,15); draw the ball centred on
+    // it horizontally and sitting just above it vertically so it rides the cell.
+    const int top_x = ball_x - sprite.width / 2;
+    const int top_y = ball_y - sprite.height / 2;
+    for (int py = 0; py < sprite.height; ++py) {
+        for (int px = 0; px < sprite.width; ++px) {
+            const auto color = sprite.pixels[static_cast<std::size_t>(py) * sprite.width + px];
+            if (color != sprite_transparent_index) {
+                plot(target, top_x + px, top_y + py, color);
+            }
+        }
+    }
+    return true;
+}
+
 }  // namespace bumpy

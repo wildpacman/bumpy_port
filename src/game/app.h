@@ -44,6 +44,10 @@ public:
 
     AppOutcome update(const MenuInput& input) noexcept;
 
+    // Leave the playfield back to the world map (called by the shell when the in-level
+    // LevelGame reports the board is won/lost/quit). No-op unless on the level screen.
+    void leave_level() noexcept;
+
 private:
     Menu menu_;
     WorldMap world_map_;

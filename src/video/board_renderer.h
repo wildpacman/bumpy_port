@@ -73,4 +73,13 @@ EntitySpriteStats draw_bum_entities(const BumEntities& bum,
                                     std::span<const std::uint8_t> sprite_bank,
                                     IndexedFramebuffer& target);
 
+// Draw the player ball: BUMSPJEU bank frame `frame` (the move-script frame DAT_824a)
+// at its logical position (ball_x, ball_y) = DS:0x9290/0x9292, which is the cell slot
+// plus the (+7,+15) ball offset (FUN_1000_4906). The sprite is drawn bottom-centred on
+// that anchor so it sits on the cell like the original. The hidden sentinel frame 100
+// (FUN_1000_1cb2 skips it) and any frame that fails to decode draw nothing. Returns
+// true if the ball was drawn.
+bool draw_ball(std::span<const std::uint8_t> sprite_bank, int frame, int ball_x, int ball_y,
+               IndexedFramebuffer& target);
+
 }  // namespace bumpy

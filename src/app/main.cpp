@@ -3,6 +3,7 @@
 #include "core/asset_manifest.h"
 #include "core/indexed_framebuffer.h"
 #include "game/app.h"
+#include "game/level_game.h"
 #include "game/menu.h"
 #include "platform_sdl3/sdl_app.h"
 #include "resources/level_resources.h"
@@ -319,6 +320,52 @@ int render_board_to_bmp(const std::filesystem::path& asset_root, int level_numbe
     return 0;
 }
 
+// Drive the in-level LevelGame on a board for a number of frames with a held
+// direction, dumping <prefix>NN.bmp every few frames (board art + live entities +
+// the ball) so the playfield gameplay can be verified by eye without the window.
+int render_play_to_bmps(const std::filesystem::path& asset_root, int level_number,
+                        const std::filesystem::path& monde_path, std::size_t board_index,
+                        const std::string& dir, const std::string& prefix) {
+    const auto level = bumpy::LevelResources::load(asset_root, level_number);
+    const auto backdrop = bumpy::decode_vec_resource(monde_path);
+    const auto backdrop_bytes = backdrop.decoded_bytes();
+    const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+
+    bumpy::LevelGame game(level.bum_entities(board_index));
+    bumpy::LevelInput input{};
+    input.left = dir == "left";
+    input.right = dir == "right";
+    input.up = dir == "up";
+    input.down = dir == "down";
+    input.fire = dir == "fire";
+
+    auto dump = [&](int index) {
+        bumpy::IndexedFramebuffer frame(320, 200);
+        bumpy::render_board(level, board_index, backdrop_bytes, frame);
+        bumpy::BumEntities live{};
+        std::copy(game.grid().begin(), game.grid().begin() + bumpy::BumEntities::record_size,
+                  live.bytes.begin());
+        bumpy::draw_bum_entities(live, bank.bytes(), frame);
+        bumpy::draw_ball(bank.bytes(), game.ball_frame(), game.ball_x(), game.ball_y(), frame);
+        std::ostringstream name;
+        name << prefix << std::setw(2) << std::setfill('0') << index << ".bmp";
+        write_24bit_bmp(name.str(), frame);
+        std::cout << "step " << std::setw(2) << index << ": cell 0x" << std::hex
+                  << static_cast<int>(game.ball_cell()) << " state 0x"
+                  << static_cast<int>(game.player_state()) << " frame 0x" << game.ball_frame()
+                  << std::dec << " at (" << game.ball_x() << "," << game.ball_y() << ") gems "
+                  << static_cast<int>(game.collectibles_left()) << " score " << game.score() << "\n";
+    };
+
+    dump(0);
+    for (int i = 1; i <= 16; ++i) {
+        game.tick(input);
+        dump(i);
+    }
+    std::cout << "wrote 17 frames to " << prefix << "NN.bmp\n";
+    return 0;
+}
+
 // Compose the world-map screen (MONDE backdrop + the Bumpy avatar at node 1) and
 // dump it to a BMP for by-eye comparison with the original world-select capture.
 int render_map_to_bmp(const std::filesystem::path& asset_root, const std::filesystem::path& monde_path,
@@ -429,6 +476,12 @@ int main(int argc, char* argv[]) {
             // world is currently informational (world 1 only); MONDE.VEC supplies the
             // backdrop + palette, and the avatar is drawn at node 1.
             return render_map_to_bmp(asset_root, argv[3], argv[4]);
+        }
+        if (argc == 7 && std::string_view(argv[1]) == "--render-play") {
+            // --render-play <level> <MONDE.VEC> <board> <dir> <out-prefix>
+            // dir = none|left|right|up|down|fire (held for every frame).
+            return render_play_to_bmps(asset_root, std::stoi(argv[2]), argv[3],
+                                       static_cast<std::size_t>(std::stoi(argv[4])), argv[5], argv[6]);
         }
         if (argc == 5 && std::string_view(argv[1]) == "--render-jump") {
             // --render-jump <node> <MONDE.VEC> <out-prefix>

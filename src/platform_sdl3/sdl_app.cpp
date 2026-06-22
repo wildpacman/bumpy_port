@@ -1,8 +1,12 @@
 #include "platform_sdl3/sdl_app.h"
 
+#include "game/level_game.h"
+#include "resources/level_resources.h"
 #include "video/board_renderer.h"
 #include "video/map_renderer.h"
 
+#include <algorithm>
+#include <optional>
 #include <stdexcept>
 
 namespace {
@@ -90,6 +94,18 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
     bool running = true;
     MenuInput input{};
 
+    // The in-level game state machine, created when the level screen is entered for a
+    // board and destroyed when it is left. nullopt off the playfield.
+    std::optional<LevelGame> game;
+    auto live_entities = [&]() {
+        // Build a BumEntities view of LevelGame's live grid so collected collectibles
+        // (cleared in plane C) stop being drawn.
+        BumEntities live{};
+        const auto& grid = game->grid();
+        std::copy(grid.begin(), grid.begin() + BumEntities::record_size, live.bytes.begin());
+        return live;
+    };
+
     // Fixed-rate pacing at the VGA vertical refresh (see kVgaRefreshHz). One game tick
     // per loop iteration, then sleep/spin to the next frame boundary so the logic runs
     // at the original's rate regardless of how fast the host can render.
@@ -115,13 +131,40 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
             running = false;
         }
 
+        // Drive the in-level game state machine on the playfield. Arrow keys move the
+        // ball; confirm (Enter/Space) is the fire button.
+        if (app.screen() == Screen::level) {
+            if (!game) {
+                if (app.board_index() < level.bum_board_count()) {
+                    game.emplace(level.bum_entities(app.board_index()));
+                } else {
+                    app.leave_level();  // no entity data for this board
+                }
+            }
+            if (game) {
+                game->tick(LevelInput{input.left, input.right, input.up, input.down, input.confirm});
+                if (game->status() != LevelStatus::playing) {
+                    app.leave_level();
+                    game.reset();
+                }
+            }
+        } else {
+            game.reset();
+        }
+
         if (app.screen() == Screen::menu) {
             menu_renderer.render(app.menu().view(), frame);
         } else if (app.screen() == Screen::map) {
             render_map(backdrop_screen, app.world_map().view(), sprite_bank, frame);
         } else {
             render_board(level, app.board_index(), backdrop_screen, frame);
-            draw_bum_entities(level.bum_entities(app.board_index()), sprite_bank, frame);
+            if (game) {
+                const BumEntities live = live_entities();
+                draw_bum_entities(live, sprite_bank, frame);
+                draw_ball(sprite_bank, game->ball_frame(), game->ball_x(), game->ball_y(), frame);
+            } else {
+                draw_bum_entities(level.bum_entities(app.board_index()), sprite_bank, frame);
+            }
         }
 
         const auto rgba = frame.to_rgba();

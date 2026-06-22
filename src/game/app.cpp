@@ -44,12 +44,19 @@ AppOutcome App::update(const MenuInput& input) noexcept {
         return AppOutcome::running;
     }
 
-    // Screen::level (display only; cancel returns to the menu)
+    // Screen::level: the shell ticks the in-level LevelGame; cancel returns to the menu.
     if (cancel_edge) {
         screen_ = Screen::menu;
         return AppOutcome::running;
     }
     return AppOutcome::running;
+}
+
+void App::leave_level() noexcept {
+    if (screen_ == Screen::level) {
+        screen_ = Screen::map;        // back to the world map to pick the next node
+        waiting_for_release_ = true;  // require key release so the trigger key can't carry over
+    }
 }
 
 }  // namespace bumpy
