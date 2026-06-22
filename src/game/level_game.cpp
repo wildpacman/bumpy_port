@@ -105,11 +105,16 @@ std::uint16_t LevelGame::prng_next() {
 }
 
 std::uint8_t LevelGame::build_input_bits(const LevelInput& in) const {
+    // Action-bit assignment recovered from FUN_1000_75a2 / FUN_1000_773c (the joystick
+    // read) and confirmed by the 0x43c0 input-decode tree (4437): bit 0x01 = UP (hop,
+    // state 0x1d), 0x02 = DOWN (state 0x1e), 0x04 = LEFT (up-left, 2634), 0x08 = RIGHT
+    // (up-right, 26a1). The earlier left=0x01/up=0x04 guess transposed the axes, which
+    // showed up in-game as a 90-degree-rotated control scheme.
     std::uint8_t bits = 0;
-    if (in.left) bits |= 0x01;
-    if (in.right) bits |= 0x02;
-    if (in.up) bits |= 0x04;
-    if (in.down) bits |= 0x08;
+    if (in.up) bits |= 0x01;
+    if (in.down) bits |= 0x02;
+    if (in.left) bits |= 0x04;
+    if (in.right) bits |= 0x08;
     if (in.fire) bits |= 0x10;
     return bits;
 }

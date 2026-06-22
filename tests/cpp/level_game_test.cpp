@@ -22,6 +22,7 @@ BumEntities lane_board(std::uint8_t start_cell, std::uint8_t required = 0) {
 
 constexpr LevelInput none{};
 constexpr LevelInput up{false, false, true, false, false};
+constexpr LevelInput left{true, false, false, false, false};
 
 }  // namespace
 
@@ -45,13 +46,16 @@ TEST_CASE("an idle ball on a lane stays put and never crashes") {
     CHECK(game.status() == LevelStatus::playing);
 }
 
-TEST_CASE("holding UP rolls the ball one cell to the left") {
+TEST_CASE("holding LEFT rolls the ball one cell to the left") {
+    // Regression for the transposed control scheme: the LEFT arrow (action bit 0x04)
+    // must roll the ball left. It used to be the UP arrow that did this, because the
+    // action-bit names were swapped (up<->left, down<->right) -- see build_input_bits.
     LevelGame game(lane_board(0x14));
-    // Hold UP: idle -> hop up-left -> auto-roll-left (state 0x01), advancing one
+    // Hold LEFT: idle -> hop up-left -> auto-roll-left (state 0x01), advancing one
     // cell. Run long enough for the 13-step roll script to finish.
     std::uint8_t reached = game.ball_cell();
     for (int i = 0; i < 16; ++i) {
-        game.tick(up);
+        game.tick(left);
         reached = game.ball_cell();
     }
     CHECK(reached == 0x13);  // one column left of 0x14
@@ -59,7 +63,7 @@ TEST_CASE("holding UP rolls the ball one cell to the left") {
 
 TEST_CASE("rolling over a collectible scores it and clears the cell") {
     LevelGame game(lane_board(0x14, /*required=*/1));
-    // Put a gem one cell to the left (0x13), where the up-left roll passes.
+    // Put a gem one cell to the left (0x13), where the LEFT roll passes.
     // (We can't mutate the board post-construction, so build it in.)
     BumEntities board = lane_board(0x14, 1);
     board.bytes[0x60 + 0x13] = 0x1a;  // plane C gem at cell 0x13
@@ -70,7 +74,7 @@ TEST_CASE("rolling over a collectible scores it and clears the cell") {
 
     bool won = false;
     for (int i = 0; i < 30; ++i) {
-        g.tick(up);
+        g.tick(left);
         if (g.status() == LevelStatus::won) {
             won = true;
         }
@@ -89,7 +93,7 @@ TEST_CASE("the '#' tile grants a life and does not count toward the exit") {
 
     const std::uint8_t lives0 = g.lives();
     for (int i = 0; i < 40; ++i) {
-        g.tick(up);
+        g.tick(left);
     }
     CHECK(g.lives() == lives0 + 1);             // '#' added a life
 }
@@ -99,7 +103,7 @@ TEST_CASE("score uses the documented per-tile values") {
     board.bytes[0x60 + 0x13] = 0x2f;            // '/': +10000
     LevelGame g(board);
     for (int i = 0; i < 30; ++i) {
-        g.tick(up);
+        g.tick(left);
     }
     CHECK(g.score() == 10000);
 }

@@ -44,14 +44,22 @@ void update_key_state(bumpy::MenuInput& input, SDL_Keycode key, bool pressed) {
     }
 }
 
-// The original advances its game logic exactly once per displayed frame, pacing each
-// frame on the VGA vertical retrace -- a two-phase poll of port 0x3DA bit 3, reached via
-// the per-video-mode dispatch at the tail of FUN_1ab9_0351 (the `7bdd` wait); see
-// analysis/specs/screen-flow.md ("Frame timing"). For VGA's 320x200 16-colour mode the
-// vertical refresh is 70.086 Hz, so the world-map slide, the cloud-jump, and (later)
-// gameplay all step at that rate. We reproduce it with a fixed tick, decoupled from the
-// host monitor's refresh, rather than the old ~60 Hz SDL_Delay(16).
+// The original paces every game step on the VGA vertical retrace -- a two-phase poll of
+// port 0x3DA bit 3, reached via the per-video-mode dispatch at the tail of FUN_1ab9_0351
+// (the `7bdd` wait); see analysis/specs/screen-flow.md ("Frame timing"). For VGA's
+// 320x200 16-colour mode the vertical refresh is 70.086 Hz.
 constexpr double kVgaRefreshHz = 70.086;
+
+// The sequences driven by the {frame,dx,dy} script stepper FUN_1000_13df -- in-level
+// gameplay and the world-map cloud-jump -- advance one step per *two* retraces, i.e.
+// 35.043 Hz. Confirmed by side-by-side comparison with the original under DosBox: paced
+// at the full 70 Hz the in-level ball ran a clean, stable 2x too fast (it bounced twice
+// per original bounce), and the cloud-jump likewise matched only at the halved rate.
+// World-map navigation (the FUN_1000_3ab2..3bc9 slide) and the menu instead step once
+// per retrace -- at 35 Hz the node-to-node slide visibly dragged. The retrace handler
+// sits behind a jump table Ghidra could not recover, so the /2 is pinned empirically
+// rather than read from the disassembly. The run loop selects per phase (see half_rate).
+constexpr double kGameTickHz = kVgaRefreshHz / 2.0;
 
 }  // namespace
 
@@ -106,11 +114,16 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
         return live;
     };
 
-    // Fixed-rate pacing at the VGA vertical refresh (see kVgaRefreshHz). One game tick
-    // per loop iteration, then sleep/spin to the next frame boundary so the logic runs
-    // at the original's rate regardless of how fast the host can render.
+    // Per-phase pacing. The engine has two frame loops with different retrace-wait
+    // counts (see kGameTickHz): sequences driven by the {frame,dx,dy} script stepper
+    // FUN_1000_13df -- in-level gameplay and the world-map cloud-jump -- step once per
+    // *two* retraces (35.043 Hz), while world-map navigation (the FUN_1000_3ab2..3bc9
+    // slide) and the menu step once per retrace (70.086 Hz). Confirmed by side-by-side
+    // DosBox comparison: at a uniform 35 Hz the node-to-node slide dragged, while the
+    // cloud-jump and gameplay matched. We pick the period each frame from the live phase.
     const Uint64 perf_freq = SDL_GetPerformanceFrequency();
-    const Uint64 tick_period = static_cast<Uint64>(static_cast<double>(perf_freq) / kVgaRefreshHz);
+    const Uint64 period_full = static_cast<Uint64>(static_cast<double>(perf_freq) / kVgaRefreshHz);
+    const Uint64 period_half = static_cast<Uint64>(static_cast<double>(perf_freq) / kGameTickHz);
     Uint64 next_frame = SDL_GetPerformanceCounter();
 
     while (running) {
@@ -174,9 +187,16 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
         require(SDL_RenderTexture(renderer_, texture_, nullptr, nullptr));
         require(SDL_RenderPresent(renderer_));
 
-        // Wait until the next 70.086 Hz frame boundary: sleep the bulk (1ms granularity)
-        // then spin the final sub-millisecond for an accurate cadence. If a frame ran
-        // long, resync instead of accumulating debt.
+        // Pick this frame's period from the live phase: half-rate for the 13df-driven
+        // sequences (in-level gameplay, world-map cloud-jump), full retrace rate
+        // otherwise (menu, world-map navigation/slide). See period_full/period_half.
+        const bool half_rate = app.screen() == Screen::level ||
+                               (app.screen() == Screen::map && app.world_map().is_jumping());
+        const Uint64 tick_period = half_rate ? period_half : period_full;
+
+        // Wait until the next tick boundary: sleep the bulk (1ms granularity) then spin
+        // the final sub-millisecond for an accurate cadence. If a frame ran long, resync
+        // instead of accumulating debt.
         next_frame += tick_period;
         const Uint64 now = SDL_GetPerformanceCounter();
         if (now < next_frame) {

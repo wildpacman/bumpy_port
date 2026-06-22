@@ -8,9 +8,9 @@
 
 namespace bumpy {
 
-// One frame of player input (already debounced/sticky handling is internal). Maps
-// to the original FUN_1000_75a2 action bits: left=0x01, right=0x02, up=0x04,
-// down=0x08, fire=0x10.
+// One frame of player input (already debounced/sticky handling is internal). The
+// fields are physical directions; build_input_bits() maps them to the original
+// FUN_1000_75a2 action bits (up=0x01, down=0x02, left=0x04, right=0x08, fire=0x10).
 struct LevelInput {
     bool left{};
     bool right{};

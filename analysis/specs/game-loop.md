@@ -100,10 +100,18 @@ overlay segment `0x1cec` (`func_0x0002f…`); none of `1000:*` touches
 
 ### Frame pacing (Confirmed)
 
-`FUN_1000_7bdd(1)` is the only frame clock — it dispatches per video mode
-(`DAT_541d`) into the driver's vertical-retrace poll. Pinned VGA 320×200 16-colour
-= **70.086 Hz**; the port already paces at this rate
-(`src/platform_sdl3/sdl_app`). The PIT reprogram (`out 0x43,0x36`, ~19.2 kHz) is
+`FUN_1000_7bdd(1)` is the per-frame retrace barrier — it dispatches per video mode
+(`DAT_541d`) into the driver's vertical-retrace poll. The VGA 320×200 16-colour
+vertical refresh is 70.086 Hz, but the rate is **not uniform across the engine's
+loops**: the sequences driven by the `{frame,dx,dy}` script stepper `FUN_1000_13df`
+— in-level gameplay and the world-map **cloud-jump** — advance **one step per two
+retraces = 35.043 Hz**, while world-map **navigation** (the `FUN_1000_3ab2..3bc9`
+slide) and the menu step once per retrace = 70.086 Hz. The retrace handler for mode
+1 sits behind a jump table Ghidra could not recover, so the /2 is pinned empirically
+(side-by-side with the original under DosBox: at a uniform 70 Hz the ball bounced
+twice per original bounce; at a uniform 35 Hz the map node-to-node slide dragged).
+The port selects the rate per phase (`src/platform_sdl3/sdl_app`, `half_rate`;
+`kVgaRefreshHz` / `kGameTickHz`). The PIT reprogram (`out 0x43,0x36`, ~19.2 kHz) is
 the PC-speaker sample timer, not the frame clock — red herring.
 
 ## The player ball state machine (Confirmed — the core of gameplay)
@@ -233,17 +241,22 @@ a1ac += 3 words; DAT_824d--                // advance, decrement count
 Frame `100` = "hidden" (blitter skips it). Skipped while `824d==0` or state ∈
 {5,0xb,0x1c}.
 
-### Input mapping (Confirmed bits, names = Hypothesis)
+### Input mapping (Confirmed — bits *and* directions)
 
 `FUN_1000_75a2` builds an action bitmask from the keyboard scan tables and the
-joystick (port `0x201`); `1dde` stores it (when non-zero) in `DAT_8244`:
+joystick (port `0x201`); `1dde` stores it (when non-zero) in `DAT_8244`. The
+direction→bit assignment is read straight from the joystick decoder
+`FUN_1000_773c`: the X axis sets `0x04` (low) / `0x08` (high) and the Y axis sets
+`0x01` (low) / `0x02` (high). So the bits are vertical-first, **not** the earlier
+`left=0x01` guess (which was transposed and produced 90°-rotated controls in the
+port):
 
 | bit | dir | effect (in idle/rolling) |
 |---:|---|---|
-| 0x01 | LEFT | start left roll/bump |
-| 0x02 | RIGHT | start/continue rolling right |
-| 0x04 | UP | bump the tile up-left (`2634`); overrides horizontal |
-| 0x08 | DOWN | bump the tile down-right (`26a1`); overrides horizontal |
+| 0x01 | UP | hop up (`2634` via the `4437` tree → state `0x1d`) |
+| 0x02 | DOWN | hop down (state `0x1e`) |
+| 0x04 | LEFT | bump the tile up-left (`2634`); starts the left roll |
+| 0x08 | RIGHT | bump the tile up-right (`26a1`); starts/continues the right roll |
 | 0x10 | fire (joy btn 1) | — |
 | 0x20 | btn 2 | — |
 
