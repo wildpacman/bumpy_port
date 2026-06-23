@@ -17,8 +17,9 @@ namespace bumpy {
 //
 // Selection chains recovered from FUN_1000_2a78 / FUN_1000_165e and the static
 // descriptor tables in BUMPY.UNPACKED.EXE (data segment 0x103b):
-//   Layer A: value -> 0x3d3a[value] = sprite_index -> record at
-//            DS:0x37be + (sprite_index-1)*4 = {count, frame_index}.
+//   Layer A: value -> 0x3d3a[value] = sprite_index -> *DS:0x3d6a[sprite_index] =
+//            {y_offset, frame_index} (a near-pointer table, NOT a flat array -- the
+//            records are non-sequential, e.g. the exit pit at sprite 0x7e/0x7f).
 //   Layer B: value -> 0x4086[value] = sprite_index -> record at DS:0x3ad2.
 //   Layer C: frame_index = value + 0x179 (collectibles).
 // The {frame_index, count} records below are precomputed from those tables. The

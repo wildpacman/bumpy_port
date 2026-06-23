@@ -291,10 +291,15 @@ idx)` already does it (`be32(bytes, idx*4) + 0x800` → 12-byte header + planar
 pixels). The selection chains, recovered from the static descriptor tables in
 `BUMPY.UNPACKED.EXE` (data segment `0x103b`; file offset = `0x11440 + DS_offset`):
 
-- **Layer A** (pegs/bumpers): `value → 0x3d3a[value] = sprite_index → record at
-  DS:0x37be + (sprite_index-1)*4 = {count, frame_index}`. The peg code `1` → frame
-  `0x40` (a 32×6 bumper). Draw position is `DS:0xf4` (`x = col*40`, `y = 24 +
-  row*32`), with `count` added to `y` (`DAT_8884[1]` in `FUN_1000_165e`).
+- **Layer A** (pegs/bumpers): `value → 0x3d3a[value] = sprite_index →
+  *DS:0x3d6a[sprite_index] = {y_offset, frame_index}` — a **near-pointer** table
+  (segment table at `0x3d6c`), the indirection `FUN_1000_2a78`/`14e4` actually use;
+  the raw EXE never references `0x37be`. The records are only *coincidentally*
+  sequential for low indices (a flat `0x37be + (idx-1)*4` read agrees there), but
+  diverge for e.g. the level-exit pit (`sprite_index 0x7f → frame 0xbe`, the hole +
+  down-arrow). The peg code `1` → frame `0x40` (a 32×6 bumper). Draw position is
+  `DS:0xf4` (`x = col*40`, `y = 24 + row*32`), with `y_offset` added to `y`
+  (`DAT_8884[1]` in `FUN_1000_165e`).
 - **Layer B**: `value → 0x4086[value] → record at DS:0x3ad2`. Its frame indices are
   small and reference a bank region not yet pinned (it is empty on `D1` board 0);
   decode defensively. Column 7 is never drawn.

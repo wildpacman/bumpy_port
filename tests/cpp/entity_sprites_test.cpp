@@ -15,8 +15,8 @@ const std::filesystem::path root = ".";
 }  // namespace
 
 TEST_CASE("entity layer tables resolve recovered frame indices") {
-    // Layer A: empty code 0 draws nothing; the peg code 1 -> frame 0x40, count 5
-    // (DS:0x3d3a[1]=1 -> DS:0x37be[0]={5,0x40}); code 4 is unused.
+    // Layer A: empty code 0 draws nothing; the peg code 1 -> frame 0x40, y_offset 5
+    // (DS:0x3d3a[1]=1 -> *DS:0x3d6a[1]={5,0x40}); code 4 is unused.
     REQUIRE_FALSE(bumpy::entity_layer_a_sprite(0).present());
     REQUIRE(bumpy::entity_layer_a_sprite(1).present());
     REQUIRE(bumpy::entity_layer_a_sprite(1).frame_index == 0x40);

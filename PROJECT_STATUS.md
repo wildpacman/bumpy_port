@@ -178,7 +178,8 @@ functions), DOSBox-X reference harness.
 - The BUM entity sprites are drawn from the **uncompressed** `BUMSPJEU.BIN` bank.
   The selection chains were recovered from `FUN_1000_2a78`/`FUN_1000_165e` and the
   static descriptor tables in `BUMPY.UNPACKED.EXE`: layer A `value → 0x3d3a →
-  DS:0x37be {count, frame}` (peg → frame `0x40`), layer C `frame = value + 0x179`.
+  *DS:0x3d6a[idx] {y_offset, frame}` (a near-pointer table — peg → frame `0x40`,
+  the level-exit pit → frame `0xbe`), layer C `frame = value + 0x179`.
   The master frame table is addressed directly by frame index — the existing
   `decode_sprite_frame(bumspjeu, idx)` already does `be32(idx*4)+0x800`.
 - **`src/resources/entity_sprites`** holds the recovered tables + resolution;
@@ -271,7 +272,14 @@ functions), DOSBox-X reference harness.
   binary (`tools/re/dump_player_dispatch.py`, `move_scripts.gen`, `tile_reactions.gen`).
 - **Motion is keyframe-scripted, not physics**: a state decides an action, `4263`
   arms a `{count,mirror,ptr}` record, `13df` steps a `{frame,dx,dy}` script (cell
-  spacing 40×32). Loop exit flags `928d` quit / `856d` win / `9d30` death.
+  spacing 40×32). Loop exit flags: `928d` quit / **`9d30` board cleared (won, via the
+  exit portal → `1e3d`)** / **`856d` lost a life (`22fc`: enemy death / deadly pit /
+  F2)** — the last two were transposed in the original notes; `22fc` decrements a life
+  and never marks the node, `1e3d` marks it cleared.
+- **Exit portal**: taking the last collectible does NOT end the board — it opens a
+  pit (`6c14`→`69aa(0x59)` writes tile `0x20` + the `233a` pulse). The ball must roll
+  to the pit and fall in (tile `0x20` → state `0x30` descent → `1e3d`). The pit
+  renders as frame `0xbe` (hole + animated down-arrow), pulsing `0xbd`↔`0xbe`.
 - **Frame pacing is per-phase**: the `13df`-driven loops (in-level + the world-map
   cloud-jump) run at **35.043 Hz** (one step per two retraces), menu/map navigation
   at **70.086 Hz** (`src/platform_sdl3/sdl_app`, `half_rate`). Pinned by side-by-side
@@ -285,8 +293,10 @@ functions), DOSBox-X reference harness.
 - The pegs/platforms now **recoil** when the ball bumps or rests on them. Recovered
   system: 3 layer-A + 4 layer-B animation slots stepped by `FUN_1000_14e4`/`15a1`,
   each playing a sprite-index **byte stream** (`0xff`=end, `0x00`=hold) whose bytes
-  index the same record tables as the static draw (`DS:0x37be` layer A, `DS:0x3ad2`
-  layer B, the latter **+0xf1**) → `{frame, y_offset}`. The squash is the frame art
+  resolve through the same near-pointer record tables the static draw uses
+  (`DS:0x3d6a` layer A, `DS:0x40a6`→`0x3ad2` layer B `+0xf1`) → `{y_offset, frame}`;
+  the records are non-sequential (the exit pit is why a flat `0x37be` read was wrong).
+  The squash is the frame art
   + its Y anchor. Armed by `FUN_1000_69aa`/`6a89`, which also write a "settle tile"
   into the grid (for the `0x01` lane the settle is `0x01`, so no control-flow change).
 - Triggers (all 1:1): rest/idle-blink (`6648`), **roll-start `6699/66d8→6d6a`** (the
@@ -298,7 +308,7 @@ functions), DOSBox-X reference harness.
   ported into `LevelGame` (slots + `f_14e4/15a1/69aa/6a89/6d6a`) and rendered by
   **`draw_object_anims`** (`src/video/board_renderer`): suppress the static tile under
   an active slot, overlay the slot's current frame. World 1 is all plane-A lanes, so
-  its springs are entirely layer A. **99 C++ tests pass**; verified by eye
+  its springs are entirely layer A. **100 C++ tests pass**; verified by eye
   (`--render-play 1 MONDE1.VEC 0 leftfire`): the lane bends into a U and recoils, and
   rolling off a platform tilts it in the push direction — matching the original.
   Follow-up: the static **layer-B** draw still lacks the `+0xf1` bias (no world-1

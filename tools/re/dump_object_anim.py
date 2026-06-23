@@ -13,11 +13,18 @@ slots). Each call (see analysis/specs/game-loop.md):
   * arms an animation slot with the descriptor's frame-byte stream pointer.
 
 Each frame FUN_1000_14e4 / FUN_1000_15a1 reads one stream byte (0xff = end,
-0x00 = hold the previous frame). A non-zero byte is a *sprite index* into the
-same per-layer record table the static draw uses -- layer A at DS:0x37be, layer
-B at DS:0x3ad2 -- giving {y_offset (the record's "count" word), frame_index}.
-Layer-B frame indices are submitted with +0xf1 (FUN_1000_17c7), which is the
-bank region the static path also needs.
+0x00 = hold the previous frame). A non-zero byte is a *sprite index*. The index is
+NOT a flat array index -- it is resolved through a near-pointer table (layer A at
+DS:0x3d6a, layer B at DS:0x40a6; the matching segment tables sit +2 over), each
+entry pointing at a {y_offset, frame_index} record. This is exactly the indirection
+FUN_1000_14e4 / FUN_1000_15a1 *and* the setup draw FUN_1000_2a78 use; the raw EXE
+never references DS:0x37be. The records happen to be laid out sequentially for low
+indices (so a flat `0x37be + (idx-1)*4` read agrees for lanes/pegs), but they
+diverge for the level-exit pit: sprite idx 0x7e/0x7f resolve to frames 0xbd/0xbe
+(the hole + animated down-arrow) via 0x3d6a, not the green coils 0xb5/0xb6 a flat
+read returns. Layer-B's 0x40a6 pointers ARE sequential into 0x3ad2, so layer B is
+read flat (+0xf1: layer-B frame indices are submitted with that bias by
+FUN_1000_17c7, the bank region the static path also needs).
 
 Which event id fires is chosen by:
   * layer-B neighbour bump: eight 32-byte tables DS:0x35be..0x369e indexed by the
@@ -41,8 +48,8 @@ DS_SEG = 0x103b
 # descriptor far-pointer tables (off table / seg table) and record tables.
 DESC_A_OFF, DESC_A_SEG = 0x2ede, 0x2ee0
 DESC_B_OFF, DESC_B_SEG = 0x3256, 0x3258
-REC_A = 0x37be          # {count(=y_offset), frame_index} 4-byte records, idx from 1
-REC_B = 0x3ad2
+REC_A_PTR = 0x3d6a      # layer-A near-pointer table: 0x3d6a[idx] -> {y_offset, frame}
+REC_B = 0x3ad2          # layer-B records ARE sequential (0x40a6[idx] points here), idx from 1
 LAYER_B_FRAME_BIAS = 0xf1
 HIDDEN_BIT = 0x200      # frame word bit: skip drawing this step (FUN_1000_165e/17c7)
 HIDDEN_FRAME = 0xffff   # AnimRecord.frame_index sentinel for a hidden step
@@ -67,15 +74,36 @@ def _u16(f, off):
     return f[a] | (f[a + 1] << 8)
 
 
+def _clamp_y(y):
+    """y_offset is a small positive draw delta; an out-of-range sprite index lands
+    on a stray/negative word -- treat anything that wouldn't be a sane offset as 0."""
+    return y if y < 0x80 else 0
+
+
 def _record(f, base, idx, bias):
-    """Resolve record idx (1-based) to (frame_index, y_offset). A frame word with
-    the 0x200 bit is a hidden step -> HIDDEN_FRAME sentinel, no bias."""
+    """Resolve a FLAT record idx (1-based) to (frame_index, y_offset). A frame word
+    with the 0x200 bit is a hidden step -> HIDDEN_FRAME sentinel, no bias. Used for
+    layer B, whose 0x40a6 pointers are sequential into 0x3ad2."""
     o = base + (idx - 1) * 4
     y = _u16(f, o)
     raw = _u16(f, o + 2)
     if raw & HIDDEN_BIT:
-        return HIDDEN_FRAME, y
-    return (raw + bias) & 0xffff, y
+        return HIDDEN_FRAME, _clamp_y(y)
+    return (raw + bias) & 0xffff, _clamp_y(y)
+
+
+def _record_ptr(f, ptr_tbl, idx, bias):
+    """Resolve sprite index idx (1-based) through the near-pointer table at ptr_tbl
+    (DS:0x3d6a for layer A): the entry is a DS-relative pointer to a {y_offset,
+    frame_index} record. This is the indirection FUN_1000_14e4 / 2a78 use; unlike a
+    flat read it returns the right frames where the records are non-sequential (the
+    exit pit, sprite idx 0x7e/0x7f -> frames 0xbd/0xbe)."""
+    o = _u16(f, ptr_tbl + idx * 4)
+    y = _u16(f, o)
+    raw = _u16(f, o + 2)
+    if raw & HIDDEN_BIT:
+        return HIDDEN_FRAME, _clamp_y(y)
+    return (raw + bias) & 0xffff, _clamp_y(y)
 
 
 def _descriptor(f, off_tbl, seg_tbl, ev):
@@ -122,8 +150,13 @@ def _events(f, off_tbl, seg_tbl, count):
 
 
 def _records(f, base, count, bias):
-    """List of (frame_index, y_offset), idx 1..count."""
+    """List of (frame_index, y_offset) from a FLAT record array, idx 1..count."""
     return [_record(f, base, i, bias) for i in range(1, count + 1)]
+
+
+def _records_ptr(f, ptr_tbl, count, bias):
+    """List of (frame_index, y_offset) via a near-pointer table, idx 1..count."""
+    return [_record_ptr(f, ptr_tbl, i, bias) for i in range(1, count + 1)]
 
 
 def collect(f):
@@ -131,7 +164,7 @@ def collect(f):
     b_events = _events(f, DESC_B_OFF, DESC_B_SEG, B_EVENT_COUNT)
     rec_a_count = _max_sprite_index(f, [e for e in a_events if e])
     rec_b_count = _max_sprite_index(f, [e for e in b_events if e])
-    rec_a = _records(f, REC_A, rec_a_count, 0)
+    rec_a = _records_ptr(f, REC_A_PTR, rec_a_count, 0)
     rec_b = _records(f, REC_B, rec_b_count, LAYER_B_FRAME_BIAS)
     sel_b = [[f[DATA + base + i] for i in range(SEL_WIDTH)] for base in SEL_B]
     idle_a = [f[DATA + IDLE_SPRING_A + i] for i in range(0x30)]

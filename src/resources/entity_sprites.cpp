@@ -5,15 +5,21 @@
 namespace bumpy {
 namespace {
 
-// Precomputed value -> {frame_index, count} for layer A, resolved from the static
-// tables 0x3d3a (value -> sprite_index) and 0x37be ({count, frame_index} records)
-// in BUMPY.UNPACKED.EXE. Index 0 and absent codes map to entity_no_sprite.
+// Precomputed value -> {frame_index, y_offset} for layer A, resolved from the
+// table 0x3d3a (value -> sprite_index) and the near-pointer record table 0x3d6a
+// (sprite_index -> {y_offset, frame_index}) in BUMPY.UNPACKED.EXE. 0x3d6a is what
+// FUN_1000_2a78 (setup draw) and FUN_1000_14e4 (bump animation) actually use; the
+// raw EXE never references 0x37be. The records are only *coincidentally* sequential
+// for low indices (so lanes/pegs were right), but diverge for e.g. the level-exit
+// pit: tile 0x20 -> sprite 0x7f -> frame 0xbe (the hole + animated down-arrow),
+// NOT the green coil 0xb6 a flat 0x37be read returns. Index 0 / absent codes map to
+// entity_no_sprite.
 constexpr std::array<EntitySpriteRef, 48> kLayerA{{
-    {0xffff, 0}, {0x40, 5}, {0xc4, 0}, {0x46, 5}, {0xffff, 0}, {0x4f, 3}, {0x51, 3}, {0x53, 5},
-    {0x5c, 5}, {0x65, 5}, {0x71, 5}, {0x3f, 0}, {0x84, 5}, {0x6e, 6}, {0x9b, 5}, {0xe5, 2},
-    {0xa1, 2}, {0xa6, 5}, {0xab, 0}, {0xac, 4}, {0xbc, 1}, {0xc2, 0}, {0xc3, 0}, {0x89, 2},
-    {0x88, 2}, {0x8a, 5}, {0xcf, 5}, {0xcd, 5}, {0xcb, 2}, {0xc9, 0}, {0xef, 2}, {0xd3, 5},
-    {0xb6, 2}, {0xb5, 1}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0},
+    {0xffff, 0}, {0x40, 5}, {0xcc, 5}, {0x46, 5}, {0xffff, 0}, {0x4f, 3}, {0x51, 3}, {0x53, 5},
+    {0x5c, 5}, {0x65, 5}, {0x71, 5}, {0x3f, 0}, {0x84, 5}, {0x6e, 6}, {0x9b, 5}, {0x9f, 2},
+    {0xa3, 5}, {0xa8, 4}, {0xb3, 1}, {0xb4, 0}, {0xc4, 0}, {0xca, 0}, {0xcb, 2}, {0x89, 2},
+    {0x88, 2}, {0x8a, 5}, {0xd4, 5}, {0xd3, 5}, {0xd2, 5}, {0xd1, 5}, {0xd8, 4}, {0xdf, 2},
+    {0xbe, 0}, {0xbd, 2}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0},
     {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0},
     {0xffff, 0}, {0xffff, 0},
 }};

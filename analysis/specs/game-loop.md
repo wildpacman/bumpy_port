@@ -44,11 +44,18 @@ The per-frame loop runs while all three are zero (decomp line 1211):
 
 | Flag | Meaning | Set by |
 |---|---|---|
-| `DAT_928d` | quit / escape (`1`=quit-to-menu via F7, `0xff`=restart, `-1`=escape) | `1d26` (F7), `22fc`, `3ed4` |
-| `DAT_856d` | **level cleared (win)** | `22fc` only |
-| `DAT_9d30` | **player dead** | `1e3d` only (terminal death-anim frame) |
+| `DAT_928d` | quit / escape (`1`=quit-to-menu via F7, `0xff`=out of lives, `-1`=escape) | `1d26` (F7), `22fc` (0 lives), `3ed4` |
+| `DAT_856d` | **board ended, lost a life** (enemy death / deadly pit / F2 skip) | `22fc` only |
+| `DAT_9d30` | **board CLEARED** (ball fell into the exit portal; node marked done) | `1e3d` only |
 
 `0bf9` (in setup) clears `9d30`/`856d`; `0c18` clears `928d` at the menu entry.
+
+> **Corrected 2026-06-23** (was: `856d`=win, `9d30`=dead). The names were
+> transposed. `22fc` *decrements a life* and never marks the node cleared, so it is
+> the **lose-a-life** exit (entity death routes `228d`→`0x2e`→`22d2`×3→`22fc`; the
+> chute tiles `0x12`/`0x1f` in `253f`→`22b0`→`22fc` are deadly pits; F2 is the skip
+> cheat). The real **board clear** is the exit portal: `1e3d` sets `9d30=1` *and*
+> marks the world-map node done (`*9baa=1`). See "Exit portal" below.
 
 ## Per-board setup — lines 1189-1210 (Confirmed)
 
@@ -125,7 +132,8 @@ decision runs.
 ### Driver — `FUN_1000_1d26` each frame
 
 1. Poll function keys via `7ab4`: F1-F6 set debug byte `854f` (0/0x88/0xaa/0xee/
-   0xff); **F2 → `22fc` (force win)**; **F7 → `928d=1` (quit-to-menu)**.
+   0xff); **F2 → `22fc` (skip board — costs a life, see the flags note)**; **F7 →
+   `928d=1` (quit-to-menu)**.
 2. Then advance the ball:
    - `a1aa != 0` (enemy hit pending) → `FUN_1000_228d` → death path (`4263(0x2e)`).
    - else `236f` (sample tile under ball → `7924`), `1dde` (read input → `8244`),
@@ -152,11 +160,15 @@ are the idle stub `28f9`):
 | 0xc | `24d7` | **landing test** |
 | 0xd | `250a` | **rolling-after-land** |
 | 0xe | `25ad` | **warp** (fall in a hole, pop out the next `0x0f` cell) |
-| 0x10 | `22b0` | **level-clear / leave board** → `22fc` |
+| 0x10 | `22b0` | **deadly-pit / chute exit** (lose a life) → `22fc` |
+| 0x30 | `1e3d` | **exit-portal descent done** → `9d30=1` + node cleared (the real win) |
 
-Death (0x2e), pipe-enter (0x1c), death-anim (0x23/0x24), cleared (0x30) are set
-directly via `4263`, routed through the second (animation) table at `DS:0x43c0`
-(`238e`: row = state ×0x22, col = `792a` step counter), not via `0x7ca`.
+Pipe-enter (0x1c), death-anim (0x23/0x24) are set directly via `4263`, routed
+through the second (animation) table at `DS:0x43c0` (`238e`: row = state ×0x22,
+col = `792a` step counter), not via `0x7ca`. State **0x30** is the exit-portal
+descent (move script frames 19→32, the ball sinking into the pit, same art as the
+0x0e warp fall-in); when its script finishes, the `0x7ca` decide slot for 0x30 is
+`1e3d`, which clears the board.
 
 ### Animation-step dispatch — `FUN_1000_238e` → table at `DS:0x43c0` (Confirmed)
 
@@ -306,12 +318,27 @@ cursor (far ptr), `[6]`=current frame byte, `[8]`=current `y_offset`, `[10]`=cur
 frame. Stepped every frame by `FUN_1000_14e4` (layer A) / `FUN_1000_15a1` (layer B).
 
 **Stream.** Each step reads one byte: `0xff` frees the slot, `0x00` holds the
-previous sprite, otherwise the byte is a **sprite index** into the same record
-table the static draw uses — layer A `DS:0x37be`, layer B `DS:0x3ad2` — giving
-`{frame_index, y_offset}` (the record's "count" word is the Y anchor). Layer-B
-frames are submitted with **+0xf1** (`FUN_1000_17c7`), the bank region the static
-layer-B path also needs. A frame word with bit `0x200` is a hidden (blink-off)
-step. The squash comes from the frame art + its Y anchor: e.g. layer-B block
+previous sprite, otherwise the byte is a **sprite index** resolved through a
+**near-pointer record table** — layer A `DS:0x3d6a`, layer B `DS:0x40a6` (segment
+tables sit +2 over) — each entry pointing at a `{y_offset, frame_index}` record.
+This is the indirection both `FUN_1000_14e4`/`15a1` **and** the setup draw
+`FUN_1000_2a78` use; the raw EXE never references `DS:0x37be`. The records are only
+*coincidentally* sequential for low indices (so a flat `0x37be + (idx-1)*4` /
+`0x3ad2` read agreed for lanes/pegs/blocks), but layer A's `0x3d6a` pointers are
+**non-sequential** — e.g. the level-exit pit: sprite idx `0x7e`/`0x7f` resolve to
+frames `0xbd`/`0xbe` (the hole + animated down-arrow), **not** the green coils
+`0xb5`/`0xb6` a flat read returned. (Layer B's `0x40a6` pointers *are* sequential
+into `0x3ad2`, so layer B reads flat with **+0xf1**, `FUN_1000_17c7`.) A frame word
+with bit `0x200` is a hidden (blink-off) step.
+
+> **Fixed 2026-06-23.** The port originally read both the static (`entity_sprites`
+> `kLayerA`) and the animation (`object_anim` `kAnimRecordA`) frames from the flat
+> `0x37be` region, which is right only where the pointers happen to be sequential.
+> The **exit portal** diverges: tile `0x20` → sprite `0x7f` → frame `0xbe` (pit +
+> down-arrow), but the flat read gave `0xb6` (a green coil/spring), so the open exit
+> rendered as a spring. Both tables now resolve layer A through `0x3d6a`
+> (`dump_object_anim.py` + the regenerated `kLayerA`). The exit now draws the pit
+> statically (`0xbe`) and the pulse animates `0xbd`↔`0xbe` (the blinking arrow). The squash comes from the frame art + its Y anchor: e.g. layer-B block
 value 2 rises `f03..f07`, compresses (`f07` at `y17`, held 4 frames), then springs
 back up through `y14→12→10→8→6→2`.
 
@@ -345,21 +372,50 @@ the ball bends into a U and recoils, matching the original.
 ## Collect, score, win/lose (Confirmed)
 
 - **Collect** (`6c14`): plays the pickup, clears the collectible cell
-  `a0d8[856e+0x60]=0`, decrements `a0cf`. When `a0cf` hits 0 → level-complete
-  cascade (`a1b1=1`, sound `0x59`) → leads to `856d=1`.
+  `a0d8[856e+0x60]=0`, decrements `a0cf` (free pips `0x01`/lives `0x23` excluded).
+  When `a0cf` hits 0 it **opens the exit portal** (see below) — it does NOT clear
+  the board.
 - **Score** (`6c95`) — 32-bit `DAT_a0d4`(lo)/`a0d6`(hi):
   - base pickup **+250** (`0xfa`)
   - tile `'#'` → **+1 life** (`791a++`) (and +250)
   - tile `'/'` → **+10000**
   - tile `'0'` → **+50000**
   - rendered by the decimal formatter `FUN_1000_0816` (7 digits), not 6c95.
-- **Lives** `DAT_791a` (init 5); decremented in `22fc`; when 0 on win → `928d=0xff`.
-- **Death** (`50fb`): AABB overlap of player box (`5085`) vs entity box (`50c0`)
-  sets `a1aa=1`; next frame `228d` → death state `0x2e`; the terminal anim frame
-  `1e3d` sets `9d30=1` and marks the node cleared (`*9baa=1`).
-- **Win**: `22fc` sets `856d=1` and runs the finish animation. After the loop,
-  `3e8a` ANDs every world-map node's cleared byte; all-clear → `79b2++` (next
-  world), `==10` → `3ed4` (outro, then `79b2=1`, `928d=1`).
+- **Lives** `DAT_791a` (init 5); decremented in `22fc` (the lose-a-life exit); when
+  it reaches 0 there → `928d=0xff` (out of lives).
+- **Lose a life** (`22fc`, sets `856d=1`): runs the finish animation, `791a--`.
+  Reached by entity death (`50fb` AABB of `5085`×`50c0` → `a1aa=1` → `228d` → state
+  `0x2e` death tumble → `22d2`×3 → `22fc`), by the deadly chute pits `0x12`/`0x1f`
+  (`253f`→`22b0`→`22fc`), and by the F2 debug skip. The node is **not** marked
+  cleared, so `3e8a` keeps the node open and the player retries from the map.
+- **Win / board clear** (the exit portal): the ball rolls into the opened pit and
+  falls in — tile `0x20` → reaction `0x30` → state `0x30` descent → its `0x7ca`
+  decide slot `1e3d` → `9d30=1`, `a1a9=1`, `*9baa=1` (node done). After the loop,
+  `3e8a` ANDs every node's cleared byte; all-clear → `79b2++` (next world), `==10`
+  → `3ed4` (outro, then `79b2=1`, `928d=1`).
+
+### Exit portal (Confirmed) — the level-exit the player must reach
+
+Taking the **last required** collectible does not end the board; it opens a portal
+(a pit) that the ball must then reach and fall into:
+
+1. `6c14` (`a0cf==0`): `856f=8572` (header byte `0x91`, the portal cell), then
+   `69aa(0x59)` — a layer-A bump event whose **settle tile is `0x20`**, so plane A
+   at the portal cell becomes `0x20` and a one-shot "pit opening" animation plays.
+   Then `a1b1=1`, `8550=0xf2`.
+2. `233a` (every frame, after `1d26`): while `a1b1`, count `8550`; each time it hits
+   `9`, reset to 0 and re-arm `69aa(0x5a)` (settle `0x20`, a 6-frame "pit bob") at
+   the portal cell — the open portal keeps pulsing.
+3. The ball navigates to the portal cell and rests on tile `0x20`. The decide path
+   (`28f9`→`2965`→`29a6`→`465e`→`46bb`) reads reaction code `0x30` for tile `0x20`
+   (tables `none`/`up`/`down` at `DS:0x36be`+`0x20`) and arms **state `0x30`**.
+4. State `0x30` plays the 20-frame descent (the ball sinking into the pit), then its
+   decide slot `1e3d` fires → `9d30=1` and the node is marked cleared. Board done.
+
+Ported to `LevelGame`: `f_6c14` now calls `f_69aa(0x59)`; `f_233a` runs the pulse;
+the decide dispatch routes state `0x30` to `f_1e3d` (sets `d_9d30`); and `tick()`
+maps `9d30`→`won`, `856d`→`dead`. For world-1 board 0 the portal cell is `0x2c`
+(col 3, row 5).
 
 ## What this means for the port
 
@@ -396,7 +452,8 @@ implement the per-frame loop as a platform-independent state machine:
 - ~~**Tile bump/spring animations**~~ **DONE** — the per-tile recoil system
   (`0x3cda` held-bump, `0x3d0a` idle spring, `0x76b` fall-routing spring,
   `0x35be..0x369e` per-step bump sprites, the descriptor/stream tables
-  `0x2ede/0x3256`, and the record tables `0x37be/0x3ad2`). Extracted by
+  `0x2ede/0x3256`, and the near-pointer record tables `0x3d6a` (layer A) / `0x40a6`
+  → `0x3ad2` (layer B)). Extracted by
   `tools/re/dump_object_anim.py` → `src/game/object_anim.gen.cpp`, ported to
   `LevelGame` + `draw_object_anims`. See the "Tile bump/spring animations" section
   above. Still open: `0x4396` (`6d26` structure trigger) and the

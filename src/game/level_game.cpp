@@ -126,16 +126,21 @@ void LevelGame::tick(const LevelInput& input) {
     f_14e4();      // step the layer-A peg/spring animations
     f_15a1();      // step the layer-B block/spring animations
     f_1d26(input); // player tick (may arm new spring animations)
+    f_233a();      // FUN_1000_233a: pulse the exit portal once it has opened
 
     if (d_928d) {
         status_ = LevelStatus::quit;
     } else if (d_9d30) {
-        status_ = LevelStatus::dead;
-    } else if (d_856d || d_a1b1) {
-        // a1b1 is set the moment the last required collectible is taken (the win
-        // cascade); the port treats that as the win without requiring the exit tile.
+        // FUN_1000_1e3d marked the world-map node cleared: the ball fell into the
+        // exit portal (state 0x30 descent finished). This is the real board clear.
         status_ = LevelStatus::won;
+    } else if (d_856d) {
+        // FUN_1000_22fc: the board ended by losing a life -- enemy death, a deadly
+        // pit (chute tiles 0x12/0x1f), or the F2 skip. Board 0 has none of these.
+        status_ = LevelStatus::dead;
     } else {
+        // a1b1 only *arms* the exit (the last required collectible was taken); the
+        // ball must still roll to the pit and fall in before the board is cleared.
         status_ = LevelStatus::playing;
     }
 }
@@ -152,6 +157,21 @@ void LevelGame::f_1d26(const LevelInput& input) {
         f_1e02();
     } else {
         f_238e();
+    }
+}
+
+void LevelGame::f_233a() {
+    // FUN_1000_233a: once the exit portal is open (a1b1), keep its idle pulse going --
+    // every 10 frames re-arm event 0x5a (the pit's bob) at the portal cell. d_8550 was
+    // seeded to 0xf2 in f_6c14, so the first pulse follows the one-shot 0x59 opening.
+    if (d_a1b1 != 0) {
+        if (d_8550 == 9) {
+            d_8550 = 0;
+            d_856f = d_8572;
+            f_69aa(0x5a);
+        } else {
+            ++d_8550;
+        }
     }
 }
 
@@ -196,6 +216,7 @@ void LevelGame::decide_dispatch(std::uint8_t state) {
     case 0x24d7: f_24d7(); break;
     case 0x250a: f_250a(); break;
     case 0x25ad: f_25ad(); break;
+    case 0x1e3d: f_1e3d(); break;  // state 0x30: the portal descent finished -> cleared
     case 0x22b0: f_22b0(); break;
     case 0x2423: f_2423(); break;
     case 0x4344: f_4344(); break;
@@ -575,6 +596,14 @@ void LevelGame::f_25ad() {  // warp: find the next hole and pop out of it
     }
 }
 
+void LevelGame::f_1e3d() {
+    // FUN_1000_1e3d: the terminal decision of the exit-portal descent (state 0x30).
+    // The ball has finished sinking into the pit, so the board is cleared. The
+    // original also marks the world-map node done (*9baa = 1) and bumps the cleared
+    // count (a1a9, FUN_1000_3a88) -- that bookkeeping lives outside the board model.
+    d_9d30 = 1;
+}
+
 void LevelGame::f_22b0() { f_22fc(); }
 
 void LevelGame::f_22fc() {
@@ -723,8 +752,14 @@ void LevelGame::f_6c14() {
     if (d_79b8 != 0x01 && d_79b8 != 0x23) {
         --d_a0cf;
         if (d_a0cf == 0) {
+            // Last required collectible taken: OPEN the exit portal. FUN_1000_69aa(0x59)
+            // writes the pit tile 0x20 into plane A at the portal cell (DAT_8572) and
+            // plays the one-shot opening animation. The board is NOT cleared yet -- the
+            // ball must roll to the pit and fall in (tile 0x20 -> state 0x30 -> 1e3d).
+            // a1b1/8550 then drive the recurring pulse (FUN_1000_233a).
             d_856f = d_8572;
-            d_a1b1 = 1;  // win cascade armed
+            f_69aa(0x59);
+            d_a1b1 = 1;
             d_8550 = 0xf2;
         }
     }

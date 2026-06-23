@@ -47,8 +47,10 @@ struct BumpEvent {
     std::uint8_t stream_len;
 };
 
-// Sprite-index -> {frame, y_offset}. Layer A = pegs (DS:0x37be), layer B = blocks
-// (DS:0x3ad2, frame already biased by +0xf1). Index 0 is unused (1-based).
+// Sprite-index -> {frame, y_offset}. Layer A resolves through the near-pointer
+// table DS:0x3d6a (records are non-sequential -- e.g. the exit pit at idx 0x7e/0x7f
+// -> frames 0xbd/0xbe); layer B = blocks (DS:0x3ad2 flat, frame already biased by
+// +0xf1). Index 0 is unused (1-based).
 extern const AnimRecord kAnimRecordA[];
 extern const std::size_t kAnimRecordACount;
 extern const AnimRecord kAnimRecordB[];

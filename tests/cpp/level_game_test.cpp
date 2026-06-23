@@ -61,28 +61,46 @@ TEST_CASE("holding LEFT rolls the ball one cell to the left") {
     CHECK(reached == 0x13);  // one column left of 0x14
 }
 
-TEST_CASE("rolling over a collectible scores it and clears the cell") {
-    LevelGame game(lane_board(0x14, /*required=*/1));
-    // Put a gem one cell to the left (0x13), where the LEFT roll passes.
-    // (We can't mutate the board post-construction, so build it in.)
+TEST_CASE("collecting the last gem opens the exit portal but does not win") {
+    // Taking the last required collectible only OPENS the exit (FUN_1000_6c14 ->
+    // 69aa(0x59) writes the pit tile 0x20 at the portal cell + arms a1b1). The board
+    // is cleared only once the ball falls into the pit -- not the instant the gem is
+    // taken. Here the portal cell stays at header 0x91 = 0 (cell 0), far from the
+    // ball, so the ball cannot reach it within the loop.
     BumEntities board = lane_board(0x14, 1);
-    board.bytes[0x60 + 0x13] = 0x1a;  // plane C gem at cell 0x13
+    board.bytes[0x60 + 0x13] = 0x1a;  // plane C gem one cell left (cell 0x13)
     LevelGame g(board);
 
     REQUIRE(g.collectibles_left() == 1);
     REQUIRE(g.collectible(/*col=*/3, /*row=*/2) == 0x1a);
 
-    bool won = false;
     for (int i = 0; i < 30; ++i) {
         g.tick(left);
-        if (g.status() == LevelStatus::won) {
-            won = true;
-        }
     }
     CHECK(g.collectibles_left() == 0);          // the last required gem was taken
     CHECK(g.collectible(3, 2) == 0);            // cell cleared
     CHECK(g.score() >= 250);                    // base pickup scored
-    CHECK(won);                                 // all-collected -> win
+    CHECK(g.grid()[0x00] == 0x20);              // the pit opened at the portal cell
+    CHECK(g.status() == LevelStatus::playing);  // ... but the exit is not reached yet
+}
+
+TEST_CASE("rolling into the opened portal clears the board") {
+    // The full exit: collect the last gem (the pit opens one cell further left), keep
+    // rolling into the pit, fall in (tile 0x20 -> reaction 0x30 -> state 0x30 descent
+    // -> FUN_1000_1e3d sets 9d30) and clear the board.
+    BumEntities board = lane_board(0x14, 1);
+    board.bytes[0x60 + 0x13] = 0x1a;  // last gem at cell 0x13
+    board.bytes[0x91] = 0x13;         // portal cell = 0x12 (header is 1-based)
+    LevelGame g(board);
+
+    bool won = false;
+    for (int i = 0; i < 200 && !won; ++i) {
+        g.tick(left);
+        won = g.status() == LevelStatus::won;
+    }
+    CHECK(won);                          // fell into the portal -> board cleared
+    CHECK(g.collectibles_left() == 0);
+    CHECK(g.status() == LevelStatus::won);
 }
 
 TEST_CASE("the '#' tile grants a life and does not count toward the exit") {

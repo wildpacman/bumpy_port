@@ -23,8 +23,8 @@ struct LevelInput {
 
 enum class LevelStatus {
     playing,
-    won,   // all required collectibles taken (DAT_856d)
-    dead,  // player died (DAT_9d30) -- only via an entity, so not on board 0
+    won,   // board cleared: the ball fell into the exit portal (DAT_9d30, via FUN_1000_1e3d)
+    dead,  // lost a life: enemy death / deadly pit / F2 skip (DAT_856d, via FUN_1000_22fc)
     quit,  // quit-to-menu (DAT_928d) -- F7 etc.
 };
 
@@ -127,6 +127,7 @@ private:
     std::uint16_t prng_next();                  // FUN_1000_93b1
     std::uint8_t build_input_bits(const LevelInput&) const;  // FUN_1000_75a2 (port mapping)
     void f_1d26(const LevelInput&);             // player tick
+    void f_233a();                              // exit-portal pulse while the level is cleared
     void f_1e02();                              // decide dispatch (0x7ca)
     void f_238e();                              // animate dispatch (0x43c0)
     void decide_dispatch(std::uint8_t state);
@@ -198,8 +199,9 @@ private:
     void f_28e0();  // -> state 4
     void f_42d9();  // -> state 0x2d
     void f_25ad();  // warp
-    void f_22b0();  // clear -> win
-    void f_22fc();  // win finish
+    void f_1e3d();  // state 0x30 terminal: ball fell into the exit portal -> board cleared
+    void f_22b0();  // deadly-pit / chute exit (0x12/0x1f) -> 22fc
+    void f_22fc();  // lose a life (death / deadly pit / F2 skip)
     void f_2423();  // bounce (scriptless state 5)
     void f_1fbe();  // special bumper
     void f_207d();  // special bumper
