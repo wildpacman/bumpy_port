@@ -121,7 +121,7 @@ TEST_CASE("set_cell maps a board cell to its screen slot and ball offset") {
     CHECK(ball.x == 8 + 40 + 7);
     CHECK(ball.y == 8 + 32 + 15);
 
-    ball.set_cell(15);  // col 7, row 1 -> the spare column slot at x = 32
+    ball.set_cell(15);  // col 7, row 1 -> the rightmost column at x = 8 + 7*40 = 288
     CHECK(ball.cell_col == 7);
-    CHECK(ball.x == 32 + 7);
+    CHECK(ball.x == 288 + 7);
 }

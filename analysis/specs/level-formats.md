@@ -226,21 +226,41 @@ value selects the sprite/type:
 
 ### Cell → screen position (Confirmed, extracted)
 
-Layer C reads its position from a data-segment table at `DS:0x274` indexed by
-`(col*2 + row*0x10)`; the table is a contiguous 8×6 array of `(x,y)` word pairs.
-Extracted from `BUMPY.UNPACKED.EXE` (file `0x1090 + 0x103b*0x10 + 0x274 =
-0x116b4`):
+Layer C and the player ball read their cell position from a data-segment table at
+`DS:0x274`: a contiguous **48-entry array of `(x,y) word pairs`** (cell `row*8 + col`,
+so entry stride is 4 bytes; the X word of cell N is at `0x274 + N*4`). Extracted from
+`BUMPY.UNPACKED.EXE` (file `0x1090 + 0x103b*0x10 + 0x274 = 0x116b4`):
 
 | | col 0 | col 1 | … | col 6 | col 7 |
 |---|---:|---:|---|---:|---:|
-| x | 8 | 48 | (+40) | 248 | 32 (spare) |
+| x | 8 | 48 | (+40) | 248 | **288** |
 | y (per row) | 8, 40, 72, 104, 136, 168 | | | | |
 
-So columns 0–6 sit at `x = 8 + col*40` and rows at `y = 8 + row*32`; column 7 is
-a spare slot at `x = 32` that layers A/B never use. This is `bum_cell_position`
-in `src/resources/level_resources`. (Layers A/B store the cell index for
-`FUN_165e`/`FUN_17c7`, presumed to use the same grid — **Hypothesis** that those
-paths share this table; not byte-verified.)
+So **all eight columns** sit at `x = 8 + col*40` (col 7 is the rightmost, at `x = 288`)
+and rows at `y = 8 + row*32`. This is `bum_cell_position` in
+`src/resources/level_resources` (and `BallMotion::set_cell`).
+
+> **Corrected 2026-06-24.** Earlier this table was mis-read as single words on a
+> `col*2 + row*0x10` stride, which interleaved the X and Y words of adjacent cells and
+> produced a bogus "column 7 is a spare slot at `x = 32`" conclusion. The table is
+> `(x,y)` pairs; col 7 is a normal playable column at `x = 288`. The wrong value drew
+> every col-7 collectible (and snapped the ball) to the far **left** instead of the far
+> **right** — e.g. world-1 node 9 (board index 8) has col-7 collectibles at rows 0/2/4
+> (the blue rabbit, the ice-cream pop, the dumbbell) that appeared on the left and could
+> not be eaten while an invisible pickup sat at the correct right-hand cell.
+
+Layers A and B use their **own** position tables (each 48 `(x,y)` word pairs, all
+byte-verified against the EXE):
+
+- **Layer A** (pegs/bumpers) — `DS:0xf4` (`FUN_1000_165e`): `x = col*40` (no +8 bias;
+  col 7 at `x = 280`), `y = 24 + row*32`. This is `entity_layer_ab_position`.
+- **Layer B** (blocks/spikes) — `DS:0x3f4` (`FUN_1000_17c7`): `x = 32 + col*40` (col 7
+  at `x = 312`), `y = row*32` — offset (+32 x, −24 y) from layer A. This is
+  `entity_layer_b_position`. Layer B's frame also carries a **+0xf1** submit bias
+  (see [game-loop.md](game-loop.md)); layer A's frame is absolute.
+
+So the four playfield placement tables are distinct: collectibles+ball `DS:0x274`,
+layer A `DS:0xf4`, layer B `DS:0x3f4` (all `8+col*40`/`col*40`/`32+col*40` variants).
 
 ### Board params `0x90..0x95` + byte `0x96` (Confirmed structure)
 

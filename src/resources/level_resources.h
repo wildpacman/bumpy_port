@@ -80,9 +80,9 @@ struct BumEntities {
 };
 
 // Faithful screen position (sprite top-left) of a BUM grid cell, read from the
-// data-segment coordinate table at DS:0x274 in BUMPY.UNPACKED.EXE: columns 0..6
-// sit at x = 8 + col*40 and rows at y = 8 + row*32; column 7 is a spare slot at
-// x = 32 that tables A/B never use. See analysis/specs/level-formats.md.
+// data-segment coordinate table at DS:0x274 in BUMPY.UNPACKED.EXE (48 (x,y) word
+// pairs): x = 8 + col*40 for all eight columns (col 7 is the rightmost, at x = 288)
+// and rows at y = 8 + row*32. See analysis/specs/level-formats.md.
 struct CellPosition {
     int x{};
     int y{};

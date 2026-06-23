@@ -92,9 +92,10 @@ CellPosition bum_cell_position(int col, int row) {
     if (col < 0 || col >= BumEntities::columns || row < 0 || row >= BumEntities::rows) {
         throw std::out_of_range("BUM cell position is outside the 8x6 grid");
     }
-    // Faithful to the DS:0x274 coordinate table: columns 0..6 at 8 + col*40, the
-    // spare column 7 at 32, rows at 8 + row*32.
-    const int x = (col == 7) ? 32 : 8 + col * 40;
+    // Faithful to the DS:0x274 coordinate table (48 (x,y) word pairs, file offset
+    // 0x116b4 in BUMPY.UNPACKED.EXE): x = 8 + col*40 for all eight columns (col 7 at
+    // 288, the rightmost), y = 8 + row*32. col 7 is a normal column, not a spare slot.
+    const int x = 8 + col * 40;
     const int y = 8 + row * 32;
     return CellPosition{x, y};
 }

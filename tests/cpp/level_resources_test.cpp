@@ -146,7 +146,7 @@ TEST_CASE("BUM cell positions match the recovered DS:0x274 coordinate table") {
     REQUIRE(bumpy::bum_cell_position(3, 2).x == 128);
     REQUIRE(bumpy::bum_cell_position(3, 2).y == 72);
     REQUIRE(bumpy::bum_cell_position(0, 5).y == 168);
-    REQUIRE(bumpy::bum_cell_position(7, 0).x == 32);  // the spare column
+    REQUIRE(bumpy::bum_cell_position(7, 0).x == 288);  // col 7 is the rightmost column: 8 + 7*40
 }
 
 TEST_CASE("BUM entities decode from raw (pre-decoded) D6/D9 too") {

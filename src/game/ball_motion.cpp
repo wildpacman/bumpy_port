@@ -61,9 +61,9 @@ void BallMotion::set_cell(std::uint8_t new_cell) {
     cell = new_cell;
     cell_row = static_cast<std::uint8_t>(new_cell >> 3);
     cell_col = static_cast<std::uint8_t>(new_cell - cell_row * 8);
-    // DS:0x274 screen-slot table (see bum_cell_position): columns 0..6 at 8 + col*40,
-    // the spare column 7 at 32, rows at 8 + row*32; the ball sprite draws at +7,+15.
-    const int slot_x = (cell_col == 7) ? 32 : 8 + cell_col * 40;
+    // DS:0x274 screen-slot table (see bum_cell_position): x = 8 + col*40 for all eight
+    // columns (col 7 at 288, the rightmost), rows at 8 + row*32; ball sprite draws at +7,+15.
+    const int slot_x = 8 + cell_col * 40;
     const int slot_y = 8 + cell_row * 32;
     x = slot_x + 7;
     y = slot_y + 15;
