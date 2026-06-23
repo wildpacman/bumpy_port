@@ -23,6 +23,7 @@ BumEntities lane_board(std::uint8_t start_cell, std::uint8_t required = 0) {
 constexpr LevelInput none{};
 constexpr LevelInput up{false, false, true, false, false};
 constexpr LevelInput left{true, false, false, false, false};
+constexpr LevelInput right{false, true, false, false, false};
 
 }  // namespace
 
@@ -235,6 +236,32 @@ TEST_CASE("a spring animation steps one sprite per frame then ends") {
     CHECK(done);                 // it terminated (the 0xff stream terminator)
     CHECK(active_frames >= 3);   // ... after playing several steps
     CHECK(active_frames <= 20);
+}
+
+TEST_CASE("landing on a special bumper springs it (node 14 structure trigger)") {
+    // World-1 node 14 (D1 board 13) is a row of special bumpers (plane-A 0x14/0x15,
+    // FUN_1000_1fbe/207d) that fling the ball left and right. Their recoil is armed by
+    // the structure trigger FUN_1000_6d26 (DS:0x4396): tile 0x14 -> event 0x2d, 0x15 ->
+    // 0x2e (the bumper compressing, sprite frames 0xbf..0xca). Regression: f_6d26 read
+    // the trigger but never called FUN_1000_6d94, so the bumpers threw the ball yet
+    // never sprang -- exactly the bug reported against this level.
+    const auto level = bumpy::LevelResources::load(".", 1);
+    LevelGame g(level.bum_entities(13));
+    std::array<ObjectAnimSprite, 7> anims{};
+    bool sprang_bumper = false;
+    for (int i = 0; i < 60; ++i) {
+        g.tick(right);  // roll right off the top lane, fall onto the bumper row, get flung
+        const std::size_t n = g.object_anims(anims);
+        for (std::size_t k = 0; k < n; ++k) {
+            const std::uint8_t row = static_cast<std::uint8_t>(anims[k].cell / 8);
+            const std::uint16_t f = anims[k].frame_index;
+            // row 3 is the bumper row; 0xbf..0xca are exclusively the 0x14/0x15 recoil.
+            if (!anims[k].layer_b && row == 3 && f >= 0xbf && f <= 0xca) {
+                sprang_bumper = true;
+            }
+        }
+    }
+    CHECK(sprang_bumper);
 }
 
 TEST_CASE("real D1 board 0 runs for many frames without escaping the grid") {

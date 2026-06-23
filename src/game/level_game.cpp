@@ -748,7 +748,11 @@ void LevelGame::f_6d26() {
     if (trigger != 0) {
         d_7922 = d_7924;
         d_7923 = trigger;
-        // FUN_1000_6d94 only plays a sound; no state change.
+        // FUN_1000_6d94: arm the layer-A spring (FUN_1000_69aa) at the ball's cell.
+        // This is what makes the structure under the ball recoil -- e.g. the
+        // special bumpers 0x14/0x15 (events 0x2d/0x2e) on world-1 node 14, which
+        // throw the ball but, until this call was wired, never sprang back.
+        f_6d94(trigger);
     }
 }
 

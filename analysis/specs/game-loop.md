@@ -355,6 +355,7 @@ which is why the port ran without it), and arm a free/matching slot.
 | rest/idle-blink (`6648`, states `0x00/0x11/0x3c-0x3f`) | `6987(0x3d0a[7924])` — spring the tile under the ball |
 | **roll start** (`6699`/`66d8`, when prev state ∉ {3,0xf}) | `6d6a` → `6987(0x3c7a[7924]` / `0x3caa[7924])` — the lane recoiling left/right as it deflects the ball (the "land and slide off" reaction) |
 | held bump (`654e`→`695e`) | `69aa(0x3cda[7924])` (same id drives the forced fall) |
+| **structure trigger** (`6717`→`6d26`, in states with a `0x6717` step: land `0x04`, roll `0x01/0x02`, bounce `0x1a/0x1b`, …) | `6d94(0x4396[7921])` — spring the structure the ball is on, keyed by its plane-A value. This is the **special-bumper** recoil: `0x14`→`0x2d`, `0x15`→`0x2e` (world-1 node 14's left/right-flinging springs) |
 | `0x02`-lane + DOWN (`6587`) | `69aa(0x34)` |
 | hop entries (`6748/6789`) | `6d94(0x18/0x19)` (layer-A on ball cell) + layer-B select |
 | layer-B neighbour bump (`6699/66d8/67e2/6813/68fe/693a/6890/68bb`) | `6a89(0x35be..0x369e[8551])` keyed by the bumped block's plane-B value |
@@ -456,8 +457,12 @@ implement the per-frame loop as a platform-independent state machine:
   → `0x3ad2` (layer B)). Extracted by
   `tools/re/dump_object_anim.py` → `src/game/object_anim.gen.cpp`, ported to
   `LevelGame` + `draw_object_anims`. See the "Tile bump/spring animations" section
-  above. Still open: `0x4396` (`6d26` structure trigger) and the
-  `0x266e/0x269e/0x260e/0x263e/0x276e` sfx tables (sfx stubbed).
+  above. The `0x4396` (`6d26` structure trigger) is now wired too (**fixed
+  2026-06-24**): `f_6d26` looks up `kStructTrigger[7921]` and calls `f_6d94` →
+  `f_69aa`, the call the port had originally dropped (a wrong "only plays a sound"
+  comment). Symptom: world-1 **node 14**'s row of special bumpers (`0x14`/`0x15`)
+  flung the ball but never sprang back; now they recoil (events `0x2d`/`0x2e`).
+  Still open: the `0x266e/0x269e/0x260e/0x263e/0x276e` sfx tables (sfx stubbed).
 - **Port progress (Stage 3):** `move_scripts`, `tile_reactions`, `ball_motion`,
   the full `LevelGame` decide/animate dispatch, and the tile bump/spring
   animations are ported + tested + integrated into `App` + SDL. The roll-chaining

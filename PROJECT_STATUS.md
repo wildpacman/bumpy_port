@@ -1,6 +1,6 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-06-23.
+Source of truth for new sessions. Last updated: 2026-06-24.
 
 ## Goal
 
@@ -303,14 +303,21 @@ functions), DOSBox-X reference harness.
   lane recoiling left/right as it deflects the ball — `6d6a` looks like a ball-sprite
   call but springs the tile), held-bump (`654e→695e`), `0x02`-lane (`6587`), hop
   entries (`6748/6789→6d94`), fall routing (`2810`, the 2nd byte of the `0x76a`
-  pairs), chute/warp (`0x24/0x27`), layer-B neighbour bump (`0x35be..0x369e[8551]`).
+  pairs), chute/warp (`0x24/0x27`), layer-B neighbour bump (`0x35be..0x369e[8551]`),
+  and the **structure trigger `6717→6d26→6d94`** (`DS:0x4396[7921]`) — the recoil of
+  the structure the ball sits on, keyed by its plane-A value. This is what makes the
+  **special bumpers** (`0x14`/`0x15` → events `0x2d`/`0x2e`) recoil, e.g. world-1
+  **node 14**'s row of left/right-flinging springs (**fixed 2026-06-24**: `f_6d26`
+  baked the table but had dropped the `f_6d94` call, so the bumpers threw the ball
+  yet never sprang).
 - Extracted by **`tools/re/dump_object_anim.py`** → `src/game/object_anim.{h,gen.cpp}`,
   ported into `LevelGame` (slots + `f_14e4/15a1/69aa/6a89/6d6a`) and rendered by
   **`draw_object_anims`** (`src/video/board_renderer`): suppress the static tile under
   an active slot, overlay the slot's current frame. World 1 is all plane-A lanes, so
-  its springs are entirely layer A. **100 C++ tests pass**; verified by eye
+  its springs are entirely layer A. **102 C++ tests pass**; verified by eye
   (`--render-play 1 MONDE1.VEC 0 leftfire`): the lane bends into a U and recoils, and
   rolling off a platform tilts it in the push direction — matching the original.
+  Node 14's special bumpers recoil too (`--render-play 1 MONDE1.VEC 13 right`).
   Follow-up: the static **layer-B** draw still lacks the `+0xf1` bias (no world-1
   impact — no blocks there). Bonus find: the `+0xf1` is the "bank region not yet
   pinned" note from `entity_sprites.h`.
