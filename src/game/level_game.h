@@ -171,6 +171,8 @@ private:
     void f_6789();                  // hop up-right 6d94(0x19) + layer-B (kBumpSelR1)
     void f_6890();                  // col!=0 -> layer-B (kBumpSelL1)
     void f_68bb();                  // col!=7 -> layer-B (kBumpSelR1)
+    void f_6326();                  // roll-left spike check: plane-B 0x0c -> death tumble
+    void f_6372();                  // roll-right spike check: plane-B 0x0c -> death tumble
 
     // --- decide handlers (0x7ca) ---
     void f_28f9();  // idle hub
@@ -201,6 +203,7 @@ private:
     void f_25ad();  // warp
     void f_1e3d();  // state 0x30 terminal: ball fell into the exit portal -> board cleared
     void f_22b0();  // deadly-pit / chute exit (0x12/0x1f) -> 22fc
+    void f_22d2();  // death-tumble cascade: replay state 0x2e 3x, then 22fc
     void f_22fc();  // lose a life (death / deadly pit / F2 skip)
     void f_2423();  // bounce (scriptless state 5)
     void f_1fbe();  // special bumper

@@ -213,7 +213,7 @@ EntitySpriteStats draw_bum_entities(const BumEntities& bum,
             }
             if (const std::uint8_t bv = bum.layer_b(col, row); bv != 0 && col != 7) {
                 if (const auto b = entity_layer_b_sprite(bv); b.present()) {
-                    const auto pos = entity_layer_ab_position(col, row);
+                    const auto pos = entity_layer_b_position(col, row);
                     if (blit_bank_frame(sprite_bank, b.frame_index, pos.x, pos.y + b.y_offset,
                                         target)) {
                         ++stats.layer_b;
@@ -270,7 +270,9 @@ int draw_object_anims(std::span<const ObjectAnimSprite> anims,
         }
         const int col = a.cell % 8;
         const int row = a.cell / 8;
-        const auto pos = entity_layer_ab_position(col, row);
+        // Layer-B springs sit at the layer-B position table (DS:0x3f4); layer A at 0xf4.
+        const auto pos = a.layer_b ? entity_layer_b_position(col, row)
+                                   : entity_layer_ab_position(col, row);
         if (blit_bank_frame(sprite_bank, a.frame_index, pos.x, pos.y + a.y_offset, target)) {
             ++drawn;
         }

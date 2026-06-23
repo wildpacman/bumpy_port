@@ -24,13 +24,18 @@ constexpr std::array<EntitySpriteRef, 48> kLayerA{{
     {0xffff, 0}, {0xffff, 0},
 }};
 
-// Layer B, resolved from 0x4086 (value -> sprite_index) and 0x3ad2 records. The
-// small frame indices reference a bank region not yet confirmed; decode
-// defensively at the call site.
+// Layer B (blocks), resolved from 0x4086 (value -> sprite_index) and the 0x3ad2
+// record table {frame, y_offset}. The frame_index here is the ABSOLUTE bank frame:
+// the raw 0x3ad2 record frame plus the +0xf1 layer-B bias the original applies at
+// submit (FUN_1000_17c7, line `*(pcVar3+10) + 0xf1`). Layer A's 0x3d6a records are
+// already absolute, so kLayerA needs no bias. Layer-B sprites also draw at a DISTINCT
+// position table DS:0x3f4 (entity_layer_b_position), not layer A's DS:0xf4.
+// (Raw record frames before the bias were 0x00,0x02,0x0d,0x17,0x46,0x21,0x27,0x2e,
+//  0x3d,0x3e,0x3f,0x45,0x4c,0x5b,0x5e,0x60,0x62,0x64,0x68.)
 constexpr std::array<EntitySpriteRef, 32> kLayerB{{
-    {0xffff, 0}, {0x00, 2}, {0x02, 2}, {0x0d, 2}, {0x17, 2}, {0x46, 2}, {0x21, 2}, {0x27, 2},
-    {0x2e, 4}, {0x3d, 1}, {0x3e, 1}, {0x3f, 1}, {0x45, 2}, {0x4c, 2}, {0x5b, 2}, {0x5e, 2},
-    {0x60, 2}, {0x62, 2}, {0x64, 8}, {0x68, 2}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0},
+    {0xffff, 0}, {0xf1, 2}, {0xf3, 2}, {0xfe, 2}, {0x108, 2}, {0x137, 2}, {0x112, 2}, {0x118, 2},
+    {0x11f, 4}, {0x12e, 1}, {0x12f, 1}, {0x130, 1}, {0x136, 2}, {0x13d, 2}, {0x14c, 2}, {0x14f, 2},
+    {0x151, 2}, {0x153, 2}, {0x155, 8}, {0x159, 2}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0},
     {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0}, {0xffff, 0},
     {0xffff, 0}, {0xffff, 0},
 }};
@@ -47,6 +52,13 @@ EntitySpriteRef entity_layer_b_sprite(std::uint8_t value) {
 
 CellPosition entity_layer_ab_position(int col, int row) {
     return CellPosition{col * 40, 24 + row * 32};
+}
+
+CellPosition entity_layer_b_position(int col, int row) {
+    // Layer B reads a DISTINCT position table DS:0x3f4 (FUN_1000_17c7), 48 (x,y) word
+    // pairs: x = 32 + col*40, y = row*32. This is offset (+32 x, -24 y) from layer A's
+    // DS:0xf4. The per-sprite y_offset is added on top by the caller.
+    return CellPosition{32 + col * 40, row * 32};
 }
 
 }  // namespace bumpy

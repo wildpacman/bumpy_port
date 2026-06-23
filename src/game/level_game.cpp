@@ -223,7 +223,7 @@ void LevelGame::decide_dispatch(std::uint8_t state) {
     case 0x4437: f_4437(); break;
     case 0x2810: f_2810(); break;
     case 0x22c1: f_22fc(); break;
-    case 0x22d2: f_228d(); break;  // death cascade (board 0: unreached)
+    case 0x22d2: f_22d2(); break;  // death-tumble cascade (FUN_1000_22d2)
     default: break;                // anim-only / death states: no rest decision
     }
 }
@@ -263,6 +263,8 @@ void LevelGame::anim_dispatch(std::uint8_t state, std::uint8_t step) {
     case 0x6922: if (col != 7) f_686a(kBumpSelR3); break;
     case 0x6890: f_6890(); break;
     case 0x68bb: f_68bb(); break;
+    case 0x6326: f_6326(); break;  // roll-left  spike-death check (plane-B 0x0c)
+    case 0x6372: f_6372(); break;  // roll-right spike-death check (plane-B 0x0c)
     default: break;  // 0x7111 filler + cosmetic ball-sprite/sfx step handlers
     }
 }
@@ -606,6 +608,19 @@ void LevelGame::f_1e3d() {
 
 void LevelGame::f_22b0() { f_22fc(); }
 
+void LevelGame::f_22d2() {
+    // FUN_1000_22d2: the death-tumble cascade. State 0x2e's decide slot. Each time the
+    // 26-step fly-around script finishes, bump the loop counter; after the 3rd it ends
+    // the life (22fc), otherwise it replays the tumble (the ball loops the screen ~3x).
+    ++d_a0ce;
+    if (d_a0ce == 3) {
+        f_22fc();
+    } else {
+        f_4263(0x2e);
+        f_238e();
+    }
+}
+
 void LevelGame::f_22fc() {
     d_a0ce = 0;
     d_856d = 1;  // win / leave board
@@ -697,6 +712,27 @@ void LevelGame::f_228d() {  // entity hit -> death (board 0: unreached)
     ball_.step_index = 0;
     d_a1aa = 0;
     f_4263(0x2e);
+}
+
+void LevelGame::f_6326() {
+    // FUN_1000_6326: roll-left step-4 spike check. If the cell to the left (cell-1)
+    // holds a plane-B vertical spike (0x0c), the ball dies with the fly-around tumble
+    // (state 0x2e) -- same arming as the entity-hit f_228d, minus the a1aa clear.
+    if (ball_.cell_col != 0 && grid_[ball_.cell + 0x2f] == 0x0c) {
+        ball_.step_index = 0;
+        d_a0ce = 1;
+        f_4263(0x2e);
+    }
+}
+
+void LevelGame::f_6372() {
+    // FUN_1000_6372: roll-right step-4 spike check. A plane-B vertical spike (0x0c) on
+    // the ball's own cell arms the fly-around death tumble (state 0x2e).
+    if (ball_.cell_col != 7 && grid_[ball_.cell + 0x30] == 0x0c) {
+        ball_.step_index = 0;
+        d_a0ce = 1;
+        f_4263(0x2e);
+    }
 }
 
 // ---- helpers -----------------------------------------------------------------

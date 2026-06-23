@@ -20,10 +20,12 @@ namespace bumpy {
 //   Layer A: value -> 0x3d3a[value] = sprite_index -> *DS:0x3d6a[sprite_index] =
 //            {y_offset, frame_index} (a near-pointer table, NOT a flat array -- the
 //            records are non-sequential, e.g. the exit pit at sprite 0x7e/0x7f).
-//   Layer B: value -> 0x4086[value] = sprite_index -> record at DS:0x3ad2.
+//   Layer B: value -> 0x4086[value] = sprite_index -> record at DS:0x3ad2; the
+//            stored frame_index is ABSOLUTE (raw record frame + the +0xf1 layer-B
+//            submit bias, FUN_1000_17c7). Layer-B draws at DS:0x3f4, not DS:0xf4.
 //   Layer C: frame_index = value + 0x179 (collectibles).
 // The {frame_index, count} records below are precomputed from those tables. The
-// blitter adds `count` to the layer-A/B draw Y (DAT_8884[1] in FUN_1000_165e).
+// blitter adds `count` to the layer-A/B draw Y (DAT_8884[1] in FUN_1000_165e/17c7).
 
 inline constexpr std::uint16_t entity_no_sprite = 0xffff;
 inline constexpr std::uint16_t layer_c_frame_base = 0x179;
@@ -45,9 +47,13 @@ struct EntitySpriteRef {
     return static_cast<std::uint16_t>(value + layer_c_frame_base);
 }
 
-// Draw position of a layer-A/B grid cell (DS:0xf4): x = col*40, y = 24 + row*32.
+// Draw position of a layer-A grid cell (DS:0xf4): x = col*40, y = 24 + row*32.
 // The per-sprite y_offset is added on top by the caller. Distinct from the
-// layer-C position table (DS:0x274, bum_cell_position).
+// layer-C position table (DS:0x274, bum_cell_position) and the layer-B table below.
 [[nodiscard]] CellPosition entity_layer_ab_position(int col, int row);
+
+// Draw position of a layer-B grid cell (DS:0x3f4): x = 32 + col*40, y = row*32 --
+// a distinct table from layer A (offset +32 x, -24 y). y_offset added by the caller.
+[[nodiscard]] CellPosition entity_layer_b_position(int col, int row);
 
 }  // namespace bumpy

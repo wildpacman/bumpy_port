@@ -103,6 +103,30 @@ TEST_CASE("rolling into the opened portal clears the board") {
     CHECK(g.status() == LevelStatus::won);
 }
 
+TEST_CASE("rolling into a vertical spike triggers the fly-around death") {
+    // The vertical spike walls are plane-B value 0x0c (FUN_1000_6326/6372). While the
+    // ball rolls (states 0x01/0x02), step 4 samples the neighbouring/own cell's plane B;
+    // a spike there arms the death-tumble (state 0x2e, the ball flies around the screen)
+    // which cascades through FUN_1000_22d2 three times into FUN_1000_22fc (lose a life).
+    BumEntities board = lane_board(0x14);   // ball on a lane at row 2, col 4
+    board.bytes[0x30 + 0x13] = 0x0c;        // plane-B spike one cell to the LEFT (cell 0x13)
+    LevelGame g(board);
+
+    const std::uint8_t lives0 = g.lives();
+    bool saw_tumble = false;
+    bool dead = false;
+    for (int i = 0; i < 200 && !dead; ++i) {
+        g.tick(left);
+        if (g.player_state() == 0x2e) {
+            saw_tumble = true;
+        }
+        dead = g.status() == LevelStatus::dead;
+    }
+    CHECK(saw_tumble);                 // entered the fly-around death-tumble state
+    CHECK(dead);                       // ... and ultimately ended the life
+    CHECK(g.lives() == lives0 - 1);    // exactly one life lost
+}
+
 TEST_CASE("the '#' tile grants a life and does not count toward the exit") {
     BumEntities board = lane_board(0x14, /*required=*/1);
     board.bytes[0x60 + 0x13] = 0x23;            // '#': extra life, free (not required)

@@ -463,9 +463,27 @@ implement the per-frame loop as a platform-independent state machine:
   animations are ported + tested + integrated into `App` + SDL. The roll-chaining
   (idle-blink ↔ `4437` input tree ↔ `a1a7` held-bump) and the springs are verified
   by-eye against the original (the lane recoils under the ball). Remaining polish:
-  the static **layer-B** draw still omits the `+0xf1` frame bias (no world-1
-  impact — world 1 has no blocks — but later-world blocks settle to a wrong static
-  frame after a spring); and entity AI (`DS:0x870`) for board-3 monsters.
+  entity AI (`DS:0x870`) for board-3 monsters.
+- ~~**Layer-B static draw** (`+0xf1` frame bias + `DS:0x3f4` position)~~ **DONE
+  2026-06-24.** The earlier note "world 1 has no blocks" was wrong — D1 boards 3,4,6,10
+  (nodes 4,5,7,11) carry plane-B blocks. The static layer-B draw was doubly broken: it
+  omitted the **+0xf1 frame bias** (`FUN_1000_17c7`: `*(slot+10)+0xf1`) so blocks drew a
+  wrong (low) bank frame, and it used layer A's position table `DS:0xf4` instead of
+  layer B's **distinct** `DS:0x3f4` (`x=32+col*40, y=row*32`, offset +32/−24 from A).
+  Symptom: node 5's vertical spike walls (plane-B `0x0c`) drew as a horizontal bar in
+  the wrong spot. Fixed by baking `+0xf1` into `kLayerB` and adding
+  `entity_layer_b_position` (`src/resources/entity_sprites`); `draw_bum_entities` and
+  `draw_object_anims` now use it for layer B. Verified by-eye vs `bumpy_005.png`.
+- ~~**Spike death** (the "ball flies around the screen and dies")~~ **DONE 2026-06-24.**
+  The vertical spike (plane-B `0x0c`) kills via the roll animation-step micro-ops
+  `FUN_1000_6326` (roll-left, checks plane-B of cell−1) / `FUN_1000_6372` (roll-right,
+  checks plane-B of the cell): a `0x0c` there sets `a0ce=1`, `792a=0` and arms **state
+  `0x2e`** (the 26-step fly-around `kSteps_2e`), exactly like the entity hit `228d` but
+  with no `a1aa`. State `0x2e`'s decide slot is `FUN_1000_22d2` (the cascade): each time
+  the tumble script finishes it bumps `a0ce`; on the 3rd it calls `22fc` (lose a life).
+  This needs **no entity** — node 5 has none yet spikes kill. The port had `6326`/`6372`
+  stubbed (fell through `anim_dispatch` default) and mis-wired decide `0x22d2`→`f_228d`
+  (which would have looped forever); both fixed in `LevelGame` + tested.
 - ~~**Tile-value semantics**~~ **DONE** — confirmed against decoded D1 in
   [tile-semantics.md](tile-semantics.md): plane-A behavior is table-driven by
   structure code (5 reaction tables at `DS:0x36be..0x377e` + sprite map
