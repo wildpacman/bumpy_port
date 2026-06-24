@@ -4,6 +4,7 @@
 #include "resources/level_resources.h"
 #include "video/board_renderer.h"
 #include "video/map_renderer.h"
+#include "video/screen_transition.h"
 
 #include <algorithm>
 #include <array>
@@ -61,6 +62,12 @@ constexpr double kVgaRefreshHz = 70.086;
 // sits behind a jump table Ghidra could not recover, so the /2 is pinned empirically
 // rather than read from the disassembly. The run loop selects per phase (see half_rate).
 constexpr double kGameTickHz = kVgaRefreshHz / 2.0;
+
+// How many retraces each ring of the edge-to-centre darken (FUN_1000_3467) is held for.
+// The original runs the fill un-paced (one CPU-bound burst); the port spreads the 10
+// rings over frames so the wipe is visible. At 1 frame/ring (70 Hz) the close is ~0.14 s;
+// holding each ring 2 frames (~35 Hz) gives ~0.29 s. This is the knob for the wipe speed.
+constexpr int kDarkenFramesPerRing = 2;
 
 }  // namespace
 
@@ -127,6 +134,42 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
     const Uint64 period_half = static_cast<Uint64>(static_cast<double>(perf_freq) / kGameTickHz);
     Uint64 next_frame = SDL_GetPerformanceCounter();
 
+    // The original darkens the screen from the edges to the centre on every screen change
+    // (FUN_1000_3467; see analysis/specs/screen-flow.md). We snapshot the outgoing screen
+    // and play the closing-box wipe over it before the incoming screen renders. Each ring
+    // is held for kDarkenFramesPerRing retraces to pace the close.
+    ScreenTransition transition;
+    int darken_hold = 0;  // retraces the current ring has been shown
+
+    auto present_frame = [&]() {
+        const auto rgba = frame.to_rgba();
+        require(SDL_UpdateTexture(
+            texture_, nullptr, rgba.data(), frame.width() * sizeof(std::uint32_t)));
+        require(SDL_RenderClear(renderer_));
+        require(SDL_RenderTexture(renderer_, texture_, nullptr, nullptr));
+        require(SDL_RenderPresent(renderer_));
+    };
+
+    // Wait until the next tick boundary: sleep the bulk (1ms granularity) then spin the
+    // final sub-millisecond for an accurate cadence. If a frame ran long, resync instead
+    // of accumulating debt.
+    auto wait_next_tick = [&](Uint64 tick_period) {
+        next_frame += tick_period;
+        const Uint64 now = SDL_GetPerformanceCounter();
+        if (now < next_frame) {
+            const Uint64 remaining = next_frame - now;
+            const Uint64 remaining_ms = (remaining * 1000) / perf_freq;
+            if (remaining_ms > 1) {
+                SDL_Delay(static_cast<Uint32>(remaining_ms - 1));
+            }
+            while (SDL_GetPerformanceCounter() < next_frame) {
+                // spin the last <=1ms
+            }
+        } else {
+            next_frame = now;  // behind schedule -> resync
+        }
+    };
+
     while (running) {
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {
@@ -138,32 +181,75 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
                 update_key_state(input, event.key.key, false);
             }
         }
+        if (!running) {
+            break;
+        }
 
-        // The App owns all screen transitions, including Escape/cancel (menu ->
-        // quit, level -> menu), so the event loop no longer special-cases Escape.
+        // While the edge-to-centre darken is playing, freeze all game logic (the original
+        // runs FUN_1000_3467 synchronously before the next screen loads) and just step the
+        // wipe over the snapshotted outgoing screen. Each ring is shown kDarkenFramesPerRing
+        // retraces before advancing inward.
+        if (transition.active()) {
+            transition.render(frame);
+            present_frame();
+            wait_next_tick(period_full);
+            if (++darken_hold >= kDarkenFramesPerRing) {
+                darken_hold = 0;
+                transition.advance();  // may deactivate after the final (fully black) ring
+            }
+            continue;
+        }
+
+        // The App owns all screen transitions, including Escape/cancel (menu -> quit,
+        // level -> menu), so the event loop no longer special-cases Escape.
+        const Screen before = app.screen();
         if (app.update(input) == AppOutcome::quit) {
             running = false;
         }
+        if (!running) {
+            break;
+        }
+        bool screen_changed = app.screen() != before;
 
         // Drive the in-level game state machine on the playfield. Arrow keys move the
-        // ball; confirm (Enter/Space) is the fire button.
-        if (app.screen() == Screen::level) {
-            if (!game) {
-                if (app.board_index() < level.bum_board_count()) {
-                    game.emplace(level.bum_entities(app.board_index()));
-                } else {
-                    app.leave_level();  // no entity data for this board
+        // ball; confirm (Enter/Space) is the fire button. Skipped on the frame a screen
+        // change starts so the board is not created/ticked under the darken (the original
+        // loads the board only after FUN_1000_3467 finishes).
+        if (!screen_changed) {
+            const Screen pre_game = app.screen();
+            if (app.screen() == Screen::level) {
+                if (!game) {
+                    if (app.board_index() < level.bum_board_count()) {
+                        game.emplace(level.bum_entities(app.board_index()));
+                    } else {
+                        app.leave_level();  // no entity data for this board
+                    }
                 }
-            }
-            if (game) {
-                game->tick(LevelInput{input.left, input.right, input.up, input.down, input.confirm});
-                if (game->status() != LevelStatus::playing) {
-                    app.leave_level();
-                    game.reset();
+                if (game) {
+                    game->tick(
+                        LevelInput{input.left, input.right, input.up, input.down, input.confirm});
+                    if (game->status() != LevelStatus::playing) {
+                        app.leave_level();
+                        game.reset();
+                    }
                 }
+            } else {
+                game.reset();
             }
-        } else {
-            game.reset();
+            // A board that won/lost/quit flips level -> map here, not via app.update().
+            screen_changed = app.screen() != pre_game;
+        }
+
+        // On any screen change, `frame` still holds the previous iteration's render of the
+        // outgoing screen: snapshot it and start the darken instead of rendering anew. The
+        // outermost ring shows this frame; the active()-block above paces the rest.
+        if (screen_changed) {
+            transition.begin(frame);
+            transition.render(frame);
+            present_frame();
+            wait_next_tick(period_full);
+            darken_hold = 1;  // ring 1 shown once this frame
+            continue;
         }
 
         if (app.screen() == Screen::menu) {
@@ -193,37 +279,14 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
             }
         }
 
-        const auto rgba = frame.to_rgba();
-        require(SDL_UpdateTexture(
-            texture_, nullptr, rgba.data(), frame.width() * sizeof(std::uint32_t)));
-        require(SDL_RenderClear(renderer_));
-        require(SDL_RenderTexture(renderer_, texture_, nullptr, nullptr));
-        require(SDL_RenderPresent(renderer_));
+        present_frame();
 
         // Pick this frame's period from the live phase: half-rate for the 13df-driven
         // sequences (in-level gameplay, world-map cloud-jump), full retrace rate
         // otherwise (menu, world-map navigation/slide). See period_full/period_half.
         const bool half_rate = app.screen() == Screen::level ||
                                (app.screen() == Screen::map && app.world_map().is_jumping());
-        const Uint64 tick_period = half_rate ? period_half : period_full;
-
-        // Wait until the next tick boundary: sleep the bulk (1ms granularity) then spin
-        // the final sub-millisecond for an accurate cadence. If a frame ran long, resync
-        // instead of accumulating debt.
-        next_frame += tick_period;
-        const Uint64 now = SDL_GetPerformanceCounter();
-        if (now < next_frame) {
-            const Uint64 remaining = next_frame - now;
-            const Uint64 remaining_ms = (remaining * 1000) / perf_freq;
-            if (remaining_ms > 1) {
-                SDL_Delay(static_cast<Uint32>(remaining_ms - 1));
-            }
-            while (SDL_GetPerformanceCounter() < next_frame) {
-                // spin the last <=1ms
-            }
-        } else {
-            next_frame = now;  // behind schedule -> resync
-        }
+        wait_next_tick(half_rate ? period_half : period_full);
     }
     return 0;
 }

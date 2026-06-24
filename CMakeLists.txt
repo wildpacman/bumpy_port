@@ -36,6 +36,7 @@ add_library(bumpy_core
   src/video/screen_image.cpp
   src/video/board_renderer.cpp
   src/video/map_renderer.cpp
+  src/video/screen_transition.cpp
   src/game/world_map.cpp)
 target_include_directories(bumpy_core PUBLIC src)
 target_link_libraries(bumpy_core PUBLIC bcrypt)
@@ -67,6 +68,7 @@ add_executable(bumpy_tests
   tests/cpp/menu_test.cpp
   tests/cpp/app_test.cpp
   tests/cpp/world_map_test.cpp
+  tests/cpp/screen_transition_test.cpp
   tests/cpp/map_renderer_test.cpp
   tests/cpp/move_scripts_test.cpp
   tests/cpp/tile_reactions_test.cpp

@@ -90,6 +90,10 @@ split and keeping game logic independent of SDL3.
   - cancel → `back_to_menu`.
   - Debounces its arrow keys with the same `waiting_for_release_` pattern `Menu`
     uses for up/down, so a held arrow steps one node per press.
+    > **Superseded (2026-06-24):** arrow debounce was removed to match the original —
+    > the map loop (`FUN_1000_3852`) re-polls held keys with no debounce, so holding a
+    > direction now walks node to node continuously; only fire/cancel stay
+    > release-guarded. See `analysis/specs/screen-flow.md` and `PROJECT_STATUS.md`.
 - `const WorldMapView& view()` exposes `current_node` and avatar `(x, y)` for the
   renderer. No SDL, no file I/O, no floating point.
 

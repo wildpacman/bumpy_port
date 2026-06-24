@@ -50,8 +50,11 @@ struct MapNode {
 // avatar position. Pressing a direction with a linked neighbour starts a slide: the
 // avatar glides 4px/tick along the connecting line to the neighbour (the original's
 // FUN_1000_3ab2..3bc9 animate dist>>2 steps of 4px), and input is ignored until it
-// arrives -- so update() must be called every tick. Debounces its own input (one
-// slide/action per key press) like Menu does. App drives it on Screen::map.
+// arrives -- so update() must be called every tick. Directions move *continuously*:
+// the original (FUN_1000_3852) re-polls the held keys every loop iteration with no
+// debounce, so holding a direction walks node to node, the slide being the only pacing.
+// Only fire/cancel are release-guarded (so a trigger held across a screen transition
+// cannot carry over). App drives it on Screen::map.
 //
 // Fire on a node plays the recovered cloud-jump animation before entering the board:
 // FUN_1000_3cf7 sets up a 22-record script at DS:0x1114 (each record {frame, dx, dy},
@@ -86,7 +89,7 @@ private:
     void clear_jump() noexcept;          // reset the avatar to its resting pose
 
     WorldMapView view_{};
-    bool waiting_for_release_{false};  // a fresh map acts on first input; enter() arms the guard
+    bool waiting_for_release_{false};  // guards fire/cancel only; enter() arms it (directions are continuous)
     bool sliding_{false};
     int slide_to_x_{};
     int slide_to_y_{};

@@ -43,7 +43,9 @@ map**, which is the missing screen.
 2. VGA palette patch (`if DAT_541d == 1`): copies **16 bytes** into the decoded
    screen at offset `0x23` from the per-world table `0x6e6[world]` (see Palette
    below). The 16-RGB DAC palette travels in the screen itself at `0x33`.
-3. `FUN_1000_3467` draws the playfield frame/border.
+3. `FUN_1000_3467` plays the **edge-to-centre darken** over the *previous* visible
+   screen (see "Screen-change darken" below) — not a frame/border draw, as an
+   earlier note here assumed.
 4. `FUN_1000_0816(score, …, 7, …)` draws the **7-digit score** (this routine is a
    decimal number formatter, not the avatar).
 5. Avatar position `(DAT_9290, DAT_9292)` is initialised from `(DAT_791c,
@@ -52,9 +54,40 @@ map**, which is the missing screen.
 6. Node-draw pass `FUN_1000_3c4f`: iterates nodes `1..` and for each with a
    non-zero record byte draws a marker (sprite **frame `0x1da`**) at its position;
    the visible rings, however, are part of the MONDE backdrop.
-7. Navigation loop (`while not selected`): reads input bits `DAT_8244`:
+7. Navigation loop (`while not selected`): each iteration re-reads the **currently
+   held** keys via `FUN_1000_1dde` → `FUN_1000_75a2` (which ORs the live key-state
+   table at `DAT_4d42`) into `DAT_8244`, then dispatches **one** action:
    `1`=up→`3ab2`, `2`=down→`3b0f`, `4`=left→`3b6c`, `8`=right→`3bc9`,
    `0x10`=fire→`3cf7`, else Escape (`7ab4` → `DAT_928d = -1`, back to menu).
+   There is **no release debounce**: a move (`3ab2`..`3bc9`) animates the whole
+   `dist>>2`-step slide inline (each step waits a retrace via `3c26`→`7bdd`), and the
+   loop then re-polls — so **holding a direction walks node to node continuously**, the
+   slide being the only pacing. The port reproduces this in `WorldMap::update`
+   (directions act every tick; only fire/cancel keep a release guard).
+
+## Screen-change darken — `FUN_1000_3467` (Confirmed from disassembly)
+
+Called at the start of the menu (`35a5`), world map (`3852`), score backdrop (`2fac`)
+and password (`11eb`) screens, and before a board loads (`0c18` right after the map
+returns a selected node) — i.e. on **every** screen change. It darkens the *outgoing*
+visible screen from the **edges inward to the centre**, then the new screen is presented.
+
+Mechanism: it paints **concentric black rings** over the visible page, outermost first,
+in the engine's **20×25 character cells** (each **16×8 px**). Per ring it fills four
+black bars — top, bottom, left, right — via the rectangle-fill primitive
+`FUN_1000_7b4a` (descriptor colour bytes `+0x22..0x25 = 0` → index 0), each committed by
+`FUN_1000_9864` (`FUN_2036_0000`, a per-mode latch-flush — **not** a retrace wait). The
+loop runs **10 rings**, shrinking the bar span by two cells per ring (`local_4`: 20→2,
+`local_5`: 25→7); together the rings cover the whole screen. After `s` rings the still-
+visible centre is the rectangle `[16s, 320−16s) × [8s, 200−8s)` cells-worth of pixels;
+at `s = 10` it is empty, so the screen is fully black.
+
+There is **no retrace wait inside the loop** (only the `9864` latch-flush), so on the
+original the close is one fast CPU-bound burst. The port (`src/video/screen_transition`)
+reproduces the geometry exactly and the run loop holds each ring
+`kDarkenFramesPerRing` retraces (default **2**, i.e. ~35 Hz → the 10-ring close lasts
+~0.29 s) so the wipe is visibly paced; tune `kDarkenFramesPerRing` (in
+`platform_sdl3/sdl_app`) to match a given DOSBox cycle setting more closely.
 
 ### Node graph — per world at `0x10c8[world]` (far pointer)
 

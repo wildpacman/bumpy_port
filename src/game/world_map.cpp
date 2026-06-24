@@ -94,6 +94,14 @@ void WorldMap::start_slide(int node) noexcept {
     slide_to_x_ = n.x;
     slide_to_y_ = n.y;
     sliding_ = view_.avatar_x != slide_to_x_ || view_.avatar_y != slide_to_y_;
+    if (sliding_) {
+        // The original takes the first 4px step on the same tick the move begins
+        // (FUN_1000_3ab2's loop does `DAT_9292 -= 4` then waits for the retrace), so the
+        // avatar is already 4px off the node on the first displayed frame -- no frame of
+        // stale resting pose. This also means a held direction has no idle frame between
+        // consecutive node slides, keeping the continuous walk smooth.
+        advance_slide();
+    }
 }
 
 void WorldMap::start_jump() noexcept {
@@ -152,9 +160,36 @@ WorldMapAction WorldMap::update(const MenuInput& input) noexcept {
         return {};
     }
 
-    const bool any = input.up || input.down || input.left || input.right ||
-                     input.confirm || input.cancel;
-    if (!any) {
+    const MapNode& n = kWorld1[static_cast<std::size_t>(view_.current_node)];
+    // Directions move *continuously*: the original's map loop (FUN_1000_3852) re-polls the
+    // currently-held keys every iteration (FUN_1000_1dde -> FUN_1000_75a2 reads the live
+    // key-state table) with no debounce, and each move animates a full node-to-node slide.
+    // So holding a direction glides node by node -- the slide is the only pacing; there is
+    // no per-press release requirement. Process directions before confirm/cancel to match
+    // the original's input priority (up, down, left, right, fire, then escape).
+    if (input.up && n.up != 0) {
+        start_slide(n.up);
+        return {};
+    }
+    if (input.down && n.down != 0) {
+        start_slide(n.down);
+        return {};
+    }
+    if (input.left && n.left != 0) {
+        start_slide(n.left);
+        return {};
+    }
+    if (input.right && n.right != 0) {
+        start_slide(n.right);
+        return {};
+    }
+
+    // Fire and cancel, by contrast, keep a release guard so a trigger held across a screen
+    // transition cannot carry over: the menu's "start" confirm must not instantly fire into
+    // a board the moment the map appears, and a held Escape must not bounce straight back to
+    // the menu. enter() arms this guard on each menu->map entry.
+    const bool trigger = input.confirm || input.cancel;
+    if (!trigger) {
         waiting_for_release_ = false;
         return {};
     }
@@ -162,22 +197,11 @@ WorldMapAction WorldMap::update(const MenuInput& input) noexcept {
         return {};
     }
     waiting_for_release_ = true;
-
-    const MapNode& n = kWorld1[static_cast<std::size_t>(view_.current_node)];
-    // Original priority (FUN_1000_3852): up, down, left, right, fire, then escape.
-    if (input.up && n.up != 0) {
-        start_slide(n.up);
-    } else if (input.down && n.down != 0) {
-        start_slide(n.down);
-    } else if (input.left && n.left != 0) {
-        start_slide(n.left);
-    } else if (input.right && n.right != 0) {
-        start_slide(n.right);
-    } else if (input.confirm) {
+    if (input.confirm) {
         // All world-1 nodes are open (FUN_1000_2d14 zeroes every node's state), so fire
         // always starts the jump; select_board is returned once the animation finishes.
         start_jump();
-    } else if (input.cancel) {
+    } else {  // input.cancel
         return {WorldMapResult::back_to_menu, 0};
     }
     return {};

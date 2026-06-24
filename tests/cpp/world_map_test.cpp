@@ -79,16 +79,17 @@ TEST_CASE("arrows walk the graph to linked neighbours") {
 TEST_CASE("pressing an arrow glides the avatar 4px/tick to the neighbour") {
     WorldMap map;  // node 1 at (32,32); right -> node 2 at (112,32)
 
-    // The press starts the slide: the logical node updates at once, the avatar does
-    // not -- it is still at the origin and now sliding.
+    // The press starts the slide: the logical node updates at once and the avatar takes
+    // its first 4px step on the same tick (FUN_1000_3ab2 moves before the first retrace).
     REQUIRE(map.update(MenuInput{.right = true}).result == WorldMapResult::none);
     REQUIRE(map.is_sliding());
     REQUIRE(map.current_node() == 2);
-    REQUIRE(map.view().avatar_x == 32);
-
-    // Each tick advances 4px along the connecting line (y unchanged -> moves on it).
-    map.update(MenuInput{});
     REQUIRE(map.view().avatar_x == 36);
+    REQUIRE(map.view().avatar_y == 32);
+
+    // Each further tick advances another 4px along the connecting line.
+    map.update(MenuInput{});
+    REQUIRE(map.view().avatar_x == 40);
     REQUIRE(map.view().avatar_y == 32);
 
     int guard = 0;
@@ -185,24 +186,31 @@ TEST_CASE("fire is ignored mid-jump and the jump finishes regardless of input") 
     REQUIRE(final_result == WorldMapResult::select_board);
 }
 
-TEST_CASE("a held arrow advances only one node per press") {
+TEST_CASE("a held arrow walks node to node continuously (no release needed)") {
     WorldMap map;
-    REQUIRE(map.update(MenuInput{.right = true}).result == WorldMapResult::none);
-    REQUIRE(map.current_node() == 2);
-    // Hold right through the whole slide: the held key is ignored mid-slide...
+    // Navigate to node 12 (single presses): 1 -R-> 2 -D-> 9 -L-> 8 -D-> 12. Nodes
+    // 12,13,14,15 form a horizontal row each linked right to the next.
+    act(map, MenuInput{.right = true});
+    act(map, MenuInput{.down = true});
+    act(map, MenuInput{.left = true});
+    act(map, MenuInput{.down = true});
+    REQUIRE(map.current_node() == 12);
+
+    // Hold right and never release: the avatar should glide 12 -> 13 -> 14 -> 15, starting
+    // each next slide the instant the previous one lands (the original re-polls the held
+    // key every loop iteration; the slide is the only pacing -- no per-press debounce).
     int guard = 0;
-    while (map.is_sliding() && guard++ < 1000) {
+    while (map.current_node() != 15 && guard++ < 5000) {
         map.update(MenuInput{.right = true});
     }
-    // ...and once arrived, the still-held key is debounced -- no second slide.
-    map.update(MenuInput{.right = true});
-    REQUIRE(map.current_node() == 2);
-    REQUIRE_FALSE(map.is_sliding());
+    REQUIRE(map.current_node() == 15);
 
-    // Release, then a fresh right press: node 2 has no right link -> no move.
-    map.update(MenuInput{});
-    map.update(MenuInput{.right = true});
-    REQUIRE(map.current_node() == 2);
+    // Node 15 has no right link: holding right past it stops cleanly (no wrap, no slide).
+    for (int i = 0; i < 50; ++i) {
+        map.update(MenuInput{.right = true});
+    }
+    REQUIRE(map.current_node() == 15);
+    REQUIRE_FALSE(map.is_sliding());
 }
 
 TEST_CASE("enter resets to node 1 (snap, no slide) and requires a key release first") {

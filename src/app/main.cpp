@@ -13,6 +13,7 @@
 #include "video/board_renderer.h"
 #include "video/map_renderer.h"
 #include "video/menu_renderer.h"
+#include "video/screen_transition.h"
 
 #include <algorithm>
 #include <array>
@@ -444,6 +445,41 @@ int render_jump_to_bmps(const std::filesystem::path& asset_root,
     return 0;
 }
 
+// Dump the edge-to-centre screen-change darken (FUN_1000_3467) over a real screen --
+// the world-map backdrop -- as <prefix>NN.bmp, one per step, so the wipe's geometry and
+// pacing can be checked by eye against the original (see analysis/specs/screen-flow.md).
+int render_transition_to_bmps(const std::filesystem::path& asset_root,
+                              const std::filesystem::path& monde_path, const std::string& prefix) {
+    const auto backdrop = bumpy::decode_vec_resource(monde_path);
+    const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+    bumpy::WorldMap map;  // node 1
+    bumpy::IndexedFramebuffer outgoing(320, 200);
+    bumpy::render_map(backdrop.decoded_bytes(), map.view(), bank.bytes(), outgoing);
+
+    auto dump = [&](int index, const bumpy::IndexedFramebuffer& f) {
+        std::ostringstream name;
+        name << prefix << std::setw(2) << std::setfill('0') << index << ".bmp";
+        write_24bit_bmp(name.str(), f);
+    };
+
+    dump(0, outgoing);  // step 0: the un-darkened outgoing screen
+    bumpy::ScreenTransition transition;
+    transition.begin(outgoing);
+    int index = 1;
+    while (transition.active()) {
+        bumpy::IndexedFramebuffer frame(320, 200);
+        transition.render(frame);
+        dump(index, frame);
+        std::cout << "step " << std::setw(2) << index << ": border "
+                  << bumpy::ScreenTransition::kCellW * transition.step() << "x"
+                  << bumpy::ScreenTransition::kCellH * transition.step() << " px\n";
+        transition.advance();
+        ++index;
+    }
+    std::cout << "wrote " << index << " frames to " << prefix << "NN.bmp\n";
+    return 0;
+}
+
 int run_sdl_menu(const std::filesystem::path& asset_root) {
     warn_if_assets_changed(asset_root);
     const auto resources = bumpy::MenuResources::load_from(asset_root);
@@ -500,6 +536,12 @@ int main(int argc, char* argv[]) {
             // dir = none|left|right|up|down|fire (held for every frame).
             return render_play_to_bmps(asset_root, std::stoi(argv[2]), argv[3],
                                        static_cast<std::size_t>(std::stoi(argv[4])), argv[5], argv[6]);
+        }
+        if (argc == 4 && std::string_view(argv[1]) == "--render-transition") {
+            // --render-transition <MONDE.VEC> <out-prefix>
+            // Dumps the edge-to-centre screen-change darken over the world map as
+            // <prefix>NN.bmp (step 00 = un-darkened, then one per ring).
+            return render_transition_to_bmps(asset_root, argv[2], argv[3]);
         }
         if (argc == 5 && std::string_view(argv[1]) == "--render-jump") {
             // --render-jump <node> <MONDE.VEC> <out-prefix>

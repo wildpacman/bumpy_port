@@ -206,7 +206,11 @@ functions), DOSBox-X reference harness.
   avatar 4px/tick along the connecting line to the linked neighbour (input ignored
   mid-slide), fire selects board `node−1`, Escape returns to the menu. Recovered from
   `FUN_1000_3852` / `3a88` / `3ab2…3bc9` (the `dist>>2`-steps-of-4px animation) /
-  `1cb2`.
+  `1cb2`. **Directions move continuously**: the original's map loop re-polls the held
+  keys every iteration (`FUN_1000_1dde` → `FUN_1000_75a2`, reading the live key-state
+  table) with no debounce, so **holding a direction walks node to node** — the slide is
+  the only pacing, and the first 4px step lands on the same tick the move begins
+  (matching `FUN_1000_3ab2`). Only fire/cancel keep a release guard.
 - **`src/video/map_renderer`** composes the map: the `MONDE1.VEC` backdrop (via the
   factored **`src/video/screen_image`** deplane helper, shared with `board_renderer`)
   plus the **Bumpy-on-cloud avatar** — `BUMSPJEU.BIN` **frame `0x21`**
@@ -259,6 +263,28 @@ functions), DOSBox-X reference harness.
   ~(8,8), which the original does not.)
 - **`--render-jump <node> <MONDE.VEC> <out-prefix>`** dumps the animation as
   `<prefix>NN.bmp` for by-eye verification. 69 C++ tests pass; originals verify clean.
+
+**Stage 3 screen-change darken (builds and runs on master):**
+- The original darkens the screen **from the edges inward to the centre** on every
+  screen change — recovered as **`FUN_1000_3467`** (an earlier note here mislabeled it
+  "draws the frame/border"). It paints concentric black rings over the *outgoing*
+  screen, outermost first, in **20×25 character cells of 16×8 px**: 10 rings, each a
+  top/bottom/left/right black bar (fill colour = index 0), together covering the whole
+  screen. The fill is committed by `FUN_1000_9864` (a per-mode latch-flush, **not** a
+  retrace wait), so on the original it is one fast un-paced burst. Called at the start
+  of the menu (`35a5`), world map (`3852`) and password (`11eb`) screens and before a
+  board loads (`0c18`) — i.e. on menu↔map, map→level and level→menu.
+- **`src/video/screen_transition`** is pure geometry (one ring per `advance()`): it
+  snapshots the outgoing frame and, after step `s`, leaves the centre rectangle
+  `[16s, 320−16s) × [8s, 200−8s)` visible (fully black at `s = 10`). The SDL run loop
+  snapshots the last-rendered outgoing screen on a screen change, freezes game logic
+  while the wipe plays (the original runs `3467` synchronously before the next screen
+  loads), and **holds each ring `kDarkenFramesPerRing` retraces** (default **2** →
+  ~0.29 s for the close) as the speed knob.
+- **`--render-transition <MONDE.VEC> <out-prefix>`** dumps the wipe over the world-map
+  art as `<prefix>NN.bmp` (step 00 = un-darkened, then one per ring) for by-eye check.
+  108 C++ tests pass (incl. the wipe geometry + continuous-map-nav tests); originals
+  verify clean. Spec: `analysis/specs/screen-flow.md` ("Screen-change darken").
 
 **Stage 3 in-level gameplay loop (builds and runs on master):**
 - **`src/game/level_game`** is the platform-independent in-level loop transcribed
@@ -350,11 +376,14 @@ cmake --build --preset windows-debug
 & build/windows-debug/Debug/bumpy_port.exe --render-board 1 MONDE1.VEC 0 board.bmp        # static board (add 'map' to overlay the world-select screen)
 & build/windows-debug/Debug/bumpy_port.exe --render-map 1 MONDE1.VEC map.bmp              # world-map screen (MONDE1 + Bumpy avatar on node 1)
 & build/windows-debug/Debug/bumpy_port.exe --render-play 1 MONDE1.VEC 0 leftfire play     # drive board 0 with an input (none/up/down/left/right/fire/leftfire), dump playNN.bmp + ball/spring log
+& build/windows-debug/Debug/bumpy_port.exe --render-jump 6 MONDE1.VEC jump_              # fire-to-enter cloud-jump animation on a node, dump jump_NN.bmp
+& build/windows-debug/Debug/bumpy_port.exe --render-transition MONDE1.VEC trans_         # edge-to-centre screen-change darken, dump trans_NN.bmp (00 = un-darkened)
 ```
 
 In the window: confirm "start" on the menu → world map; arrows move Bumpy between
-linked nodes; Enter/Space enters that node's board; Escape steps back (level → map's
-menu, map → menu, menu → quit).
+linked nodes (**hold a direction to walk node to node continuously**); Enter/Space
+enters that node's board; Escape steps back (level → map's menu, map → menu, menu →
+quit). Every screen change plays the edge-to-centre darken.
 
 ## Reverse-engineering workflow
 
