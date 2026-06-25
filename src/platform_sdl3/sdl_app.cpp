@@ -3,6 +3,7 @@
 #include "game/level_game.h"
 #include "resources/level_resources.h"
 #include "video/board_renderer.h"
+#include "video/hud.h"
 #include "video/map_renderer.h"
 #include "video/screen_transition.h"
 
@@ -106,7 +107,8 @@ SdlApp::~SdlApp() {
 
 int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResources& level,
                 std::span<const std::uint8_t> backdrop_screen,
-                std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& frame) {
+                std::span<const std::uint8_t> sprite_bank, const Font& font,
+                IndexedFramebuffer& frame) {
     bool running = true;
     MenuInput input{};
 
@@ -220,7 +222,9 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
             if (app.screen() == Screen::level) {
                 if (!game) {
                     if (app.board_index() < level.bum_board_count()) {
-                        game.emplace(level.bum_entities(app.board_index()));
+                        // Carry the run's lives/score into the board.
+                        game.emplace(level.bum_entities(app.board_index()), app.lives(),
+                                     app.score());
                     } else {
                         app.leave_level();  // no entity data for this board
                     }
@@ -229,7 +233,8 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
                     game->tick(
                         LevelInput{input.left, input.right, input.up, input.down, input.confirm});
                     if (game->status() != LevelStatus::playing) {
-                        app.leave_level();
+                        // Win/lose/game-over: carry lives+score back and update the run.
+                        app.finish_level(game->status(), game->lives(), game->score());
                         game.reset();
                     }
                 }
@@ -255,7 +260,10 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
         if (app.screen() == Screen::menu) {
             menu_renderer.render(app.menu().view(), frame);
         } else if (app.screen() == Screen::map) {
-            render_map(backdrop_screen, app.world_map().view(), sprite_bank, frame);
+            render_map(backdrop_screen, app.world_map().view(), sprite_bank, frame,
+                       app.cleared_boards());
+            draw_lives(sprite_bank, app.lives(), frame);  // lives row HUD (FUN_1000_6130)
+            draw_score(font, app.score(), kMapScoreX, kMapScoreBaselineY, kScoreColor, frame);
         } else {
             render_board(level, app.board_index(), backdrop_screen, frame);
             if (game) {

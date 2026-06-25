@@ -1,6 +1,6 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-06-24.
+Source of truth for new sessions. Last updated: 2026-06-26.
 
 ## Goal
 
@@ -348,6 +348,41 @@ functions), DOSBox-X reference harness.
   impact — no blocks there). Bonus find: the `+0xf1` is the "bank region not yet
   pinned" note from `entity_sprites.h`.
 
+**Stage 3 game-loop close + HUD (builds and runs on master):**
+- The **world map is now the persistent hub**: `src/game/app` (`App`) carries score,
+  lives, and per-board completion across boards; the SDL shell constructs each
+  `LevelGame` with the run's lives/score (`game.emplace(..., app.lives(), app.score())`)
+  and, on a terminal status, calls **`App::finish_level(status, lives, score)`** instead
+  of the bare `leave_level()`. Rules (recovered in `analysis/specs/screen-flow.md`
+  "Game-loop close"): **won** (`FUN_1000_1e3d`) marks the board cleared and returns to the
+  map (or, when every board is cleared = `FUN_1000_3e8a`, the world is complete → menu, a
+  stub for worlds 2-9); **dead** returns to the map with the node unmarked (replayable),
+  the life already decremented inside `LevelGame`; **quit** = out of lives
+  (`FUN_1000_22fc` set `928d=0xff`) → game over → reset the run → menu. Starting a game
+  from the menu reloads the world (`reset_run()`: score 0, lives 5, no boards cleared).
+- **Completed-node markers** (`FUN_1000_3c4f`): `render_map` draws sprite **frame `0x1da`**
+  on every cleared node (`App::cleared_boards()` → `render_map`'s new `cleared_boards`
+  span), beneath the avatar. The overlay blitter centres a frame on its descriptor by half
+  its dimensions (verified: the resting avatar frame `0x21` is `32x21`, so descriptor − (16,
+  10) = the bbox-centred placement); the marker sits at descriptor `(node.x − 1, node.y)`.
+- **Lives HUD** (`FUN_1000_6130`): new `src/video/hud` `draw_lives` blits the life icon
+  (frame `0x1aa`) once per remaining life at descriptor `(i*8 + 0x50, 0)` along the top,
+  drawn on the world map. Verified by eye against `screenshots/bumpy_001.png` (the red
+  Bumpy-head row, top-centre).
+- **Score HUD** (`FUN_1000_0816` → the `1ab9` text overlay): the 7 zero-padded digits are
+  drawn from the **DDFNT2.CAR** bitmap font (NOT a BUMSPJEU/EXE font — `FUN_1000_808e` is
+  `malloc`, `0x7c3` is the buffer size; the font is LEVEL-table index 4). New
+  `src/resources/font` decodes the variable-width MSB-first glyph format (header
+  `[0]first [1]last [2]ascent [3]metric [4]spacing`, BE16 offset table, per-glyph
+  `[0]w [1]h [2]yoff [3..]bitmap`); `src/video/hud` `draw_score` renders it at the
+  map cursor `(1, 8)` (raw pixels, `Y` = baseline) in palette index **14** — matching
+  `screenshots/bumpy_001.png` exactly (font glyphs + the olive-gray colour). The
+  **in-level HUD** is deliberately not drawn: the original's in-level `0816` call is gated
+  on an event flag, so normal play shows no persistent in-level score (matches `bumpy_002`).
+  Full recovery: `analysis/specs/screen-flow.md` ("HUD score font"),
+  `tools/re/dump_hud_font.py`. **118 C++ tests pass** (`app_test` finish-level cases,
+  `map_renderer_test` markers/centring, `hud_test`, `font_test`); originals verify clean.
+
 **Placeholders / remaining work:**
 - Compressed sprite frames (flags `0x40`/`0x20`, `1cec:2ded`) are **fully recovered
   from disassembly but unused by the supplied assets** — `BUMSPJEU` is all
@@ -439,10 +474,12 @@ in-level-loop sections above). The next milestones:
 2. **Static layer-B `+0xf1`** — apply the recovered frame bias to the static
    block draw too, so later-world blocks settle to the right sprite after a spring
    (no world-1 impact — world 1 has no blocks).
-3. **HUD + world advance** — the in-level and world-map score/lives HUD
-   (`FUN_1000_0816` digit formatter), completed-node markers (frame `0x1da`), and
-   advancing across a level's 15/12 boards then to **worlds 2–9** (per-world graphs
-   `0x10c8[world]`/`0x10ec[world]`).
+3. **HUD + world advance** — HUD *done* (see "Stage 3 game-loop close + HUD"): the loop
+   closes (win marks the node, completed-node markers `0x1da` draw on the map,
+   lose-a-life/game-over works, the run persists), and the world-map **score + lives HUD**
+   is drawn (DDFNT2.CAR digits + the `0x1aa` life icons). Remaining: advancing across
+   **worlds 2–9** (per-world graphs `0x10c8[world]`/`0x10ec[world]`; world 1 currently
+   stubs "world complete" → menu).
 
 World-map follow-ups (deferred this slice, low priority): the score/lives HUD on the
 map (`FUN_1000_0816` digit formatter), completed-node markers (frame `0x1da`,

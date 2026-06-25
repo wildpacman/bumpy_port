@@ -23,6 +23,7 @@ add_library(bumpy_core
   src/resources/vec.cpp
   src/resources/menu_resources.cpp
   src/resources/sprite_frame.cpp
+  src/resources/font.cpp
   src/resources/level_resources.cpp
   src/resources/entity_sprites.cpp
   src/game/move_scripts.gen.cpp
@@ -37,6 +38,7 @@ add_library(bumpy_core
   src/video/board_renderer.cpp
   src/video/map_renderer.cpp
   src/video/screen_transition.cpp
+  src/video/hud.cpp
   src/game/world_map.cpp)
 target_include_directories(bumpy_core PUBLIC src)
 target_link_libraries(bumpy_core PUBLIC bcrypt)
@@ -60,6 +62,7 @@ add_executable(bumpy_tests
   tests/cpp/binary_reader_test.cpp
   tests/cpp/vec_test.cpp
   tests/cpp/sprite_frame_test.cpp
+  tests/cpp/font_test.cpp
   tests/cpp/menu_resources_test.cpp
   tests/cpp/menu_renderer_test.cpp
   tests/cpp/level_resources_test.cpp
@@ -70,6 +73,7 @@ add_executable(bumpy_tests
   tests/cpp/world_map_test.cpp
   tests/cpp/screen_transition_test.cpp
   tests/cpp/map_renderer_test.cpp
+  tests/cpp/hud_test.cpp
   tests/cpp/move_scripts_test.cpp
   tests/cpp/tile_reactions_test.cpp
   tests/cpp/ball_motion_test.cpp

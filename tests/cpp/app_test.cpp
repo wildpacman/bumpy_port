@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "game/app.h"
+#include "game/level_game.h"  // LevelStatus
 
 namespace {
 
@@ -145,6 +146,72 @@ TEST_CASE("a held cancel does not bounce map -> menu -> quit") {
     // Release, then a fresh cancel edge quits from the menu.
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
     REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::quit);
+}
+
+TEST_CASE("winning a board marks it cleared and carries lives/score to the map") {
+    bumpy::App app(15);
+    enter_level(app);  // board 0
+
+    app.finish_level(bumpy::LevelStatus::won, 4, 1250);
+
+    REQUIRE(app.screen() == bumpy::Screen::map);
+    REQUIRE(app.is_board_cleared(0));
+    REQUIRE(app.lives() == 4);
+    REQUIRE(app.score() == 1250);
+}
+
+TEST_CASE("dying returns to the map without clearing the board (replayable)") {
+    bumpy::App app(15);
+    enter_level(app);
+
+    app.finish_level(bumpy::LevelStatus::dead, 3, 500);
+
+    REQUIRE(app.screen() == bumpy::Screen::map);
+    REQUIRE_FALSE(app.is_board_cleared(0));
+    REQUIRE(app.lives() == 3);  // LevelGame already decremented the life
+    REQUIRE(app.score() == 500);
+}
+
+TEST_CASE("running out of lives ends the game and resets the run") {
+    bumpy::App app(15);
+    enter_level(app);
+
+    app.finish_level(bumpy::LevelStatus::quit, 0, 9999);  // 22fc set 928d=0xff
+
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+    REQUIRE(app.lives() == 5);  // run reset
+    REQUIRE(app.score() == 0);
+    REQUIRE_FALSE(app.is_board_cleared(0));
+}
+
+TEST_CASE("clearing every board completes the world and returns to the menu") {
+    bumpy::App app(1);  // a one-board world: clearing board 0 finishes it
+    enter_level(app);
+
+    app.finish_level(bumpy::LevelStatus::won, 5, 7000);
+
+    REQUIRE(app.is_board_cleared(0));
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+}
+
+TEST_CASE("starting a new game reloads the world (clears progress)") {
+    bumpy::App app(15);
+    enter_level(app);
+    app.finish_level(bumpy::LevelStatus::won, 4, 1250);  // board 0 cleared, on the map
+    REQUIRE(app.is_board_cleared(0));
+    REQUIRE(app.screen() == bumpy::Screen::map);
+
+    // Back to the menu (release first -- the map guards fire/cancel), then start again:
+    // start_first_level reloads the world (FUN_1000_2d14), wiping progress + score/lives.
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
+    REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);   // map -> menu
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // start
+    REQUIRE(app.screen() == bumpy::Screen::map);
+    REQUIRE_FALSE(app.is_board_cleared(0));
+    REQUIRE(app.lives() == 5);
+    REQUIRE(app.score() == 0);
 }
 
 TEST_CASE("left/right do nothing on the menu screen") {

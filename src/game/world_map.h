@@ -23,6 +23,9 @@ inline constexpr int kJumpCloudFrame = 0xcb;
 // Sentinel frame meaning "draw nothing" -- the original's blitter skips it
 // (FUN_1000_1cb2: `if (DAT_824a != 100)`); the jump's last step uses it to vanish.
 inline constexpr int kAvatarFrameHidden = 100;
+// The completed-node marker drawn on every cleared node (FUN_1000_3c9d sets the
+// descriptor to frame 0x1da at node position (x - 1, y); FUN_1000_3c4f iterates).
+inline constexpr int kCompletedNodeFrame = 0x1da;
 
 struct WorldMapView {
     int current_node{1};  // 1-based

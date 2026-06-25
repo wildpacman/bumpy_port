@@ -6,11 +6,13 @@
 #include "game/level_game.h"
 #include "game/menu.h"
 #include "platform_sdl3/sdl_app.h"
+#include "resources/font.h"
 #include "resources/level_resources.h"
 #include "resources/menu_resources.h"
 #include "resources/vec.h"
 #include "game/world_map.h"
 #include "video/board_renderer.h"
+#include "video/hud.h"
 #include "video/map_renderer.h"
 #include "video/menu_renderer.h"
 #include "video/screen_transition.h"
@@ -388,16 +390,27 @@ int render_play_to_bmps(const std::filesystem::path& asset_root, int level_numbe
 // Compose the world-map screen (MONDE backdrop + the Bumpy avatar at node 1) and
 // dump it to a BMP for by-eye comparison with the original world-select capture.
 int render_map_to_bmp(const std::filesystem::path& asset_root, const std::filesystem::path& monde_path,
-                      const std::filesystem::path& out_path) {
+                      const std::filesystem::path& out_path, int cleared_count) {
     const auto backdrop = bumpy::decode_vec_resource(monde_path);
     const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
     bumpy::WorldMap map;  // node 1
+    // Mark the first `cleared_count` boards cleared so the completed-node markers can be
+    // verified by eye (nodes 1..cleared_count get the frame-0x1da marker).
+    std::vector<std::uint8_t> cleared(static_cast<std::size_t>(bumpy::world1_node_count()), 0);
+    for (int i = 0; i < cleared_count && i < static_cast<int>(cleared.size()); ++i) {
+        cleared[static_cast<std::size_t>(i)] = 1;
+    }
     bumpy::IndexedFramebuffer frame(320, 200);
-    const auto stats = bumpy::render_map(backdrop.decoded_bytes(), map.view(), bank.bytes(), frame);
+    const auto stats =
+        bumpy::render_map(backdrop.decoded_bytes(), map.view(), bank.bytes(), frame, cleared);
+    bumpy::draw_lives(bank.bytes(), 5, frame);  // HUD lives row (by-eye check vs bumpy_001)
+    const auto font = bumpy::Font::load(asset_root / "DDFNT2.CAR");
+    bumpy::draw_score(font, 1234567, bumpy::kMapScoreX, bumpy::kMapScoreBaselineY,
+                      bumpy::kScoreColor, frame);  // sample score (by-eye glyph check)
     write_24bit_bmp(out_path, frame);
     std::cout << "wrote " << out_path.string() << " (avatar "
-              << (stats.avatar_drawn ? "drawn" : "skipped") << " at node "
-              << map.current_node() << ")\n";
+              << (stats.avatar_drawn ? "drawn" : "skipped") << " at node " << map.current_node()
+              << ", " << stats.markers_drawn << " node markers)\n";
     return 0;
 }
 
@@ -497,12 +510,15 @@ int run_sdl_menu(const std::filesystem::path& asset_root) {
     // must outlive run() because the sprite span is a view into it.
     const auto sprite_bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
 
+    // The HUD score font (DDFNT2.CAR), read raw; must outlive run().
+    const auto font = bumpy::Font::load(asset_root / "DDFNT2.CAR");
+
     bumpy::App app(level.board_count());
     bumpy::IndexedFramebuffer frame(320, 200);
     renderer.render(app.menu().view(), frame);
 
     bumpy::SdlApp sdl;
-    return sdl.run(app, renderer, level, backdrop_bytes, sprite_bank.bytes(), frame);
+    return sdl.run(app, renderer, level, backdrop_bytes, sprite_bank.bytes(), font, frame);
 }
 
 }  // namespace
@@ -525,11 +541,13 @@ int main(int argc, char* argv[]) {
         if (argc == 4 && std::string_view(argv[1]) == "--render-screen") {
             return render_screen_vec(argv[2], argv[3]);
         }
-        if (argc == 5 && std::string_view(argv[1]) == "--render-map") {
-            // --render-map <world> <MONDE.VEC> <out.bmp>
+        if ((argc == 5 || argc == 6) && std::string_view(argv[1]) == "--render-map") {
+            // --render-map <world> <MONDE.VEC> <out.bmp> [cleared_node_count]
             // world is currently informational (world 1 only); MONDE.VEC supplies the
-            // backdrop + palette, and the avatar is drawn at node 1.
-            return render_map_to_bmp(asset_root, argv[3], argv[4]);
+            // backdrop + palette, and the avatar is drawn at node 1. The optional last
+            // argument marks nodes 1..N cleared to check the completed-node markers.
+            const int cleared = argc == 6 ? std::stoi(argv[5]) : 0;
+            return render_map_to_bmp(asset_root, argv[3], argv[4], cleared);
         }
         if (argc == 7 && std::string_view(argv[1]) == "--render-play") {
             // --render-play <level> <MONDE.VEC> <board> <dir> <out-prefix>

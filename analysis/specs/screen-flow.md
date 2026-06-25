@@ -65,6 +65,45 @@ map**, which is the missing screen.
    slide being the only pacing. The port reproduces this in `WorldMap::update`
    (directions act every tick; only fire/cancel keep a release guard).
 
+## HUD — score + lives (Confirmed from disassembly)
+
+The score/lives HUD is redrawn on both the world map and the in-level playfield.
+
+- **Score** — `FUN_1000_0816(DAT_a0d4, DAT_a0d6, 7, X, Y)` formats the 32-bit score
+  (`a0d4` low / `a0d6` high) as **7 zero-padded decimal digits** and blits it through
+  the text system (`07f0` → `9837` cursor + `9804` draw). `X, Y` are **raw pixels** and
+  `Y` is the glyph **baseline** (top scanline = `Y − ascent`). On the world map (call
+  ~line 4283) it is `(1, 8)` → first digit top-left `(1, 1)`. The glyphs come from the
+  **DDFNT2.CAR** bitmap font, drawn in palette index **14** — NOT the BUMSPJEU sprite
+  bank. Full format in **"## HUD score font"** below. The in-level call (`…,7,0,7`) is
+  gated (only when an event flag is set), so normal play shows no persistent in-level
+  score — consistent with `screenshots/bumpy_002.png`.
+- **Lives** — `FUN_1000_6130` draws `DAT_791a` copies of sprite **frame `0x1aa`**
+  in a row: for life index `i = lives..1`, sprite x = `i*8 + 0x50`, y = `0`
+  (`*DAT_a0d0 = (uint)i*8 + 0x50; FUN_1000_942a(0x7986, …)`). Called immediately
+  after the score on each screen (line 4284 on the map). Verified by eye against the
+  red Bumpy-head row in `screenshots/bumpy_001.png`.
+
+## Game-loop close — win / lose / world-complete (Confirmed from disassembly)
+
+The **world map is the hub**: after the in-level loop `FUN_1000_0c18` exits (on
+`DAT_856d` dead / `DAT_9d30` won / `DAT_928d` quit), control returns to the map
+unless the game is over or the world is complete. State carried across boards:
+score (`a0d4/a0d6`), lives (`791a`), and per-node completion.
+
+- **Win** (`FUN_1000_1e3d`, ball fell into the exit portal): sets `DAT_9d30 = 1`
+  **and** marks the node — `*_DAT_9baa = 1`, i.e. byte 0 of the current node's
+  9-byte graph record (`0x10c8[world]` table, see "Node graph" below). The node
+  then shows the completed marker (`0x1da`, `FUN_1000_3c4f`).
+- **All nodes cleared** (`FUN_1000_3e8a`): ANDs byte 0 of every node record; if
+  all are 1 the world is complete → `DAT_79b2++` (world number). At world `10`
+  (`'\n'`) the game plays the outro `FUN_1000_3ed4`; otherwise the next world's
+  MONDE/D-files load via `FUN_1000_2d14`, which also **clears all node bytes**.
+- **Lose a life** (`FUN_1000_22fc`): always sets `DAT_856d = 1`; if `DAT_791a == 0`
+  it sets `DAT_928d = 0xff` (**game over** → main loop returns to the menu), else
+  `DAT_791a--`. The node is **not** marked, so a failed board is replayable from
+  the map. `'#'` collectible → `DAT_791a++` (extra life). Lives init `5` (`2d14`).
+
 ## Screen-change darken — `FUN_1000_3467` (Confirmed from disassembly)
 
 Called at the start of the menu (`35a5`), world map (`3852`), score backdrop (`2fac`)
@@ -265,3 +304,119 @@ rendered with the recovered per-board palette and compared to the original.)
   The `←/→` board paging then retires (node selection replaces it).
 - The brown palette is **not a bug**: the playfield faithfully inherits the
   per-world MONDE palette.
+
+## HUD score font (Confirmed from disassembly + asset)
+
+The 7-digit HUD score uses the bitmap font **`DDFNT2.CAR`** (1981 bytes, on
+disk in the game root; `.CAR` = *caractères*). Recovered 2026-06-26.
+
+### Provenance / load path
+
+- `FUN_1000_808e(size_lo,size_hi,...)` is **`malloc`**, NOT a resource
+  resolver: it tail-calls `FUN_1cd5_0000` = DOS *Allocate Memory*
+  (`AH=48h, INT 21h`, rounds DX:AX up to paragraphs) and returns the new
+  block as far ptr `segment:0`. So the earlier "`FUN_1000_808e(0x7c3)` =
+  resource id 0x7c3" reading was wrong — **`0x7c3` is the byte-size** of the
+  font buffer (and `0x898` is the byte-size of the `FLECHE.BIN` arrow buffer).
+- The buffers are allocated in `FUN_1000_0416` (font→`DAT_75da:DAT_75dc`,
+  arrow→`DAT_6c2c:DAT_6c2e`) and filled in `FUN_1000_0a07`:
+  `FUN_1000_736f(4,4)` opens **LEVEL-table index 4** and
+  `FUN_1000_745e(h,DAT_75da,DAT_75dc,DAT_00be,DAT_00c0,0)` reads it raw
+  (`DAT_00be:DAT_00c0 == 0x7c3`).
+- LEVEL resource table @ `203b:0090` (10-byte entries; bytes [6:8] of each
+  entry = file size): **index 4 = `DDFNT2  .CAR` size 0x07c3**, index 9 =
+  `FLECHE  .BIN` size 0x0898. (The MENU table @ `203b:0928` has
+  `SCORE.VEC` at index 3, but that is a different/unused-for-HUD asset; the
+  active HUD font is DDFNT2.CAR set by `FUN_1000_0a07`→`FUN_1000_97d5`.)
+- `FUN_1000_97d5`→`FUN_1ab9_132b` makes it the active font: far ptr
+  `DAT_68a4:DAT_68a2`, and `DAT_693e = desc[3]+2`.
+
+### Draw path
+
+`FUN_1000_0816(score_lo,score_hi,ndigits,X,Y)` formats the 32-bit score
+(`DAT_a0d4`/`DAT_a0d6`) into an `ndigits`-wide space-padded decimal string,
+then `FUN_1000_07f0(str,strseg,X,Y)`:
+- `FUN_1000_9837(X,Y)`→`FUN_1ab9_1441`: `DAT_6942=X`, `DAT_6944=Y` — **raw
+  pixel coordinates**, passed UNSCALED (contrast `FUN_1000_07ad`, which scales
+  char cells: `X=col<<3`, `Y=row*8+7`).
+- `FUN_1000_9804(str)`→`FUN_1ab9_13ec`: per char, `FUN_1ab9_13bc` checks
+  `desc[0] <= ch < desc[1]` and dispatches the VGA rasterizer
+  `*(DS:0x6952 + DAT_541d*2)` = `FUN_1ab9_1607` (video-mode index `DAT_541d==1`).
+
+### Font descriptor format (`DDFNT2.CAR`)
+
+Glyph lookup (`FUN_1ab9_14d3`): `idx = ch - desc[0];`
+`rec = desc_base + BE16(desc + 6 + idx*2)` (the offset-table entries are
+**big-endian** u16, relative to the descriptor base).
+
+```
+header:
+  [0] u8  first_char           = 0x20 (' ')
+  [1] u8  last_char_exclusive  = 0xff
+  [2] u8  baseline ascent      = 7     ; glyph top scanline = cursorY - desc[2]
+  [3] u8  line metric          = 8     ; DAT_693e = desc[3]+2
+  [4] u8  inter-char spacing   = 1     ; x_advance = glyph_width + desc[4]
+  [5] u8  reserved             = 0
+  [6 .. 6+2*(last-first)-1]  BE16 per-char glyph-record offsets (rel. to base)
+
+per-glyph record:
+  [0] u8  width  (pixels)
+  [1] u8  height (rows)
+  [2] u8  y-offset (rows below glyph top; 0 for digits)
+  [3..]   bitmap, row-major, ceil(width/8) bytes per row, MSB-first
+```
+
+The rasterizer reads `height` rows of `ceil(width/8)` bytes from the record,
+MSB-first; foreground pixels are written into a 320-wide 16-colour **planar**
+buffer (`offset = Y*40 + X/8`, bit `X&7`). After each glyph it advances
+`DAT_6942 += width + desc[4]` (proportional spacing). The font is **variable
+width**.
+
+### Digit glyphs (verified)
+
+Extracted by `tools/re/dump_hud_font.py`; ASCII-art dump saved to
+`analysis/generated/hud_font_glyphs.txt`.
+
+All digits are 7 rows tall. Widths: 0,2,3,4,5,7,8 = 7px; 1 = 4px; 6,9 = 8px.
+Space = width 4, height 0 (blank), advance 5.
+
+```
+char  w h  bytes(hex)           x_advance
+' '   4 0  (none)               5
+'0'   7 7  7cc6c6c6c6c67c       8
+'1'   4 7  60e060606060f0       5
+'2'   7 7  7cc6067cc0c0fe       8
+'3'   7 7  7cc6067c06c67c       8
+'4'   7 7  c0c0ccccfe0c0c       8
+'5'   7 7  fec0c0fc06c67c       8
+'6'   8 7  3e63607e63633e       9
+'7'   7 7  fec60c18303030       8
+'8'   7 7  7cc6c67cc6c67c       8
+'9'   8 7  3e63633f03633e       9
+```
+
+(Each row byte: MSB = leftmost pixel; e.g. `0x7c = .#####.` for width 7.)
+
+### Score position (pixels)
+
+`X,Y` from `FUN_1000_0816` are pixel coordinates; **`Y` is the baseline**, and
+glyph top scanline = `Y - desc[2]` = `Y - 7`.
+
+- **World map** (`FUN_1000_3852`, decomp ~line 4283):
+  `FUN_1000_0816(DAT_a0d4,DAT_a0d6,7,1,8)` → cursor (1,8) → first digit
+  top-left at pixel **(1, 1)**, glyphs 7px tall (y = 1..7). Seven `'0'`
+  digits at 8px advance span x = 1..56 — matches `screenshots/bumpy_001.png`
+  (score at top-left ≈ px (0..56, 0..8)).
+- **Per-digit advance** = `glyph_width + 1`; for `'0'` that is **8px**
+  (the all-zero default score `0000000` is evenly spaced).
+
+### In-level HUD
+
+`FUN_1000_0816` *is* reachable from the in-level loop `FUN_1000_0c18`, but
+only **conditionally**: `FUN_1000_0c18` calls `FUN_1000_49d7` (decomp ~line
+1243) **only when** `FUN_1000_7ab4(0x19)` is non-zero — that helper just reads
+the event/key flag array `DAT_4d42[0x19]`. `FUN_1000_49d7` then draws the
+score via `FUN_1000_0816(DAT_a0d4,DAT_a0d6,7,0,7)` → cursor (0,7) → top-left
+pixel **(0, 0)**. Because it is gated on that flag (not drawn every frame),
+normal play shows **no persistent in-level HUD** — consistent with
+`screenshots/bumpy_002.png`. The only always-on score HUD is the world map.

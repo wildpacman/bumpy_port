@@ -4,8 +4,13 @@
 #include "game/world_map.h"
 
 #include <cstddef>
+#include <cstdint>
+#include <span>
+#include <vector>
 
 namespace bumpy {
+
+enum class LevelStatus;  // game/level_game.h -- the in-level loop's terminal status
 
 // Which screen the running game is showing.
 enum class Screen {
@@ -32,6 +37,10 @@ enum class AppOutcome {
 //   map   --fire (confirm)----> level (board = selected node - 1)
 //   map   --cancel-----------> menu
 //   level --cancel-----------> menu
+//
+// The App is the persistent run: score, lives, and per-board completion carry across
+// boards (the world map is the hub). Starting a game from the menu reloads the world
+// (FUN_1000_2d14): score 0, lives 5, no boards cleared.
 class App {
 public:
     explicit App(std::size_t board_count) noexcept;
@@ -42,19 +51,46 @@ public:
     [[nodiscard]] std::size_t board_index() const noexcept { return board_index_; }
     [[nodiscard]] std::size_t board_count() const noexcept { return board_count_; }
 
+    // Persistent run state, carried into each LevelGame and read back on finish.
+    [[nodiscard]] std::uint8_t lives() const noexcept { return lives_; }
+    [[nodiscard]] std::uint32_t score() const noexcept { return score_; }
+    // Whether board B (= world-map node B+1) has been cleared this run; drives the
+    // completed-node markers on the map.
+    [[nodiscard]] bool is_board_cleared(std::size_t board) const noexcept {
+        return board < cleared_.size() && cleared_[board] != 0;
+    }
+    // Per-board cleared flags (0/1), indexed by board = node - 1, for the map renderer.
+    [[nodiscard]] std::span<const std::uint8_t> cleared_boards() const noexcept {
+        return cleared_;
+    }
+
     AppOutcome update(const MenuInput& input) noexcept;
 
-    // Leave the playfield back to the world map (called by the shell when the in-level
-    // LevelGame reports the board is won/lost/quit). No-op unless on the level screen.
+    // Leave the playfield back to the world map without scoring (the shell uses this
+    // when a selected board has no entity data). No-op unless on the level screen.
     void leave_level() noexcept;
 
+    // Finish the in-level board with the LevelGame's terminal status, carrying the
+    // resulting lives/score back into the run. won -> mark the board cleared (world
+    // complete returns to the menu); dead -> back to the map (board replayable); quit
+    // (out of lives, FUN_1000_22fc set 928d=0xff) -> game over, reset run, menu.
+    // No-op unless on the level screen.
+    void finish_level(LevelStatus status, std::uint8_t lives, std::uint32_t score) noexcept;
+
 private:
+    void reset_run() noexcept;             // new-game / world-load reset (FUN_1000_2d14)
+    [[nodiscard]] bool all_boards_cleared() const noexcept;  // FUN_1000_3e8a
+
     Menu menu_;
     WorldMap world_map_;
     Screen screen_{Screen::menu};
     std::size_t board_count_{};
     std::size_t board_index_{};
     bool waiting_for_release_{};
+
+    std::uint8_t lives_{5};            // DAT_791a
+    std::uint32_t score_{0};           // DAT_a0d4 / a0d6
+    std::vector<std::uint8_t> cleared_;  // per board index (0/1); node N -> board N-1
 };
 
 }  // namespace bumpy

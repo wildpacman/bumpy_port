@@ -11,6 +11,7 @@ namespace bumpy {
 
 struct MapRenderStats {
     bool avatar_drawn{};
+    int markers_drawn{};  // completed-node markers blitted (frame 0x1da)
 };
 
 // Compose the world-map screen: deplane the MONDE backdrop with its embedded palette,
@@ -22,7 +23,12 @@ struct MapRenderStats {
 // screenshots/bumpy_001.png and the jump begins exactly where it sits. monde_screen is a
 // decoded 320x200 screen-format VEC; sprite_bank is the whole BUMSPJEU.BIN. Frames that
 // fail to decode are skipped rather than throwing.
+//
+// cleared_boards (optional) is the per-board completion flags (0/1) indexed by
+// board = node - 1: every set entry draws the completed-node marker (frame 0x1da)
+// on its node, beneath the avatar. Empty -> no markers (the dev dumpers pass none).
 MapRenderStats render_map(std::span<const std::uint8_t> monde_screen, const WorldMapView& view,
-                          std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& target);
+                          std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& target,
+                          std::span<const std::uint8_t> cleared_boards = {});
 
 }  // namespace bumpy

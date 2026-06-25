@@ -4,6 +4,7 @@
 
 #include "core/indexed_framebuffer.h"
 #include "game/app.h"
+#include "resources/font.h"
 #include "resources/level_resources.h"
 #include "video/menu_renderer.h"
 
@@ -25,7 +26,8 @@ public:
     // until the App requests quit. sprite_bank is the whole BUMSPJEU.BIN.
     int run(App& app, const MenuRenderer& menu_renderer, const LevelResources& level,
             std::span<const std::uint8_t> backdrop_screen,
-            std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& frame);
+            std::span<const std::uint8_t> sprite_bank, const Font& font,
+            IndexedFramebuffer& frame);
 
 private:
     SDL_Window* window_{};

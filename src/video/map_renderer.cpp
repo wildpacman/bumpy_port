@@ -45,9 +45,32 @@ void blit_sprite(const MenuImage& image, int top_x, int top_y, IndexedFramebuffe
 }  // namespace
 
 MapRenderStats render_map(std::span<const std::uint8_t> monde_screen, const WorldMapView& view,
-                          std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& target) {
+                          std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& target,
+                          std::span<const std::uint8_t> cleared_boards) {
     apply_screen_image_palette(monde_screen, target);
     draw_screen_image(monde_screen, target);
+
+    MapRenderStats stats;
+
+    // Completed-node markers (FUN_1000_3c4f): every cleared node draws frame 0x1da at
+    // descriptor (node.x - 1, node.y). The overlay blitter centres a frame on its
+    // descriptor by half its dimensions (the same convention that places the avatar --
+    // top-left = descriptor - (w/2, h/2)), not by the header origin words. Drawn before
+    // the avatar so the avatar overlays the marker on the current node.
+    for (int node = 1; node <= world1_node_count(); ++node) {
+        const auto board = static_cast<std::size_t>(node - 1);
+        if (board >= cleared_boards.size() || cleared_boards[board] == 0) {
+            continue;
+        }
+        try {
+            const MenuImage marker = decode_sprite_frame(sprite_bank, kCompletedNodeFrame);
+            const MapNode& n = world1_node(node);
+            blit_sprite(marker, n.x - 1 - marker.width / 2, n.y - marker.height / 2, target);
+            ++stats.markers_drawn;
+        } catch (const std::exception&) {
+            // marker frame unavailable -> skip it
+        }
+    }
 
     // The avatar's 32x21 bounding box, bbox-centred on the node ring.
     const int box_left = view.avatar_x - avatar_box_w / 2;
@@ -65,7 +88,6 @@ MapRenderStats render_map(std::span<const std::uint8_t> monde_screen, const Worl
         }
     }
 
-    MapRenderStats stats;
     // The avatar frame: centred horizontally on the node, top-aligned in the box, then
     // bounced vertically by avatar_offset_y (the jump is purely vertical, dx = 0).
     if (view.avatar_frame != kAvatarFrameHidden) {
