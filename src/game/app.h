@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/menu.h"
+#include "game/world_graphs.h"
 #include "game/world_map.h"
 
 #include <cstddef>
@@ -43,13 +44,17 @@ enum class AppOutcome {
 // (FUN_1000_2d14): score 0, lives 5, no boards cleared.
 class App {
 public:
-    explicit App(std::size_t board_count) noexcept;
+    explicit App(std::size_t board_count, int start_world = 1) noexcept;
 
     [[nodiscard]] Screen screen() const noexcept { return screen_; }
     [[nodiscard]] const Menu& menu() const noexcept { return menu_; }
     [[nodiscard]] const WorldMap& world_map() const noexcept { return world_map_; }
     [[nodiscard]] std::size_t board_index() const noexcept { return board_index_; }
     [[nodiscard]] std::size_t board_count() const noexcept { return board_count_; }
+    [[nodiscard]] int world() const noexcept { return world_; }
+    // The world the shell must load (0 = none). When non-zero, the shell loads that
+    // world's resources and calls enter_world; until then App freezes the world state.
+    [[nodiscard]] int pending_world() const noexcept { return pending_world_; }
 
     // Persistent run state, carried into each LevelGame and read back on finish.
     [[nodiscard]] std::uint8_t lives() const noexcept { return lives_; }
@@ -77,8 +82,14 @@ public:
     // No-op unless on the level screen.
     void finish_level(LevelStatus status, std::uint8_t lives, std::uint32_t score) noexcept;
 
+    // The shell calls this after loading world `world`'s resources: rebind the map to
+    // that world's node graph (snap to node 1), resize/clear progress to board_count,
+    // and clear the pending request. Does not change the current screen.
+    void enter_world(int world, std::size_t board_count) noexcept;
+
 private:
     void reset_run() noexcept;             // new-game / world-load reset (FUN_1000_2d14)
+    void request_world(int world) noexcept;  // ask the shell to load `world` (sets pending)
     [[nodiscard]] bool all_boards_cleared() const noexcept;  // FUN_1000_3e8a
 
     Menu menu_;
@@ -86,6 +97,9 @@ private:
     Screen screen_{Screen::menu};
     std::size_t board_count_{};
     std::size_t board_index_{};
+    int world_{1};          // current world (1..kWorldCount)
+    int start_world_{1};    // where a fresh run begins (dev override via the constructor)
+    int pending_world_{0};  // world the shell must load (0 = none)
     bool waiting_for_release_{};
 
     std::uint8_t lives_{5};            // DAT_791a

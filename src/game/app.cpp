@@ -1,18 +1,44 @@
 #include "game/app.h"
 
 #include "game/level_game.h"  // LevelStatus
+#include "game/world_graphs.h"  // kWorldCount
 
 #include <algorithm>
 
 namespace bumpy {
 
-App::App(std::size_t board_count) noexcept
-    : board_count_(board_count), cleared_(board_count, 0) {}
+App::App(std::size_t board_count, int start_world) noexcept
+    : world_map_(start_world),
+      board_count_(board_count),
+      world_(start_world),
+      start_world_(start_world),
+      cleared_(board_count, 0) {}
 
 void App::reset_run() noexcept {
     lives_ = 5;
     score_ = 0;
-    std::fill(cleared_.begin(), cleared_.end(), std::uint8_t{0});
+    if (world_ == start_world_) {
+        // The start world's resources are already loaded: clear progress in place and
+        // reset the map to node 1 (arming the release guard).
+        std::fill(cleared_.begin(), cleared_.end(), std::uint8_t{0});
+        world_map_.enter();
+    } else {
+        // A later world is loaded (advanced past the start, then game over): ask the
+        // shell to reload the start world. enter_world resizes cleared_ + resets the map.
+        request_world(start_world_);
+    }
+}
+
+void App::request_world(int world) noexcept {
+    pending_world_ = world;
+}
+
+void App::enter_world(int world, std::size_t board_count) noexcept {
+    world_ = world;
+    pending_world_ = 0;
+    board_count_ = board_count;
+    cleared_.assign(board_count, 0);
+    world_map_.load_world(world);  // snap to node 1 + arm the release guard
 }
 
 bool App::all_boards_cleared() const noexcept {
@@ -30,8 +56,7 @@ AppOutcome App::update(const MenuInput& input) noexcept {
     if (screen_ == Screen::menu) {
         switch (menu_.update(input)) {
         case MenuAction::start_first_level:
-            reset_run();         // starting a game reloads the world (FUN_1000_2d14)
-            world_map_.enter();  // reset to node 1; require key release before acting
+            reset_run();  // resets lives/score/progress; reloads the start world if needed
             screen_ = Screen::map;
             return AppOutcome::running;
         case MenuAction::quit:
@@ -89,9 +114,18 @@ void App::finish_level(LevelStatus status, std::uint8_t lives, std::uint32_t sco
             cleared_[board_index_] = 1;  // FUN_1000_1e3d marks the node (*_9baa = 1)
         }
         if (all_boards_cleared()) {
-            // World complete (FUN_1000_3e8a). Worlds 2-9 are not loaded yet (milestone
-            // C); treat the run as finished -> menu. The next "start" reloads the world.
-            screen_ = Screen::menu;
+            // World complete (FUN_1000_3e8a).
+            if (world_ < kWorldCount) {
+                // Advance to the next world: ask the shell to load it, return to the map.
+                request_world(world_ + 1);
+                screen_ = Screen::map;
+                waiting_for_release_ = true;
+            } else {
+                // World 9 cleared: game complete. The outro (FUN_1000_3ed4) is deferred;
+                // reset the run and return to the menu.
+                reset_run();
+                screen_ = Screen::menu;
+            }
         } else {
             screen_ = Screen::map;        // pick the next node
             waiting_for_release_ = true;  // a held fire must not carry across

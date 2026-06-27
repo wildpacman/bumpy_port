@@ -184,14 +184,23 @@ TEST_CASE("running out of lives ends the game and resets the run") {
     REQUIRE_FALSE(app.is_board_cleared(0));
 }
 
-TEST_CASE("clearing every board completes the world and returns to the menu") {
-    bumpy::App app(1);  // a one-board world: clearing board 0 finishes it
+TEST_CASE("clearing every board in a non-final world requests the next world") {
+    bumpy::App app(1);  // a one-board world 1: clearing board 0 finishes it
     enter_level(app);
 
     app.finish_level(bumpy::LevelStatus::won, 5, 7000);
 
     REQUIRE(app.is_board_cleared(0));
-    REQUIRE(app.screen() == bumpy::Screen::menu);
+    REQUIRE(app.screen() == bumpy::Screen::map);  // returns to the map, not the menu
+    REQUIRE(app.pending_world() == 2);            // shell must load world 2
+
+    // The shell satisfies the request (world 2, also one board for the test).
+    app.enter_world(2, 1);
+    REQUIRE(app.world() == 2);
+    REQUIRE(app.pending_world() == 0);
+    REQUIRE(app.world_map().world() == 2);
+    REQUIRE(app.world_map().current_node() == 1);  // back to the start node
+    REQUIRE_FALSE(app.is_board_cleared(0));         // fresh world, progress reset
 }
 
 TEST_CASE("starting a new game reloads the world (clears progress)") {
@@ -221,4 +230,42 @@ TEST_CASE("left/right do nothing on the menu screen") {
             bumpy::AppOutcome::running);
     REQUIRE(app.screen() == bumpy::Screen::menu);
     REQUIRE(app.board_index() == 0);
+}
+
+TEST_CASE("App can start on a configured world") {
+    bumpy::App app(12, 4);
+    REQUIRE(app.world() == 4);
+    REQUIRE(app.world_map().world() == 4);
+    REQUIRE(app.board_count() == 12);
+    REQUIRE(app.pending_world() == 0);
+}
+
+TEST_CASE("clearing the final world returns to the menu and resets the run") {
+    bumpy::App app(1, 9);  // a one-board world 9
+    enter_level(app);
+
+    app.finish_level(bumpy::LevelStatus::won, 4, 12345);
+
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+    REQUIRE(app.pending_world() == 0);  // start world == 9 stays loaded; no reload
+    REQUIRE(app.score() == 0);          // run reset
+    REQUIRE(app.lives() == 5);
+}
+
+TEST_CASE("a game over after advancing requests a reload of the start world") {
+    bumpy::App app(1);    // start world 1
+    enter_level(app);
+    app.finish_level(bumpy::LevelStatus::won, 5, 100);  // clear world 1 -> pending world 2
+    app.enter_world(2, 1);                               // shell loads world 2
+    REQUIRE(app.world() == 2);
+
+    enter_level(app);                                    // play a world-2 board
+    app.finish_level(bumpy::LevelStatus::quit, 0, 200);  // out of lives -> game over
+
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+    REQUIRE(app.pending_world() == 1);  // reset_run asks the shell to reload world 1
+    app.enter_world(1, 15);
+    REQUIRE(app.world() == 1);
+    REQUIRE(app.lives() == 5);
+    REQUIRE(app.score() == 0);
 }
