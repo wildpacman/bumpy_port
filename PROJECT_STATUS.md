@@ -1,6 +1,6 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-06-26.
+Source of truth for new sessions. Last updated: 2026-06-27.
 
 ## Goal
 
@@ -45,10 +45,10 @@ only a platform adapter.
   recovered and visually verified, the composed board renders natively, the **BUM
   entity sprites** draw from the uncompressed bank, the **world-map screen** is
   wired in, and the **in-level gameplay loop is live** — the ball state machine
-  (move/jump/roll/fall/warp), collect/score/lives/win, and the **tile bump/spring
-  animations** (pegs/platforms recoiling) all run in-window (see the two
-  in-level-loop sections below). Remaining: entity AI (node 3+), the map
-  score/lives HUD, worlds 2–9. The world-map screen is now
+  (move/jump/roll/fall/warp), collect/score/lives/win, the **tile bump/spring
+  animations** (pegs/platforms recoiling), and the **moving entity (enemy AI +
+  collision death)** all run in-window (see the in-level-loop sections below).
+  Remaining: the in-level score/lives HUD, worlds 2–9. The world-map screen is now
   wired in: confirming "start" on the menu shows world 1's map
   (`MONDE1.VEC` + the Bumpy avatar on node 1); the arrows move between linked nodes;
   fire enters that node's board; Escape returns to the menu (see "Stage 3 world-map
@@ -383,6 +383,32 @@ functions), DOSBox-X reference harness.
   `tools/re/dump_hud_font.py`. **118 C++ tests pass** (`app_test` finish-level cases,
   `map_renderer_test` markers/centring, `hud_test`, `font_test`); originals verify clean.
 
+**Stage 3 moving entity — enemy AI + collision (builds and runs on master):**
+- The per-board **monster** is ported. Of all 15 world-1 boards only **board index 2
+  (node 3)** carries one (header byte `0x93 != 0`); it spawns at cell 39 with sprite
+  base `0x1f7`. Recovered from `FUN_1000_2a78`/`48a9` (spawn + pixel anchor from the
+  `DS:0x274` table `+7,+7`), the movement-script table `DS:0x2520` (`4bc6`/`4c14` — a
+  keyframe `{frame,dx,dy}` script per direction, cell spacing 40×32, stepped every
+  other frame via the `8243` toggle), and the maze AI `4c99` (4-direction free-flags
+  over the live plane-A/B grid → the `DS:0x870` on-arrival dispatch `4dbf`/`4e44`/
+  `4ec9`/`4f4e` + `DS:0x85c` mid-step cell move `5025`/`503f`/`5059`/`506f`; all-blocked
+  → `4fd3` random bob). The AI keeps its heading when free and turns by a fixed
+  preference; the leaf routines add a random detour **only when `79b3 < 7920`**, so a
+  sub-type-0 board (board 2) is fully deterministic.
+- **Collision** is the AABB pair `FUN_1000_5085` (ball box) × `50c0` (entity box) →
+  `50fb` overlap → `a1aa=1`, consumed by `1d26` the next frame → `f_228d`, which arms
+  the **already-ported state-`0x2e` fly-around death cascade** (shared with the spike
+  death: `22d2`×3 → `22fc`, −1 life, node left unmarked = replayable).
+- Ported to **`src/game/level_game`** (entity state + `f_48a9`/`4bc6`/`4c14`/`4c99`/
+  `5003`/`4fd3`/`5085`/`50c0`/`50fb` + the AI/leaf/cell methods), tables baked by
+  **`tools/re/dump_entity_ai.py`** (inline `kEntityScripts`/`kEntityKeyframes`/
+  `kEntityAnimBase`), and rendered by **`draw_monster`** (`src/video/board_renderer`,
+  wired into the SDL run loop and `--render-play`). **123 C++ tests pass** (5 new:
+  spawn/no-spawn, maze-walk-in-bounds, half-rate step, death-on-contact −1 life,
+  cross-row safety); originals verify clean. Verified by eye on D1 board 2 — the
+  orange creature spawns, animates (`0x1f7..0x1fa`), walks its row, and kills on
+  contact. Full spec: `analysis/specs/game-loop.md` ("Moving entity").
+
 **Placeholders / remaining work:**
 - Compressed sprite frames (flags `0x40`/`0x20`, `1cec:2ded`) are **fully recovered
   from disassembly but unused by the supplied assets** — `BUMSPJEU` is all
@@ -392,9 +418,9 @@ functions), DOSBox-X reference harness.
 - The menu sub-screens (HIGH-SCORE / PASSWORD draw per-glyph character sprites
   via the same archive) are not implemented.
 - The in-window level screen is **live** (ball state machine + collect/score/win +
-  the tile bump/spring animations — see the two in-level-loop sections above). Still
-  missing in-level: **entity AI** (`DS:0x870`, only node 3+ has a monster), death by
-  entity collision, and the in-level score/lives HUD. The world map navigates (with
+  the tile bump/spring animations + the **moving entity / enemy AI + death** — see the
+  in-level-loop and "moving entity" sections above). Still missing in-level: the
+  in-level score/lives HUD. The world map navigates (with
   the gliding Bumpy-on-cloud avatar), **plays the fire-to-enter cloud-jump animation**,
   and selects boards, but its score/lives HUD overlays and the per-completed-node
   markers (frame `0x1da`) are not drawn yet.
@@ -464,17 +490,14 @@ The in-level palette is now **DONE** (see "Stage 3 in-level palette" above): the
 board renders under its own per-board DEC palette (world 1 is dark blue), matching
 the original.
 
-**The board is alive** — the in-level gameplay loop, collect/score/win, and the tile
-bump/spring animations all run in-window for world-1 boards (see the two
-in-level-loop sections above). The next milestones:
+**The board is alive** — the in-level gameplay loop, collect/score/win, the tile
+bump/spring animations, **and the moving entity (enemy AI + collision death)** all run
+in-window for world-1 boards (see the in-level-loop and "moving entity" sections
+above). **Entity AI + death is now DONE** (2026-06-27): the node-3 monster spawns,
+walks the maze, and kills the ball on contact (−1 life via the shared state-`0x2e`
+cascade). The remaining milestones:
 
-1. **Entity AI + death** — the `DS:0x870` monster movement (indexed by board header
-   byte `0x94`/`8562`) and ball↔entity collision death (`50fb`/`228d`). Only node 3+
-   (board index 2) has an active entity, so boards 0–1 already play fully.
-2. **Static layer-B `+0xf1`** — apply the recovered frame bias to the static
-   block draw too, so later-world blocks settle to the right sprite after a spring
-   (no world-1 impact — world 1 has no blocks).
-3. **HUD + world advance** — HUD *done* (see "Stage 3 game-loop close + HUD"): the loop
+1. **HUD + world advance** — HUD *done* (see "Stage 3 game-loop close + HUD"): the loop
    closes (win marks the node, completed-node markers `0x1da` draw on the map,
    lose-a-life/game-over works, the run persists), and the world-map **score + lives HUD**
    is drawn (DDFNT2.CAR digits + the `0x1aa` life icons). Remaining: advancing across

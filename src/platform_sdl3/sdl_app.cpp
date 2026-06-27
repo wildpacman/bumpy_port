@@ -281,6 +281,10 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
                 }
                 draw_bum_entities(live, sprite_bank, frame);
                 draw_object_anims({anims.data(), anim_count}, sprite_bank, frame);
+                if (game->monster_present()) {
+                    draw_monster(sprite_bank, game->monster_frame(), game->monster_x(),
+                                 game->monster_y(), frame);
+                }
                 draw_ball(sprite_bank, game->ball_frame(), game->ball_x(), game->ball_y(), frame);
             } else {
                 draw_bum_entities(level.bum_entities(app.board_index()), sprite_bank, frame);

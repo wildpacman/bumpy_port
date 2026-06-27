@@ -83,6 +83,13 @@ EntitySpriteStats draw_bum_entities(const BumEntities& bum,
 bool draw_ball(std::span<const std::uint8_t> sprite_bank, int frame, int ball_x, int ball_y,
                IndexedFramebuffer& target);
 
+// Draw the moving entity (monster): BUMSPJEU bank frame `frame` (= a0de + the move
+// keyframe) centred on its pixel anchor (mon_x, mon_y) = DS:0x79ba/0x79bc, the cell
+// slot + (7,7) (FUN_1000_48a9). Same centre-on-anchor blit as the ball; colour index
+// 0 is transparent. Returns true if drawn. Call only when monster_present(). FUN_1000_1cea.
+bool draw_monster(std::span<const std::uint8_t> sprite_bank, int frame, int mon_x, int mon_y,
+                  IndexedFramebuffer& target);
+
 // Overlay the live tile bump/spring animations (LevelGame::object_anims) on top of
 // the static board. Each entry draws its bank frame at the cell's layer-A/B screen
 // slot (entity_layer_ab_position) plus the step's y_offset, exactly like the static

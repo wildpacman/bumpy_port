@@ -57,6 +57,16 @@ public:
     [[nodiscard]] std::uint32_t score() const noexcept;
     [[nodiscard]] std::uint8_t collectibles_left() const noexcept { return d_a0cf; }
 
+    // The moving entity (monster), for rendering. Most boards have none. The frame
+    // is the BUMSPJEU bank index (a0de + the current keyframe); draw it centred on
+    // (monster_x, monster_y) like the ball. See analysis/specs/game-loop.md
+    // ("Moving entity"). FUN_1000_1cea.
+    [[nodiscard]] bool monster_present() const noexcept { return d_8571 != 0xff; }
+    [[nodiscard]] int monster_x() const noexcept { return d_79ba; }
+    [[nodiscard]] int monster_y() const noexcept { return d_79bc; }
+    [[nodiscard]] int monster_frame() const noexcept { return d_a0de + d_8560; }
+    [[nodiscard]] std::uint8_t monster_cell() const noexcept { return d_8571; }
+
     // The live plane-C collectible value at a cell (0 once collected), for the
     // renderer to draw only what remains. cell = row*8 + col.
     [[nodiscard]] std::uint8_t collectible(int col, int row) const;
@@ -117,6 +127,26 @@ private:
     std::uint8_t d_824c{};   // fall/landing counter
     std::uint8_t d_79b3{};   // PRNG output byte (used by 4747 idle-blink select)
     std::uint16_t prng_state_{0x2c9b};  // 16-bit LCG state behind FUN_1000_93b1
+
+    // --- moving entity (monster): DS:0x856x / 0x79bx, only board-2 has one ---
+    std::uint8_t d_8562{};   // current movement-script id (also the AI-dispatch index)
+    std::uint8_t d_9d2f{};   // script direction flag (mirrors dx)
+    std::uint8_t d_a1b0{};   // keyframes remaining in the current script
+    std::uint8_t d_8563{};   // step counter within the current script (mid-step at 5)
+    std::uint8_t d_8560{};   // current sprite keyframe (0..3); frame = a0de + this
+    std::uint8_t d_8243{};   // half-rate toggle: the entity steps every other frame
+    std::uint8_t d_8564{};   // entity col (0..7)
+    std::uint8_t d_8565{};   // entity row (0..5)
+    int d_79ba{};            // entity pixel x (cell slot + 7)
+    int d_79bc{};            // entity pixel y (cell slot + 7)
+    std::uint16_t d_a0de{};  // sprite-frame base (0x2546[anim index])
+    std::uint8_t d_a0e0{};   // nav free-flag UP    (0 = free)
+    std::uint8_t d_a0e1{};   // nav free-flag DOWN
+    std::uint8_t d_a0e2{};   // nav free-flag LEFT
+    std::uint8_t d_a1b2{};   // nav free-flag RIGHT
+    // AABB collision boxes (5085 ball / 50c0 entity), refreshed while a0ce==0.
+    int box_ball_x0_{}, box_ball_x1_{}, box_ball_y0_{}, box_ball_y1_{};
+    int box_ent_x0_{}, box_ent_x1_{}, box_ent_y0_{}, box_ent_y1_{};
 
     std::uint8_t d_928d{};   // quit
     std::uint8_t d_856d{};   // win
@@ -209,6 +239,31 @@ private:
     void f_1fbe();  // special bumper
     void f_207d();  // special bumper
     void f_228d();  // death (entity)
+
+    // --- moving entity (monster): movement script + maze AI + collision ---
+    void f_48a9();             // init col/row + pixel pos from the entity cell
+    void f_4bc6(std::uint8_t behaviour);  // load a movement script by id
+    void f_4c14();             // step the movement script (every other frame)
+    void f_4c99();             // on arrival: compute nav flags + dispatch AI
+    void f_5003();             // mid-move: at step 5, advance the entity cell
+    void f_4fd3();             // all-blocked fallback: pick a random script 5..8
+    void f_5085();             // build the ball AABB box
+    void f_50c0();             // build the entity AABB box
+    void f_50fb();             // ball-vs-entity overlap -> sets a1aa (death pending)
+    void entity_ai_arrive(std::uint8_t behaviour);  // DS:0x870 on-arrival dispatch
+    void entity_ai_mid(std::uint8_t behaviour);      // DS:0x85c mid-step dispatch
+    void f_4dbf();  // arrive AI: was UP    (up>right>left>down)
+    void f_4e44();  // arrive AI: was DOWN  (down>left>right>up)
+    void f_4ec9();  // arrive AI: was LEFT  (left>up>down>right)
+    void f_4f4e();  // arrive AI: was RIGHT (right>down>up>left)
+    void f_4dfa();  // leaf: commit UP (or a random detour when 79b3 < 7920)
+    void f_4e7f();  // leaf: commit DOWN
+    void f_4f04();  // leaf: commit LEFT
+    void f_4f89();  // leaf: commit RIGHT
+    void f_5025();  // mid-step cell move UP   (cell -= 8)
+    void f_503f();  // mid-step cell move DOWN (cell += 8)
+    void f_5059();  // mid-step cell move LEFT (cell -= 1)
+    void f_506f();  // mid-step cell move RIGHT(cell += 1)
 
     // --- input-decode tree (0x43c0 chaining) ---
     void f_4437();

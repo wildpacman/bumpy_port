@@ -418,6 +418,88 @@ the decide dispatch routes state `0x30` to `f_1e3d` (sets `d_9d30`); and `tick()
 maps `9d30`→`won`, `856d`→`dead`. For world-1 board 0 the portal cell is `0x2c`
 (col 3, row 5).
 
+## Moving entity — the per-board monster (Confirmed)
+
+Each board may carry **one** moving entity (a monster). Of all 15 world-1 boards
+only **board index 2 (node 3)** has one: cell `0x28-1 = 39` (col 7, row 4),
+behaviour id `7`, anim-base index `0x10`. Boards with header byte `0x93 == 0` have
+no entity (`8571 = 0xff`).
+
+### Spawn / init (`2a78` → `48a9` → `4bc6`, Confirmed)
+
+| Field | From | Meaning |
+|---|---|---|
+| `8571` | `record[0x93] - 1` | entity cell `0..47` (`0xff` = none) |
+| `8562` | `record[0x94]` | **current movement-script id** (also the AI-dispatch index) |
+| `7920` | `record[0x95]` | board sub-type — gates the AI's random turn (`79b3 < 7920`) |
+| `a0de` | `0x2546[record[0x96]]` | sprite-frame base; board 2's `0x10` → `0x1f7` |
+| `8565`/`8564` | `8571>>3` / `8571 & 7` | row / col |
+| `79ba`/`79bc` | `0x274[8571] + 7` | entity pixel pos = `bum_cell_position + (7,7)` |
+
+`48a9` runs only when `8571 != 0xff`. `4bc6(8562)` then loads the movement script.
+
+### Movement scripts — `DS:0x2520` far-pointer table (Confirmed)
+
+`4bc6(id)`: `desc = far *0x2520[id]` → `{[0]=count a1b0, [1]=dir 9d2f, [2..3]=kf
+ptr a0ba, [4..5]=extra}`. The keyframes are `{frame, dx, dy}` word triples. The 10
+scripts (`tools/re/dump_entity_ai.py`):
+
+| id | count | dir | net | role |
+|---:|---:|---:|---|---|
+| 1 | 8 | 0 | dy −32 | move **UP** one cell (8×dy−4) |
+| 2 | 8 | 0 | dy +32 | move **DOWN** one cell |
+| 3 | 10 | 1 | dx −40 | move **LEFT** one cell (dir flips dx sign) |
+| 4 | 10 | 0 | dx +40 | move **RIGHT** one cell |
+| 5,6 | 9 | 0 | ~0 | in-place bob (the `4fd3` stuck fallback) |
+| 7,8 | 10 | 1/0 | 0 | in-place shuffle (board 2's spawn id) then decide |
+| 9 | 14 | 0 | 0 | long in-place animation |
+
+Cell spacing is the playfield's **40×32 px** (10×4 / 8×4). `4c14` (per *active*
+frame): `8560 = kf.frame`; `79ba += (9d2f ? −dx : dx)`; `79bc += dy`; advance; `a1b0--`;
+at 0 reset `8563=0` else `8563++`. The entity steps **every other frame** — `4c14`
+toggles `8243` and only steps when it became non-zero (≈17.5 Hz over the 35 Hz loop).
+
+### AI navigation (`4c99`, Confirmed)
+
+Runs only on active frames (`8243 != 0 && 8571 != 0xff`). When `a1b0 == 0` (arrived
+at a cell) it computes 4 free-flags over the live grid `a0d8` and dispatches:
+
+- **UP** `a0e0` free ⇔ `cell>7 && A[cell-8]==0`
+- **DOWN** `a0e1` free ⇔ `cell<0x28 && A[cell]==0` (reads its **own** cell's plane A —
+  a faithful oddity, transcribed literally)
+- **LEFT** `a0e2` free ⇔ `col!=0 && B[cell-1]==0 && A[cell-1]!=0x0b`
+- **RIGHT** `a1b2` free ⇔ `col!=7 && B[cell+1]==0 && A[cell+1]!=0x0b`
+
+All four blocked → `4fd3` (random script `5 + (79b3&3) + (rng&1)`, ids 5–8). Else
+`(*0x870[8562])()` — the **on-arrival** dispatch. While moving (`a1b0 != 0`),
+`5003`: at `8563 == 5` (visual mid-step) call `(*0x85c[8562])()` to flip the cell
+index (`5025` up −8 / `503f` down +8 / `5059` left −1 / `506f` right +1).
+
+`0x870` on-arrival: id 1→`4dbf`, 2→`4e44`, 3→`4ec9`, 4→`4f4e` (0/≥5 → noop `7111`).
+`0x85c` mid-step: id 1→`5025`, 2→`503f`, 3→`5059`, 4→`506f` (else noop). Each
+on-arrival routine keeps the current direction if free, else turns by a fixed
+preference (`4dbf`: up→right→left→down, `4e44`: down→left→right→up, `4ec9`:
+left→up→down→right, `4f4e`: right→down→up→left), committing through a leaf
+(`4dfa`/`4e7f`/`4f04`/`4f89`) that calls `4bc6(1..4)`. The leaf adds a random
+detour **only when `79b3 < 7920`** — so a **sub-type-0 board (board 2) is fully
+deterministic** (the leaves always commit their primary direction).
+
+### Collision → death (`5085`/`50c0`/`50fb`, Confirmed)
+
+- `5085` (gated `a0ce==0`): ball AABB `[9290-5, 9290+6] × [9292-5, 9292+5]` (`084c..0852`).
+- `50c0` (gated `a0ce==0`): entity AABB `[79ba-5, 79ba+6] × [79bc-5, 79bc+5]` (`0854..085a`).
+- `50fb` (gated `8571!=-1 && a0ce==0 && 856d==0 && 792c!=0x30`): standard box overlap →
+  `a1aa=1` + `6e11(3)` (death sfx, stubbed). Otherwise `a1aa=0`.
+
+`a1aa=1` is consumed by `1d26` the next frame → `228d` (`a0ce=1, 792a=0, a1aa=0,
+4263(0x2e)`) → the **already-ported** state-`0x2e` fly-around death cascade
+(`22d2` ×3 → `22fc` lose-a-life). **The death path is shared with the spike death.**
+
+### Render (`1cea`, Confirmed)
+
+When `8571 != -1`, draw bank frame `a0de + 8560` (board 2: `0x1f7..0x1fa`) centred
+on `(79ba, 79bc)` — same centre-on-anchor blit as the ball.
+
 ## What this means for the port
 
 The current `App` treats `Screen::level` as display-only. To make it a game,
@@ -494,12 +576,16 @@ implement the per-frame loop as a platform-independent state machine:
   structure code (5 reaction tables at `DS:0x36be..0x377e` + sprite map
   `0x3d3a`), not fixed constants; the win count `a0cf` excludes free pips/lives.
   (Decoder `tools/re/dump_tile_tables.py`.)
-- **Entity AI table** at `DS:0x870` (indexed by `8562`) — the monster movement.
-  **DECISION: deferred.** Confirmed from the decoded D1 headers (byte `0x93`):
-  of all 15 world-1 boards, only board index 2 (node 3) has an active entity
-  (`8571 != 0xff`, id `0x07`); nodes 1 and 2 have none. So the first playable
-  board needs no entity AI — build ball + collectibles + win/lose first; add the
-  `DS:0x870` AI when implementing node 3.
+- ~~**Entity AI table** at `DS:0x870` (indexed by `8562`) — the monster movement.~~
+  **DONE 2026-06-27** — see "Moving entity" above. The whole monster (spawn
+  `2a78`/`48a9`, movement scripts `DS:0x2520`/`4bc6`/`4c14`, maze AI `4c99` +
+  `0x870`/`0x85c` + the `4dbf`/`4e44`/`4ec9`/`4f4e` routines, the `4fd3` fallback,
+  the cell primitives `5025`/`503f`/`5059`/`506f`, and the AABB collision
+  `5085`/`50c0`/`50fb`→`a1aa`→shared state-`0x2e` death) is ported to `LevelGame`
+  and rendered by `draw_monster`. Data tables baked by `tools/re/dump_entity_ai.py`.
+  Validated on D1 board 2 (node 3) by tests + by eye: the orange creature
+  (frames `0x1f7..0x1fa`) spawns at cell 39, animates, walks its row, and kills the
+  ball on contact (−1 life). Only board index 2 has an entity in world 1.
 - The two foreground blits go through the overlay raster core `0x1cec`
   (unrecovered) — the port already has its own blitter, so this only matters for
   pixel-exact comparison, not for a playable port.

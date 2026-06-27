@@ -261,6 +261,28 @@ bool draw_ball(std::span<const std::uint8_t> sprite_bank, int frame, int ball_x,
     return true;
 }
 
+bool draw_monster(std::span<const std::uint8_t> sprite_bank, int frame, int mon_x, int mon_y,
+                  IndexedFramebuffer& target) {
+    MenuImage sprite;
+    try {
+        sprite = decode_sprite_frame(sprite_bank, frame);
+    } catch (const std::exception&) {
+        return false;
+    }
+    // The anchor (mon_x, mon_y) is the cell slot + (7,7); centre the sprite on it.
+    const int top_x = mon_x - sprite.width / 2;
+    const int top_y = mon_y - sprite.height / 2;
+    for (int py = 0; py < sprite.height; ++py) {
+        for (int px = 0; px < sprite.width; ++px) {
+            const auto color = sprite.pixels[static_cast<std::size_t>(py) * sprite.width + px];
+            if (color != sprite_transparent_index) {
+                plot(target, top_x + px, top_y + py, color);
+            }
+        }
+    }
+    return true;
+}
+
 int draw_object_anims(std::span<const ObjectAnimSprite> anims,
                       std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& target) {
     int drawn = 0;

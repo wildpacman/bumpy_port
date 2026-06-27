@@ -360,6 +360,10 @@ int render_play_to_bmps(const std::filesystem::path& asset_root, int level_numbe
         }
         bumpy::draw_bum_entities(live, bank.bytes(), frame);
         bumpy::draw_object_anims({anims.data(), anim_count}, bank.bytes(), frame);
+        if (game.monster_present()) {
+            bumpy::draw_monster(bank.bytes(), game.monster_frame(), game.monster_x(),
+                                game.monster_y(), frame);
+        }
         bumpy::draw_ball(bank.bytes(), game.ball_frame(), game.ball_x(), game.ball_y(), frame);
         std::ostringstream name;
         name << prefix << std::setw(2) << std::setfill('0') << index << ".bmp";
@@ -373,6 +377,11 @@ int render_play_to_bmps(const std::filesystem::path& asset_root, int level_numbe
         if (anim_count > 0) {
             std::cout << " [cell 0x" << std::hex << static_cast<int>(anims[0].cell) << " frame 0x"
                       << anims[0].frame_index << std::dec << (anims[0].layer_b ? " B]" : " A]");
+        }
+        if (game.monster_present()) {
+            std::cout << " | mob cell 0x" << std::hex << static_cast<int>(game.monster_cell())
+                      << " frame 0x" << game.monster_frame() << std::dec << " at ("
+                      << game.monster_x() << "," << game.monster_y() << ")";
         }
         std::cout << "\n";
     };

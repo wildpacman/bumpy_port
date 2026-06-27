@@ -288,3 +288,92 @@ TEST_CASE("real D1 board 0 runs for many frames without escaping the grid") {
         }
     }
 }
+
+// ===== Moving entity (monster) ===============================================
+
+TEST_CASE("most boards have no monster; D1 board 2 spawns one") {
+    const auto level = bumpy::LevelResources::load(".", 1);
+    // Nodes 1 and 2 (board index 0/1) carry no entity (header 0x93 == 0).
+    CHECK_FALSE(LevelGame(level.bum_entities(0)).monster_present());
+    CHECK_FALSE(LevelGame(level.bum_entities(1)).monster_present());
+
+    // Node 3 (board index 2): entity at cell 39 (col 7, row 4), sprite base 0x1f7.
+    LevelGame g(level.bum_entities(2));
+    REQUIRE(g.monster_present());
+    CHECK(g.monster_cell() == 39);
+    CHECK(g.monster_frame() == 0x1f7);  // a0de (0x2546[0x10]) + keyframe 0
+    // Pixel anchor = bum_cell_position(7,4) + (7,7).
+    CHECK(g.monster_x() == 8 + 7 * 40 + 7);
+    CHECK(g.monster_y() == 8 + 4 * 32 + 7);
+}
+
+TEST_CASE("the D1 board-2 monster walks the maze without leaving the grid") {
+    const auto level = bumpy::LevelResources::load(".", 1);
+    LevelGame g(level.bum_entities(2));
+    const int start_x = g.monster_x();
+    const int start_y = g.monster_y();
+    bool moved = false;
+    for (int i = 0; i < 400; ++i) {
+        g.tick(none);  // ball idles; only the monster moves
+        REQUIRE(g.monster_cell() < 0x30);             // stays on the 6x8 grid
+        if (g.monster_x() != start_x || g.monster_y() != start_y) {
+            moved = true;
+        }
+    }
+    CHECK(moved);  // the entity actually patrols (it does not sit still)
+}
+
+TEST_CASE("the monster steps at half rate (every other frame)") {
+    const auto level = bumpy::LevelResources::load(".", 1);
+    LevelGame g(level.bum_entities(2));
+    const int x0 = g.monster_x();
+    const int y0 = g.monster_y();
+    g.tick(none);                                  // 8243: 0->1, the entity steps
+    const bool moved_first = (g.monster_x() != x0 || g.monster_y() != y0);
+    const int x1 = g.monster_x();
+    const int y1 = g.monster_y();
+    g.tick(none);                                  // 8243: 1->0, the entity holds
+    CHECK(g.monster_x() == x1);
+    CHECK(g.monster_y() == y1);
+    CHECK(moved_first);
+}
+
+TEST_CASE("touching the monster kills the ball and costs a life") {
+    // Synthetic board: all-lane plane A, the ball and the monster share a cell. The
+    // AABB boxes overlap immediately, so 50fb sets a1aa and 1d26 arms the shared
+    // state-0x2e death cascade (22d2 x3 -> 22fc), losing one of the 5 lives.
+    BumEntities board = lane_board(0x14);
+    board.bytes[0x93] = 0x14 + 1;  // monster cell = ball cell (header value-1)
+    board.bytes[0x94] = 4;         // behaviour 4 (move right)
+    board.bytes[0x95] = 0;         // sub-type 0 (deterministic)
+    board.bytes[0x96] = 0x10;      // sprite base index
+    LevelGame g(board);
+    REQUIRE(g.monster_present());
+    REQUIRE(g.lives() == 5);
+
+    bool died = false;
+    for (int i = 0; i < 400 && !died; ++i) {
+        g.tick(none);
+        died = (g.status() == LevelStatus::dead);
+    }
+    CHECK(died);
+    CHECK(g.lives() == 4);
+}
+
+TEST_CASE("a monster in another row never reaches an idle ball") {
+    // On an all-0x01 lane board the monster can only move horizontally (the up/down
+    // checks see a non-empty plane A), so a monster in row 0 stays in row 0 and an
+    // idle ball in row 5 is safe.
+    BumEntities board = lane_board(0x28);  // ball at row 5, col 0
+    board.bytes[0x93] = 0x03 + 1;          // monster at row 0, col 3
+    board.bytes[0x94] = 4;                 // move right
+    board.bytes[0x95] = 0;
+    board.bytes[0x96] = 0x10;
+    LevelGame g(board);
+    REQUIRE(g.monster_present());
+    for (int i = 0; i < 200; ++i) {
+        g.tick(none);
+        REQUIRE(g.monster_cell() < 8);  // never leaves row 0
+    }
+    CHECK(g.status() == LevelStatus::playing);
+}
