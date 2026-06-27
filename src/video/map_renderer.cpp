@@ -1,5 +1,6 @@
 #include "video/map_renderer.h"
 
+#include "game/world_graphs.h"
 #include "resources/sprite_frame.h"
 #include "video/menu_renderer.h"  // MenuImage
 #include "video/screen_image.h"
@@ -60,14 +61,14 @@ MapRenderStats render_map(std::span<const std::uint8_t> monde_screen, const Worl
     // half-dimension centring would put it 1px too far left (the box is even-width, so
     // w/2 = 16 != origin 15). Drawn before the avatar so the avatar overlays the marker
     // on the current node.
-    for (int node = 1; node <= world1_node_count(); ++node) {
+    for (int node = 1; node <= world_node_count(view.world); ++node) {
         const auto board = static_cast<std::size_t>(node - 1);
         if (board >= cleared_boards.size() || cleared_boards[board] == 0) {
             continue;
         }
         try {
             const MenuImage marker = decode_sprite_frame(sprite_bank, kCompletedNodeFrame);
-            const MapNode& n = world1_node(node);
+            const MapNode& n = world_node(view.world, node);
             blit_sprite(marker, n.x - 1 - marker.origin_x, n.y - marker.origin_y, target);
             ++stats.markers_drawn;
         } catch (const std::exception&) {

@@ -4,8 +4,10 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <vector>
 
 #include "core/indexed_framebuffer.h"
+#include "game/world_graphs.h"
 #include "game/world_map.h"
 #include "resources/menu_resources.h"  // decode_sprite_archive
 #include "resources/sprite_frame.h"    // decode_sprite_frame
@@ -111,4 +113,31 @@ TEST_CASE("the completed-node marker is centred on its node") {
     // within a couple of pixels of slack for the marker art's own asymmetry.
     REQUIRE(std::abs((min_x + max_x) / 2 - (n3.x - 1)) <= 3);
     REQUIRE(std::abs((min_y + max_y) / 2 - n3.y) <= 3);
+}
+
+TEST_CASE("completed-node markers follow the current world's node positions") {
+    const auto backdrop = bumpy::decode_vec_resource("MONDE2.VEC");
+    const auto bank = bumpy::decode_sprite_archive("BUMSPJEU.BIN");
+    const auto screen = backdrop.decoded_bytes();
+
+    bumpy::WorldMap map(2);  // world 2, node 1 at (112,32)
+
+    std::vector<std::uint8_t> cleared(static_cast<std::size_t>(bumpy::world_node_count(2)), 0);
+    cleared[0] = 1;  // board 0 = node 1 cleared
+    bumpy::IndexedFramebuffer marked(320, 200);
+    const auto stats = bumpy::render_map(screen, map.view(), bank.bytes(), marked, cleared);
+    REQUIRE(stats.markers_drawn == 1);
+
+    // The marker changed pixels around world-2 node 1 (112,32).
+    bumpy::IndexedFramebuffer backdrop_only(320, 200);
+    bumpy::apply_screen_image_palette(screen, backdrop_only);
+    bumpy::draw_screen_image(screen, backdrop_only);
+    const bumpy::MapNode& n1 = bumpy::world_node(2, 1);
+    int differing = 0;
+    for (int y = n1.y - 12; y < n1.y + 12; ++y) {
+        for (int x = n1.x - 12; x < n1.x + 12; ++x) {
+            if (marked.pixel(x, y) != backdrop_only.pixel(x, y)) ++differing;
+        }
+    }
+    REQUIRE(differing > 0);
 }
