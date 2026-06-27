@@ -14,6 +14,11 @@ struct MenuImage {
     int width{};
     int height{};
     std::vector<std::uint8_t> pixels;
+    // Sprite hotspot from the frame header (words [2]/[3]); the blitter (1cec:31b7)
+    // anchors the frame so this pixel lands on the draw descriptor. 0 for images that
+    // carry no header origin (deplaned screens, object sheets, menu glyphs).
+    int origin_x{};
+    int origin_y{};
 };
 
 struct MenuDrawCommand {

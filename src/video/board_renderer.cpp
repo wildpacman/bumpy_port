@@ -246,10 +246,20 @@ bool draw_ball(std::span<const std::uint8_t> sprite_bank, int frame, int ball_x,
     } catch (const std::exception&) {
         return false;
     }
-    // The anchor (ball_x, ball_y) is the cell slot + (7,15); draw the ball centred on
-    // it horizontally and sitting just above it vertically so it rides the cell.
+    // Anchor X by half-width: the ball content is box-centred in EVERY frame (the wide
+    // 32px jump/bonk frames 0x0d..0x11, 0x21, 0x2d..0x37 carry it at content-centre ~= 16
+    // with side sparks), so half-width keeps the visual centre on ball_x across frame
+    // changes; header origin_x there (5..10) flung the ball ~9px right on a jump/bonk frame.
+    // Anchor Y by min(origin_y, height/2). The content sits in the upper part of the box,
+    // never the lower, so the anchor is never below the box centre. For the 16x19 exit
+    // descent (origin_y 7 < h/2 9) this keeps origin_y, clipping the sinking ball into the
+    // pit at the right line; for the wide bonce/jump frames (origin_y 15 > h/2) it falls
+    // back to half-height, which centres the content -- using the raw origin_y=15 there
+    // flung the bounce-apex ball ~9px UP (it "punched through" the platform) before
+    // snapping back. Rolling frames are unaffected (origin_y 7 == h/2 7).
+    const int anchor_y = sprite.origin_y < sprite.height / 2 ? sprite.origin_y : sprite.height / 2;
     const int top_x = ball_x - sprite.width / 2;
-    const int top_y = ball_y - sprite.height / 2;
+    const int top_y = ball_y - anchor_y;
     for (int py = 0; py < sprite.height; ++py) {
         for (int px = 0; px < sprite.width; ++px) {
             const auto color = sprite.pixels[static_cast<std::size_t>(py) * sprite.width + px];
@@ -269,9 +279,12 @@ bool draw_monster(std::span<const std::uint8_t> sprite_bank, int frame, int mon_
     } catch (const std::exception&) {
         return false;
     }
-    // The anchor (mon_x, mon_y) is the cell slot + (7,7); centre the sprite on it.
+    // Like the ball: centre X by half-width, anchor Y by min(origin_y, height/2). The
+    // monster frames are 16x16 origin (8,7), so X is unchanged (w/2 = 8) and Y uses the
+    // hotspot (7 < h/2 8).
+    const int anchor_y = sprite.origin_y < sprite.height / 2 ? sprite.origin_y : sprite.height / 2;
     const int top_x = mon_x - sprite.width / 2;
-    const int top_y = mon_y - sprite.height / 2;
+    const int top_y = mon_y - anchor_y;
     for (int py = 0; py < sprite.height; ++py) {
         for (int px = 0; px < sprite.width; ++px) {
             const auto color = sprite.pixels[static_cast<std::size_t>(py) * sprite.width + px];

@@ -52,11 +52,14 @@ MapRenderStats render_map(std::span<const std::uint8_t> monde_screen, const Worl
 
     MapRenderStats stats;
 
-    // Completed-node markers (FUN_1000_3c4f): every cleared node draws frame 0x1da at
-    // descriptor (node.x - 1, node.y). The overlay blitter centres a frame on its
-    // descriptor by half its dimensions (the same convention that places the avatar --
-    // top-left = descriptor - (w/2, h/2)), not by the header origin words. Drawn before
-    // the avatar so the avatar overlays the marker on the current node.
+    // Completed-node markers (FUN_1000_3c9d): every cleared node draws frame 0x1da at
+    // descriptor (node.x - 1, node.y). The overlay blitter (1cec:31b7) anchors a frame by
+    // its header origin/hotspot -- the descriptor pixel lands on the frame's (origin_x,
+    // origin_y) -- so top-left = descriptor - origin. Frame 0x1da's origin is (15, 15),
+    // the centre of its 32x30 box, so this lands the X dead-centre on the node ring;
+    // half-dimension centring would put it 1px too far left (the box is even-width, so
+    // w/2 = 16 != origin 15). Drawn before the avatar so the avatar overlays the marker
+    // on the current node.
     for (int node = 1; node <= world1_node_count(); ++node) {
         const auto board = static_cast<std::size_t>(node - 1);
         if (board >= cleared_boards.size() || cleared_boards[board] == 0) {
@@ -65,7 +68,7 @@ MapRenderStats render_map(std::span<const std::uint8_t> monde_screen, const Worl
         try {
             const MenuImage marker = decode_sprite_frame(sprite_bank, kCompletedNodeFrame);
             const MapNode& n = world1_node(node);
-            blit_sprite(marker, n.x - 1 - marker.width / 2, n.y - marker.height / 2, target);
+            blit_sprite(marker, n.x - 1 - marker.origin_x, n.y - marker.origin_y, target);
             ++stats.markers_drawn;
         } catch (const std::exception&) {
             // marker frame unavailable -> skip it

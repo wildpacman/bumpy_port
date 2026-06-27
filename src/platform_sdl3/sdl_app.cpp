@@ -124,6 +124,40 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
         return live;
     };
 
+    // Compose the playfield (board art + live entities + tile animations + ball) into
+    // `frame`. Shared by the per-frame render and the terminal-frame capture below so the
+    // edge-to-centre darken on a won/lost board freezes the *resolved* scene -- e.g. the
+    // ball fully sunk into the exit pit (descent frame 0x20), not a half-descended frame
+    // still showing the ball on top of the pit. This matches the original's frame order
+    // (render at 1cb2 -> vsync -> player tick at 1d26 sets the win flag), where the last
+    // playfield the map's FUN_1000_3467 darkens is the one in which the ball has vanished.
+    auto render_level = [&]() {
+        render_board(level, app.board_index(), backdrop_screen, frame);
+        if (game) {
+            BumEntities live = live_entities();
+            // Tile bump/spring animations: pull the live slots, blank the static tile
+            // under each so only the moving spring sprite draws (matching the original's
+            // background restore), then overlay the spring frames.
+            std::array<ObjectAnimSprite, 7> anims{};
+            const std::size_t anim_count = game->object_anims(anims);
+            for (std::size_t k = 0; k < anim_count; ++k) {
+                const std::size_t cell = anims[k].cell;
+                const std::size_t off = anims[k].layer_b ? BumEntities::layer_b_offset
+                                                         : BumEntities::layer_a_offset;
+                live.bytes[cell + off] = 0;
+            }
+            draw_bum_entities(live, sprite_bank, frame);
+            draw_object_anims({anims.data(), anim_count}, sprite_bank, frame);
+            if (game->monster_present()) {
+                draw_monster(sprite_bank, game->monster_frame(), game->monster_x(),
+                             game->monster_y(), frame);
+            }
+            draw_ball(sprite_bank, game->ball_frame(), game->ball_x(), game->ball_y(), frame);
+        } else {
+            draw_bum_entities(level.bum_entities(app.board_index()), sprite_bank, frame);
+        }
+    };
+
     // Per-phase pacing. The engine has two frame loops with different retrace-wait
     // counts (see kGameTickHz): sequences driven by the {frame,dx,dy} script stepper
     // FUN_1000_13df -- in-level gameplay and the world-map cloud-jump -- step once per
@@ -233,6 +267,13 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
                     game->tick(
                         LevelInput{input.left, input.right, input.up, input.down, input.confirm});
                     if (game->status() != LevelStatus::playing) {
+                        // Draw the resolved terminal frame (ball sunk into the pit on a win,
+                        // death pose on a loss) into `frame` *before* leaving the board, so the
+                        // edge-to-centre darken started below freezes that frame -- the original
+                        // renders the win-setting frame, then the map darkens it. Without this the
+                        // darken would freeze the previous (still-descending) frame, leaving the
+                        // ball visibly on top of the pit.
+                        render_level();
                         // Win/lose/game-over: carry lives+score back and update the run.
                         app.finish_level(game->status(), game->lives(), game->score());
                         game.reset();
@@ -265,30 +306,7 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
             draw_lives(sprite_bank, app.lives(), frame);  // lives row HUD (FUN_1000_6130)
             draw_score(font, app.score(), kMapScoreX, kMapScoreBaselineY, kScoreColor, frame);
         } else {
-            render_board(level, app.board_index(), backdrop_screen, frame);
-            if (game) {
-                BumEntities live = live_entities();
-                // Tile bump/spring animations: pull the live slots, blank the static
-                // tile under each so only the moving spring sprite draws (matching the
-                // original's background restore), then overlay the spring frames.
-                std::array<ObjectAnimSprite, 7> anims{};
-                const std::size_t anim_count = game->object_anims(anims);
-                for (std::size_t k = 0; k < anim_count; ++k) {
-                    const std::size_t cell = anims[k].cell;
-                    const std::size_t off = anims[k].layer_b ? BumEntities::layer_b_offset
-                                                             : BumEntities::layer_a_offset;
-                    live.bytes[cell + off] = 0;
-                }
-                draw_bum_entities(live, sprite_bank, frame);
-                draw_object_anims({anims.data(), anim_count}, sprite_bank, frame);
-                if (game->monster_present()) {
-                    draw_monster(sprite_bank, game->monster_frame(), game->monster_x(),
-                                 game->monster_y(), frame);
-                }
-                draw_ball(sprite_bank, game->ball_frame(), game->ball_x(), game->ball_y(), frame);
-            } else {
-                draw_bum_entities(level.bum_entities(app.board_index()), sprite_bank, frame);
-            }
+            render_level();
         }
 
         present_frame();

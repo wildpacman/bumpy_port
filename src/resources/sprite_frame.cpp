@@ -120,6 +120,8 @@ MenuImage decode_sprite_frame(std::span<const std::uint8_t> archive_data, int fr
         width,
         height,
         std::vector<std::uint8_t>(static_cast<std::size_t>(width) * static_cast<std::size_t>(height)),
+        static_cast<int>(header.origin_x),
+        static_cast<int>(header.origin_y),
     };
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
