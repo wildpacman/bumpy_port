@@ -191,7 +191,8 @@ noted):
 | `651c`/`6535` | `856e -= 1` / `+= 1` — advance the ball one **col** (LEFT / RIGHT) |
 | `6611`/`65e5`/`65fb` | input-mask: `8244 &= 0x0f` / `&= 0x10` (keep fire) / `&= 0x1d` (drop RIGHT) |
 | `6717` | latch `856f=856e`, run the pickup check `6d26` (collect when over a plane-C cell) |
-| `654e` | if fire/left held and not already latched, start a held-bump (`695e`) |
+| `654e` | if fire/up held and not already latched (`7923==0`), start a held-bump (`695e`): `a1a7` armed → next decide forces a fall (`27de`→`2810`), re-arming the bounce |
+| `647e` | bounce-state (`0x06/0x07/0x2b`) step-4/5 variant: bump sfx (cosmetic) **then `654e`** — so a held UP keeps bouncing and recoils the floor every cycle. (Port: route `0x647e`→`f_654e`; omitting it sprang the floor only every other landing.) |
 | `6587` | the `0x02`-lane + RIGHT-held special (sets the `79b4=0x34` auto-roll) |
 | `4437`/`4344` | the **input-decode tree** (below); re-reads input to chain the next move |
 | `6648`/`6699`/`66d8`/`6748`/`6789`/`673a`/`6305` | per-state step-0 entry: set sprite (`6d6a`/`6d94`), play the bump sfx (`6a89`/`6e11`) — sprite/sfx detail = Hypothesis |

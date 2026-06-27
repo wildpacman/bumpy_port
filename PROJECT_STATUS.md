@@ -478,6 +478,26 @@ quit). Every screen change plays the edge-to-centre darken.
 - Generated artifacts and downloaded tools live under ignored
   `analysis/generated/` and `tools/vendor/`. Do not commit them.
 
+## Stage 3 — sprite-positioning + bounce polish (2026-06-27)
+
+Correctness fixes on already-live features, verified against the original (a DOSBox ZMBV
+capture was decoded frame-by-frame to nail the bounce). Commits `88900b1`/`957ef4d`/`c75fa12`:
+
+- **World-map completed-node cross** (`0x1da`): anchored by the header origin/hotspot,
+  centred on the node ring (was 1px left). `decode_sprite_frame` now exposes `origin_x/y`.
+- **Exit-pit descent**: the sinking ball clips into the pit at the right line — ball **Y is
+  anchored by `min(origin_y, height/2)`** — and the SDL loop renders the resolved terminal
+  frame before the screen-change darken, so the wipe freezes the ball already in the pit.
+- **Head-bump**: the bounce-apex / jump frames no longer fling the ball sideways or punch
+  it up through the platform/top edge.
+- **Held-UP bounce**: wired the missing `0x647e` anim-step handler (a bump sound + the
+  `FUN_654e` held-bump latch) for bounce states `0x06/0x07/0x2b`. Without it a held UP
+  re-armed only every other cycle, so the floor lane recoiled on alternate landings; now
+  the ball bounces continuously and recoils **both** bars every cycle.
+- **Ball centring**: ball/monster **X is anchored on the visible content centre**, so the
+  resting ball sits dead-centre on its lane tile (was 1px left) with no horizontal jump as
+  the animation cycles between the 16px and 32px frames. See `video/board_renderer.cpp`.
+
 ## Next step
 
 **The world-map screen is DONE** (see "Stage 3 world-map screen" above): the port
