@@ -122,20 +122,24 @@ TEST_CASE("completed-node markers follow the current world's node positions") {
 
     bumpy::WorldMap map(2);  // world 2, node 1 at (112,32)
 
+    // Clear a node the avatar is NOT on, so the marker's position is isolated from the
+    // avatar: board 1 = node 2, at world-2 (192,32); the avatar sits on node 1 (112,32).
+    // World-1 node 2 is (112,32), so a world-1 lookup would mark the avatar's own node and
+    // leave (192,32) untouched -- the assertion below catches that.
     std::vector<std::uint8_t> cleared(static_cast<std::size_t>(bumpy::world_node_count(2)), 0);
-    cleared[0] = 1;  // board 0 = node 1 cleared
+    cleared[1] = 1;  // board 1 = node 2 cleared (avatar is on node 1, elsewhere)
     bumpy::IndexedFramebuffer marked(320, 200);
     const auto stats = bumpy::render_map(screen, map.view(), bank.bytes(), marked, cleared);
     REQUIRE(stats.markers_drawn == 1);
 
-    // The marker changed pixels around world-2 node 1 (112,32).
+    // The marker changed pixels around world-2 node 2 (192,32).
     bumpy::IndexedFramebuffer backdrop_only(320, 200);
     bumpy::apply_screen_image_palette(screen, backdrop_only);
     bumpy::draw_screen_image(screen, backdrop_only);
-    const bumpy::MapNode& n1 = bumpy::world_node(2, 1);
+    const bumpy::MapNode& n2 = bumpy::world_node(2, 2);  // (192,32) -- world-1 node 2 is (112,32)
     int differing = 0;
-    for (int y = n1.y - 12; y < n1.y + 12; ++y) {
-        for (int x = n1.x - 12; x < n1.x + 12; ++x) {
+    for (int y = n2.y - 12; y < n2.y + 12; ++y) {
+        for (int x = n2.x - 12; x < n2.x + 12; ++x) {
             if (marked.pixel(x, y) != backdrop_only.pixel(x, y)) ++differing;
         }
     }
