@@ -38,9 +38,10 @@ struct WorldMapView {
 };
 
 // One world-map node: linked neighbour node numbers (1-based; 0 = no link) and the
-// node's pixel position. Baked from BUMPY.UNPACKED.EXE world-1 tables (graph
-// DS:0x09e6, positions DS:0x0a80); see analysis/specs/screen-flow.md and
-// docs/superpowers/specs/2026-06-21-world-map-screen-design.md.
+// node's pixel position. World-agnostic -- the per-world tables are baked into
+// world_graphs.gen.cpp (graph DS:0x10c8[world], positions DS:0x10ec[world]); see
+// game/world_graphs.h, analysis/specs/screen-flow.md, and
+// docs/superpowers/specs/2026-06-27-worlds-2-9-design.md.
 struct MapNode {
     std::uint8_t up{};
     std::uint8_t down{};
@@ -50,7 +51,8 @@ struct MapNode {
     int y{};
 };
 
-// SDL-independent world-map state machine (world 1). Owns the current node and the
+// SDL-independent world-map state machine (parameterized by world; default world 1).
+// Owns the current node and the
 // avatar position. Pressing a direction with a linked neighbour starts a slide: the
 // avatar glides 4px/tick along the connecting line to the neighbour (the original's
 // FUN_1000_3ab2..3bc9 animate dist>>2 steps of 4px), and input is ignored until it

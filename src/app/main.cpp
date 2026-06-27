@@ -403,6 +403,10 @@ int render_play_to_bmps(const std::filesystem::path& asset_root, int level_numbe
 int render_map_to_bmp(const std::filesystem::path& asset_root, int world_number,
                       const std::filesystem::path& monde_path,
                       const std::filesystem::path& out_path, int cleared_count) {
+    if (world_number < 1 || world_number > bumpy::kWorldCount) {
+        std::cerr << "--render-map world must be 1.." << bumpy::kWorldCount << '\n';
+        return 2;
+    }
     const auto backdrop = bumpy::decode_vec_resource(monde_path);
     const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
     bumpy::WorldMap map(world_number);  // node 1 of the requested world

@@ -220,7 +220,11 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             } catch (const std::exception& error) {
                 std::cerr << "could not load world " << requested << ": " << error.what()
                           << " -- staying on world " << world.world() << '\n';
-                app.enter_world(world.world(), world.board_count());  // clear the request
+                // Re-enter the current world to clear the pending request. NOTE: enter_world
+                // zeroes cleared_, so a failed *advance* drops the player back to replay the
+                // current world from scratch. This only fires on missing/corrupt assets (a
+                // launch-time warning already covers that), never in normal play.
+                app.enter_world(world.world(), world.board_count());
             }
         }
 
