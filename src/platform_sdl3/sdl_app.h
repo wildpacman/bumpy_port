@@ -5,10 +5,11 @@
 #include "core/indexed_framebuffer.h"
 #include "game/app.h"
 #include "resources/font.h"
-#include "resources/level_resources.h"
+#include "resources/world_resources.h"
 #include "video/menu_renderer.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <span>
 
 namespace bumpy {
@@ -20,13 +21,11 @@ public:
     SdlApp(const SdlApp&) = delete;
     SdlApp& operator=(const SdlApp&) = delete;
 
-    // Drive the top-level App: render the menu when on the menu screen and the
-    // level board (over the per-world backdrop palette, with the real BUM entity
-    // sprites from the sprite_bank) when on the level screen, presenting each frame
-    // until the App requests quit. sprite_bank is the whole BUMSPJEU.BIN.
-    int run(App& app, const MenuRenderer& menu_renderer, const LevelResources& level,
-            std::span<const std::uint8_t> backdrop_screen,
-            std::span<const std::uint8_t> sprite_bank, const Font& font,
+    // Drive the top-level App. Owns the current world's resources (`world`, by value) and
+    // reloads them from `asset_root` whenever App requests a new world (pending_world).
+    // sprite_bank is the whole BUMSPJEU.BIN; font is DDFNT2.CAR (both world-independent).
+    int run(App& app, const MenuRenderer& menu_renderer, const std::filesystem::path& asset_root,
+            WorldResources world, std::span<const std::uint8_t> sprite_bank, const Font& font,
             IndexedFramebuffer& frame);
 
 private:

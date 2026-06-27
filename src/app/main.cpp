@@ -10,6 +10,8 @@
 #include "resources/level_resources.h"
 #include "resources/menu_resources.h"
 #include "resources/vec.h"
+#include "resources/world_resources.h"
+#include "game/world_graphs.h"
 #include "game/world_map.h"
 #include "video/board_renderer.h"
 #include "video/hud.h"
@@ -398,26 +400,26 @@ int render_play_to_bmps(const std::filesystem::path& asset_root, int level_numbe
 
 // Compose the world-map screen (MONDE backdrop + the Bumpy avatar at node 1) and
 // dump it to a BMP for by-eye comparison with the original world-select capture.
-int render_map_to_bmp(const std::filesystem::path& asset_root, const std::filesystem::path& monde_path,
+int render_map_to_bmp(const std::filesystem::path& asset_root, int world_number,
+                      const std::filesystem::path& monde_path,
                       const std::filesystem::path& out_path, int cleared_count) {
     const auto backdrop = bumpy::decode_vec_resource(monde_path);
     const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
-    bumpy::WorldMap map;  // node 1
-    // Mark the first `cleared_count` boards cleared so the completed-node markers can be
-    // verified by eye (nodes 1..cleared_count get the frame-0x1da marker).
-    std::vector<std::uint8_t> cleared(static_cast<std::size_t>(bumpy::world1_node_count()), 0);
+    bumpy::WorldMap map(world_number);  // node 1 of the requested world
+    std::vector<std::uint8_t> cleared(
+        static_cast<std::size_t>(bumpy::world_node_count(world_number)), 0);
     for (int i = 0; i < cleared_count && i < static_cast<int>(cleared.size()); ++i) {
         cleared[static_cast<std::size_t>(i)] = 1;
     }
     bumpy::IndexedFramebuffer frame(320, 200);
     const auto stats =
         bumpy::render_map(backdrop.decoded_bytes(), map.view(), bank.bytes(), frame, cleared);
-    bumpy::draw_lives(bank.bytes(), 5, frame);  // HUD lives row (by-eye check vs bumpy_001)
+    bumpy::draw_lives(bank.bytes(), 5, frame);
     const auto font = bumpy::Font::load(asset_root / "DDFNT2.CAR");
     bumpy::draw_score(font, 1234567, bumpy::kMapScoreX, bumpy::kMapScoreBaselineY,
-                      bumpy::kScoreColor, frame);  // sample score (by-eye glyph check)
+                      bumpy::kScoreColor, frame);
     write_24bit_bmp(out_path, frame);
-    std::cout << "wrote " << out_path.string() << " (avatar "
+    std::cout << "wrote " << out_path.string() << " (world " << world_number << ", avatar "
               << (stats.avatar_drawn ? "drawn" : "skipped") << " at node " << map.current_node()
               << ", " << stats.markers_drawn << " node markers)\n";
     return 0;
@@ -502,32 +504,24 @@ int render_transition_to_bmps(const std::filesystem::path& asset_root,
     return 0;
 }
 
-int run_sdl_menu(const std::filesystem::path& asset_root) {
+int run_sdl_menu(const std::filesystem::path& asset_root, int start_world) {
     warn_if_assets_changed(asset_root);
     const auto resources = bumpy::MenuResources::load_from(asset_root);
     const bumpy::MenuRenderer renderer(resources);
 
-    // Load level 1 and its world-1 backdrop up front so confirming "start" can
-    // show the static board in-window (Stage 3 wiring). MONDE1.VEC supplies the
-    // per-world VGA palette the board renders under; the decoded resource must
-    // outlive run() because decoded_bytes() is a view into it.
-    const auto level = bumpy::LevelResources::load(asset_root, 1);
-    const auto backdrop = bumpy::decode_vec_resource(asset_root / "MONDE1.VEC");
-    const auto backdrop_bytes = backdrop.decoded_bytes();
-
-    // The BUM entity sprites are drawn from the uncompressed BUMSPJEU.BIN bank; it
-    // must outlive run() because the sprite span is a view into it.
+    // Load the starting world (D{n} + MONDE{n}.VEC). The shell owns this bundle and
+    // reloads it on each world change; the world-independent sprite bank + font are
+    // loaded once and must outlive run().
+    auto world = bumpy::WorldResources::load(asset_root, start_world);
     const auto sprite_bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
-
-    // The HUD score font (DDFNT2.CAR), read raw; must outlive run().
     const auto font = bumpy::Font::load(asset_root / "DDFNT2.CAR");
 
-    bumpy::App app(level.board_count());
+    bumpy::App app(world.board_count(), start_world);
     bumpy::IndexedFramebuffer frame(320, 200);
     renderer.render(app.menu().view(), frame);
 
     bumpy::SdlApp sdl;
-    return sdl.run(app, renderer, level, backdrop_bytes, sprite_bank.bytes(), font, frame);
+    return sdl.run(app, renderer, asset_root, std::move(world), sprite_bank.bytes(), font, frame);
 }
 
 }  // namespace
@@ -552,11 +546,8 @@ int main(int argc, char* argv[]) {
         }
         if ((argc == 5 || argc == 6) && std::string_view(argv[1]) == "--render-map") {
             // --render-map <world> <MONDE.VEC> <out.bmp> [cleared_node_count]
-            // world is currently informational (world 1 only); MONDE.VEC supplies the
-            // backdrop + palette, and the avatar is drawn at node 1. The optional last
-            // argument marks nodes 1..N cleared to check the completed-node markers.
             const int cleared = argc == 6 ? std::stoi(argv[5]) : 0;
-            return render_map_to_bmp(asset_root, argv[3], argv[4], cleared);
+            return render_map_to_bmp(asset_root, std::stoi(argv[2]), argv[3], argv[4], cleared);
         }
         if (argc == 7 && std::string_view(argv[1]) == "--render-play") {
             // --render-play <level> <MONDE.VEC> <board> <dir> <out-prefix>
@@ -596,12 +587,20 @@ int main(int argc, char* argv[]) {
             return render_pav(argv[2], argv[3], argv[4], argv[5], std::stoi(argv[6]),
                               std::stoi(argv[7]), std::stoi(argv[8]));
         }
+        int start_world = 1;
+        if (argc == 3 && std::string_view(argv[1]) == "--start-world") {
+            start_world = std::stoi(argv[2]);
+            if (start_world < 1 || start_world > bumpy::kWorldCount) {
+                std::cerr << "--start-world must be 1.." << bumpy::kWorldCount << '\n';
+                return 2;
+            }
+            return run_sdl_menu(asset_root, start_world);
+        }
         if (argc != 1) {
-            std::cerr << "usage: bumpy_port.exe [--render-title [out.bmp] | --dump-title-raw out.bin "
-                         "| --decode-vec in.vec out.bin]\n";
+            std::cerr << "usage: bumpy_port.exe [--render-title [out.bmp] | --start-world N | ...]\n";
             return 2;
         }
-        return run_sdl_menu(asset_root);
+        return run_sdl_menu(asset_root, start_world);
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

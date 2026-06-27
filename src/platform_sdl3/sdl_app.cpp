@@ -1,7 +1,7 @@
 #include "platform_sdl3/sdl_app.h"
 
 #include "game/level_game.h"
-#include "resources/level_resources.h"
+#include "resources/world_resources.h"
 #include "video/board_renderer.h"
 #include "video/hud.h"
 #include "video/map_renderer.h"
@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <array>
+#include <filesystem>
+#include <iostream>
 #include <optional>
 #include <stdexcept>
 
@@ -105,9 +107,8 @@ SdlApp::~SdlApp() {
     SDL_Quit();
 }
 
-int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResources& level,
-                std::span<const std::uint8_t> backdrop_screen,
-                std::span<const std::uint8_t> sprite_bank, const Font& font,
+int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesystem::path& asset_root,
+                WorldResources world, std::span<const std::uint8_t> sprite_bank, const Font& font,
                 IndexedFramebuffer& frame) {
     bool running = true;
     MenuInput input{};
@@ -132,7 +133,7 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
     // (render at 1cb2 -> vsync -> player tick at 1d26 sets the win flag), where the last
     // playfield the map's FUN_1000_3467 darkens is the one in which the ball has vanished.
     auto render_level = [&]() {
-        render_board(level, app.board_index(), backdrop_screen, frame);
+        render_board(world.level(), app.board_index(), world.backdrop(), frame);
         if (game) {
             BumEntities live = live_entities();
             // Tile bump/spring animations: pull the live slots, blank the static tile
@@ -154,7 +155,7 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
             }
             draw_ball(sprite_bank, game->ball_frame(), game->ball_x(), game->ball_y(), frame);
         } else {
-            draw_bum_entities(level.bum_entities(app.board_index()), sprite_bank, frame);
+            draw_bum_entities(world.level().bum_entities(app.board_index()), sprite_bank, frame);
         }
     };
 
@@ -207,6 +208,22 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
     };
 
     while (running) {
+        // The App requested a different world (start, world-advance, or game-over reset):
+        // swap the world's disk resources and tell App the new board count. This runs
+        // before any render, and on a screen change the darken (begun the prior frame)
+        // covers the swap. On failure, cancel the request and stay on the current world.
+        if (app.pending_world() != 0) {
+            const int requested = app.pending_world();
+            try {
+                world = WorldResources::load(asset_root, requested);
+                app.enter_world(requested, world.board_count());
+            } catch (const std::exception& error) {
+                std::cerr << "could not load world " << requested << ": " << error.what()
+                          << " -- staying on world " << world.world() << '\n';
+                app.enter_world(world.world(), world.board_count());  // clear the request
+            }
+        }
+
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
@@ -255,9 +272,9 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
             const Screen pre_game = app.screen();
             if (app.screen() == Screen::level) {
                 if (!game) {
-                    if (app.board_index() < level.bum_board_count()) {
+                    if (app.board_index() < world.level().bum_board_count()) {
                         // Carry the run's lives/score into the board.
-                        game.emplace(level.bum_entities(app.board_index()), app.lives(),
+                        game.emplace(world.level().bum_entities(app.board_index()), app.lives(),
                                      app.score());
                     } else {
                         app.leave_level();  // no entity data for this board
@@ -301,7 +318,7 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const LevelResource
         if (app.screen() == Screen::menu) {
             menu_renderer.render(app.menu().view(), frame);
         } else if (app.screen() == Screen::map) {
-            render_map(backdrop_screen, app.world_map().view(), sprite_bank, frame,
+            render_map(world.backdrop(), app.world_map().view(), sprite_bank, frame,
                        app.cleared_boards());
             draw_lives(sprite_bank, app.lives(), frame);  // lives row HUD (FUN_1000_6130)
             draw_score(font, app.score(), kMapScoreX, kMapScoreBaselineY, kScoreColor, frame);
