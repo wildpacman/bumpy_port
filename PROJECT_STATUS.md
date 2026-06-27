@@ -1,6 +1,6 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-06-27.
+Source of truth for new sessions. Last updated: 2026-06-27 (worlds 2–9 done).
 
 ## Goal
 
@@ -41,7 +41,7 @@ only a platform adapter.
   screen deplanes with its embedded VGA palette, and the selection cursor (the
   `FLECHE.BIN` arrow sprite) draws at the active row and tracks `cursor_row`.
   Resource bundle, menu state machine, and SDL3 shell build and run.
-- **Stage 3 — First level — IN PROGRESS (board 0 playable).** Level data formats
+- **Stage 3 — First level + all 9 worlds — DONE (all worlds playable).** Level data formats
   recovered and visually verified, the composed board renders natively, the **BUM
   entity sprites** draw from the uncompressed bank, the **world-map screen** is
   wired in, and the **in-level gameplay loop is live** — the ball state machine
@@ -498,38 +498,70 @@ capture was decoded frame-by-frame to nail the bounce). Commits `88900b1`/`957ef
   resting ball sits dead-centre on its lane tile (was 1px left) with no horizontal jump as
   the animation cycles between the 16px and 32px frames. See `video/board_renderer.cpp`.
 
+## Stage 3 worlds 2–9 (linear advance + per-world reload) (2026-06-27)
+
+All 9 worlds are now playable in sequence. The work spanned five tasks:
+
+- **Task 1 — `world_graphs`**: Per-world node graph + positions baked from
+  `BUMPY.UNPACKED.EXE` (graph far-ptr table `DS:0x10c8`, positions `DS:0x10ec`,
+  world W pointer at `table + W*4`). `world_node(world, node)` and
+  `world_node_count(world)` serve 9 worlds; `kWorldCount = 9`.
+- **Task 2 — `WorldMap` parameterized**: `WorldMap(int world)` switches to any
+  world's node graph via `load_world(world)`. The map state machine (slide/jump)
+  is unchanged; `WorldMapView::world` drives the renderer's marker positions.
+- **Task 3 — per-world map markers**: `render_map` uses `world_node(view.world, n)`
+  to place the completed-node marker (`0x1da`) at each world's actual pixel positions.
+- **Task 4 — `App` linear advance + handshake**: `App(board_count, start_world)`
+  tracks the current world; on a world-complete `enter_world` callback it advances
+  `world_+1` (world 10 / after world 9 → menu stub). `pending_world()` /
+  `enter_world(world, board_count)` are the shell handshake.
+- **Task 5 — `WorldResources` + shell reload + main wiring**:
+  `WorldResources::load(root, world)` bundles `D{n}.PAV/DEC/BUM` +
+  `MONDE{n}.VEC` per world. The SDL shell owns one `WorldResources` (by value)
+  and reloads it at the top of the run loop whenever `app.pending_world() != 0`
+  (load → `enter_world(n, board_count)`; on failure, cancel via
+  `enter_world(current, current_count)`). World-independent assets (`BUMSPJEU.BIN`,
+  `DDFNT2.CAR`) are loaded once and outlive `run()`. `--start-world N` lets dev
+  sessions start directly on any world (1..9). The `--render-map` dumper is now
+  fully world-aware (uses `world_node_count(world)` and `WorldMap(world_number)`).
+  Cross-check `board_count() == world_node_count(w)` PASSES for all 9 worlds
+  (132 tests, 72725 assertions).
+
+**World 10 (`FUN_1000_3ed4` outro) is still stubbed → menu.** The outro sequence
+is deferred to a future task.
+
 ## Next step
 
-**The world-map screen is DONE** (see "Stage 3 world-map screen" above): the port
-now follows the original's **menu → world map → playfield** flow for world 1, with
-node navigation and board selection; the `←/→` paging stand-in is retired. The
-static composed board, the BUM entity layout, and the real entity sprites are all
-DONE as well.
+**All 9 worlds are playable** in sequence — launch, navigate the map, clear boards,
+advance worlds 1→2→…→9→menu. Use `--start-world N` to jump to any world for testing.
 
-The in-level palette is now **DONE** (see "Stage 3 in-level palette" above): the
-board renders under its own per-board DEC palette (world 1 is dark blue), matching
-the original.
+Remaining Stage 3 milestones and optional polish:
 
-**The board is alive** — the in-level gameplay loop, collect/score/win, the tile
-bump/spring animations, **and the moving entity (enemy AI + collision death)** all run
-in-window for world-1 boards (see the in-level-loop and "moving entity" sections
-above). **Entity AI + death is now DONE** (2026-06-27): the node-3 monster spawns,
-walks the maze, and kills the ball on contact (−1 life via the shared state-`0x2e`
-cascade). The remaining milestones:
+- **In-level score/lives HUD**: the in-level HUD is intentionally absent (the
+  original's `0816` call is gated on an event flag; normal play shows no
+  persistent in-level score). Low priority.
+- **World 10 outro** (`FUN_1000_3ed4`): the post-world-9 cutscene is currently
+  stubbed to menu. Deferred.
+- **Compressed sprite frames** (flags `0x40`/`0x20`, `1cec:2ded`): fully recovered
+  from disassembly but unused by the supplied assets — `BUMSPJEU` is all
+  uncompressed. Deferred until needed.
+- **Menu sub-screens** (HIGH-SCORE / PASSWORD): implement compressed sprites +
+  per-glyph text (`FUN_1000_0d9d` / `0f7a` / `11eb`). Optional polish.
 
-1. **HUD + world advance** — HUD *done* (see "Stage 3 game-loop close + HUD"): the loop
-   closes (win marks the node, completed-node markers `0x1da` draw on the map,
-   lose-a-life/game-over works, the run persists), and the world-map **score + lives HUD**
-   is drawn (DDFNT2.CAR digits + the `0x1aa` life icons). Remaining: advancing across
-   **worlds 2–9** (per-world graphs `0x10c8[world]`/`0x10ec[world]`; world 1 currently
-   stubs "world complete" → menu).
+## Placeholders / remaining work
 
-World-map follow-ups (deferred this slice, low priority): the score/lives HUD on the
-map (`FUN_1000_0816` digit formatter), completed-node markers (frame `0x1da`,
-`FUN_1000_3c4f`), the avatar's idle cloud-bounce (the fire-to-enter cloud-jump is now
-done — see "Stage 3 world-map cloud-jump animation"), and **worlds 2–9** (extract the
-per-world graphs/positions at `0x10c8[world]` / `0x10ec[world]`, load MONDE/level on
-demand — unlocked once win/loss advances worlds).
+- Compressed sprite frames (flags `0x40`/`0x20`, `1cec:2ded`) are **fully recovered
+  from disassembly but unused by the supplied assets** — `BUMSPJEU` is all
+  uncompressed and the compressed `BUMPYSPR.BIN`/`SPRITE.BIN` are not shipped. The
+  decoder is documented (`analysis/specs/menu-resource-formats.md`) but not
+  transcribed into the port (nothing to decode/validate).
+- The menu sub-screens (HIGH-SCORE / PASSWORD draw per-glyph character sprites
+  via the same archive) are not implemented.
+- The in-window level screen is **live** (ball state machine + collect/score/win +
+  the tile bump/spring animations + the **moving entity / enemy AI + death** — see the
+  in-level-loop and "moving entity" sections above). Still missing in-level: the
+  in-level score/lives HUD (low priority, see above).
+- World 10 (`FUN_1000_3ed4`) outro is stubbed → menu.
 
 Optional menu polish: implement compressed sprites + per-glyph text to bring up
 the HIGH-SCORE / PASSWORD sub-screens (`FUN_1000_0d9d` / `0f7a` / `11eb`).
