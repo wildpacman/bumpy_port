@@ -235,6 +235,33 @@ EntitySpriteStats draw_bum_entities(const BumEntities& bum,
     return stats;
 }
 
+namespace {
+
+// Top-left X that puts a decoded sprite's visible content centre on `anchor`, rounded
+// half up: round(anchor - (min_x + max_x) / 2). Used for the ball and the monster so
+// every animation frame's content lands on the same column (the cell/lane centre)
+// regardless of the box width or where the artwork sits inside it.
+int content_centred_x(const MenuImage& sprite, int anchor) {
+    int min_x = sprite.width;
+    int max_x = -1;
+    for (int py = 0; py < sprite.height; ++py) {
+        for (int px = 0; px < sprite.width; ++px) {
+            if (sprite.pixels[static_cast<std::size_t>(py) * sprite.width + px] !=
+                sprite_transparent_index) {
+                if (px < min_x) min_x = px;
+                if (px > max_x) max_x = px;
+            }
+        }
+    }
+    if (max_x < 0) {  // fully transparent frame -> fall back to the box centre
+        min_x = 0;
+        max_x = sprite.width - 1;
+    }
+    return (2 * anchor - (min_x + max_x) + 1) / 2;
+}
+
+}  // namespace
+
 bool draw_ball(std::span<const std::uint8_t> sprite_bank, int frame, int ball_x, int ball_y,
                IndexedFramebuffer& target) {
     if (frame == 100) {  // the blitter skips the hidden sentinel (FUN_1000_1cb2)
@@ -246,10 +273,12 @@ bool draw_ball(std::span<const std::uint8_t> sprite_bank, int frame, int ball_x,
     } catch (const std::exception&) {
         return false;
     }
-    // Anchor X by half-width: the ball content is box-centred in EVERY frame (the wide
-    // 32px jump/bonk frames 0x0d..0x11, 0x21, 0x2d..0x37 carry it at content-centre ~= 16
-    // with side sparks), so half-width keeps the visual centre on ball_x across frame
-    // changes; header origin_x there (5..10) flung the ball ~9px right on a jump/bonk frame.
+    // Anchor X on the visible content centre (see content_centred_x): this lands the
+    // resting 16px ball dead-centre on the lane tile (half-width left it 1px short, since
+    // ball_x is the tile centre and the content centre is 7.5 not 8), and keeps the wide
+    // 32px jump/bonk frames centred on the same spot, so there is no horizontal jump as the
+    // animation cycles between narrow and wide frames (header origin_x, 5..10, flung those
+    // wide frames sideways).
     // Anchor Y by min(origin_y, height/2). The content sits in the upper part of the box,
     // never the lower, so the anchor is never below the box centre. For the 16x19 exit
     // descent (origin_y 7 < h/2 9) this keeps origin_y, clipping the sinking ball into the
@@ -258,7 +287,7 @@ bool draw_ball(std::span<const std::uint8_t> sprite_bank, int frame, int ball_x,
     // flung the bounce-apex ball ~9px UP (it "punched through" the platform) before
     // snapping back. Rolling frames are unaffected (origin_y 7 == h/2 7).
     const int anchor_y = sprite.origin_y < sprite.height / 2 ? sprite.origin_y : sprite.height / 2;
-    const int top_x = ball_x - sprite.width / 2;
+    const int top_x = content_centred_x(sprite, ball_x);
     const int top_y = ball_y - anchor_y;
     for (int py = 0; py < sprite.height; ++py) {
         for (int px = 0; px < sprite.width; ++px) {
@@ -279,11 +308,10 @@ bool draw_monster(std::span<const std::uint8_t> sprite_bank, int frame, int mon_
     } catch (const std::exception&) {
         return false;
     }
-    // Like the ball: centre X by half-width, anchor Y by min(origin_y, height/2). The
-    // monster frames are 16x16 origin (8,7), so X is unchanged (w/2 = 8) and Y uses the
-    // hotspot (7 < h/2 8).
+    // Like the ball: centre X on the visible content (content_centred_x), anchor Y by
+    // min(origin_y, height/2).
     const int anchor_y = sprite.origin_y < sprite.height / 2 ? sprite.origin_y : sprite.height / 2;
-    const int top_x = mon_x - sprite.width / 2;
+    const int top_x = content_centred_x(sprite, mon_x);
     const int top_y = mon_y - anchor_y;
     for (int py = 0; py < sprite.height; ++py) {
         for (int px = 0; px < sprite.width; ++px) {
