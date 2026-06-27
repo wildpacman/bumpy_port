@@ -283,6 +283,12 @@ void LevelGame::anim_dispatch(std::uint8_t state, std::uint8_t step) {
     case 0x65fb: d_8244 &= 0x1d; break;
     case 0x65d2: d_8244 = 0; break;
     case 0x6717: f_6717(); break;
+    // FUN_1000_647e is a bump sound (cosmetic, no-op here) followed by FUN_654e, the
+    // held-bump latch. It is the step-4/5 handler of the bounce states 0x06/0x07/0x2b;
+    // without it a held UP only re-armed the bounce every other cycle, so the floor lane
+    // recoiled on alternate landings instead of every one (the original springs it each
+    // bounce). Route it to f_654e like the bare 0x654e entry.
+    case 0x647e:
     case 0x654e: f_654e(); break;
     case 0x6587: f_6587(); break;
     case 0x6627: f_6627(); break;
