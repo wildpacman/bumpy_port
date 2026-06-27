@@ -29,6 +29,7 @@ inline constexpr int kCompletedNodeFrame = 0x1da;
 
 struct WorldMapView {
     int current_node{1};  // 1-based
+    int world{1};         // 1-based world number (drives which node graph/positions apply)
     int avatar_x{};       // current node's pixel position (the avatar's resting anchor)
     int avatar_y{};
     int avatar_frame{kRestingAvatarFrame};  // sprite frame to draw; kAvatarFrameHidden = none
@@ -67,14 +68,20 @@ struct MapNode {
 // jump (like a slide); update() returns select_board only once it finishes.
 class WorldMap {
 public:
-    WorldMap();  // world 1, avatar on node 1
+    explicit WorldMap(int world = 1);  // avatar on the world's node 1
 
     // Reset to node 1 (snap, no slide) and require all keys released before the next
     // action. App calls this on each menu->map entry so a held fire/cancel cannot
     // carry across.
     void enter() noexcept;
 
+    // Switch to a different world's graph: snap to node 1 and arm the release guard.
+    // App calls this from enter_world after the shell loads the new world's resources.
+    void load_world(int world) noexcept;
+
     WorldMapAction update(const MenuInput& input) noexcept;
+
+    [[nodiscard]] int world() const noexcept { return view_.world; }
 
     [[nodiscard]] const WorldMapView& view() const noexcept { return view_; }
     [[nodiscard]] int current_node() const noexcept { return view_.current_node; }

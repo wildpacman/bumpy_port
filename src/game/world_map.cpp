@@ -1,35 +1,12 @@
 #include "game/world_map.h"
 
+#include "game/world_graphs.h"
+
 #include <array>
 
 namespace bumpy {
 namespace {
 
-// World-1 node graph + positions, extracted from BUMPY.UNPACKED.EXE: graph base
-// DS:0x09e6 (file 0x11E26), node N record at base + N*9; positions base DS:0x0a80
-// (file 0x11EC0), (x,y) little-endian words at (N-1)*4. Records are
-// {state, up_nbr, up_dist, down_nbr, down_dist, left_nbr, left_dist, right_nbr,
-// right_dist}; only the neighbour node numbers are needed (snap navigation). Links
-// verified against analysis/specs/screen-flow.md. Index 0 is the original's zero
-// node-0 padding slot. Fields: {up, down, left, right, x, y}.
-constexpr std::array<MapNode, 16> kWorld1{{
-    {0, 0, 0, 0, 0, 0},        // 0: unused sentinel
-    {0, 0, 0, 2, 32, 32},      // 1: R2
-    {0, 9, 1, 0, 112, 32},     // 2: L1 D9
-    {0, 0, 0, 4, 192, 32},     // 3: R4
-    {0, 7, 3, 0, 272, 32},     // 4: L3 D7
-    {0, 8, 0, 0, 32, 80},      // 5: D8
-    {0, 10, 0, 7, 192, 80},    // 6: D10 R7
-    {4, 0, 6, 0, 272, 80},     // 7: U4 L6
-    {5, 12, 0, 9, 32, 128},    // 8: U5 D12 R9
-    {2, 0, 8, 0, 112, 128},    // 9: U2 L8
-    {6, 0, 0, 11, 192, 128},   // 10: U6 R11
-    {0, 15, 10, 0, 272, 128},  // 11: L10 D15
-    {8, 0, 0, 13, 32, 176},    // 12: U8 R13
-    {0, 0, 12, 14, 112, 176},  // 13: L12 R14
-    {0, 0, 13, 15, 192, 176},  // 14: L13 R15
-    {11, 0, 14, 0, 272, 176},  // 15: U11 L14
-}};
 
 // One displayed step of the cloud-jump animation: the avatar sprite frame and its
 // vertical offset from the resting position. Recovered from FUN_1000_3cf7 and the
@@ -56,14 +33,15 @@ constexpr std::array<JumpFrame, 24> kJump{{
 }  // namespace
 
 const MapNode& world1_node(int node) {
-    return kWorld1[static_cast<std::size_t>(node)];
+    return world_node(1, node);
 }
 
 int world1_node_count() noexcept {
-    return 15;
+    return world_node_count(1);
 }
 
-WorldMap::WorldMap() {
+WorldMap::WorldMap(int world) {
+    view_.world = world;
     move_to(1);
     waiting_for_release_ = false;
 }
@@ -74,12 +52,19 @@ void WorldMap::enter() noexcept {
     move_to(1);
 }
 
+void WorldMap::load_world(int world) noexcept {
+    view_.world = world;
+    waiting_for_release_ = true;
+    clear_jump();
+    move_to(1);
+}
+
 std::size_t WorldMap::node_count() const noexcept {
-    return static_cast<std::size_t>(world1_node_count());
+    return static_cast<std::size_t>(world_node_count(view_.world));
 }
 
 void WorldMap::move_to(int node) noexcept {
-    const MapNode& n = kWorld1[static_cast<std::size_t>(node)];
+    const MapNode& n = world_node(view_.world, node);
     view_.current_node = node;
     view_.avatar_x = n.x;
     view_.avatar_y = n.y;
@@ -89,7 +74,7 @@ void WorldMap::move_to(int node) noexcept {
 void WorldMap::start_slide(int node) noexcept {
     // The logical node updates immediately (FUN_1000_3ab2 sets DAT_854e first), then
     // the avatar glides from its current pixel position to the neighbour's.
-    const MapNode& n = kWorld1[static_cast<std::size_t>(node)];
+    const MapNode& n = world_node(view_.world, node);
     view_.current_node = node;
     slide_to_x_ = n.x;
     slide_to_y_ = n.y;
@@ -160,7 +145,7 @@ WorldMapAction WorldMap::update(const MenuInput& input) noexcept {
         return {};
     }
 
-    const MapNode& n = kWorld1[static_cast<std::size_t>(view_.current_node)];
+    const MapNode& n = world_node(view_.world, view_.current_node);
     // Directions move *continuously*: the original's map loop (FUN_1000_3852) re-polls the
     // currently-held keys every iteration (FUN_1000_1dde -> FUN_1000_75a2 reads the live
     // key-state table) with no debounce, and each move animates a full node-to-node slide.

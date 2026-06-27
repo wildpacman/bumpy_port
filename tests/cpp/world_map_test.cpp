@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "game/world_map.h"
+#include "game/world_graphs.h"
 
 #include <algorithm>
 
@@ -225,4 +226,25 @@ TEST_CASE("enter resets to node 1 (snap, no slide) and requires a key release fi
     map.update(MenuInput{});  // release
     // A fresh confirm plays the cloud-jump animation, then selects the board.
     REQUIRE(act(map, MenuInput{.confirm = true}).result == WorldMapResult::select_board);
+}
+
+TEST_CASE("WorldMap can be constructed for a later world") {
+    bumpy::WorldMap map(2);
+    REQUIRE(map.world() == 2);
+    REQUIRE(map.view().world == 2);
+    REQUIRE(map.current_node() == 1);
+    // World 2 node 1 sits at (112, 32) (the start node differs from world 1's (32,32)).
+    REQUIRE(map.view().avatar_x == 112);
+    REQUIRE(map.view().avatar_y == 32);
+    REQUIRE(map.node_count() == static_cast<std::size_t>(bumpy::world_node_count(2)));
+}
+
+TEST_CASE("load_world switches the graph and snaps to node 1") {
+    bumpy::WorldMap map;  // world 1
+    map.load_world(4);
+    REQUIRE(map.world() == 4);
+    REQUIRE(map.view().world == 4);
+    REQUIRE(map.current_node() == 1);
+    REQUIRE(map.node_count() == 12);  // world 4 has 12 nodes
+    REQUIRE_FALSE(map.is_sliding());
 }
