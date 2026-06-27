@@ -25,6 +25,7 @@ add_library(bumpy_core
   src/resources/sprite_frame.cpp
   src/resources/font.cpp
   src/resources/level_resources.cpp
+  src/resources/world_resources.cpp
   src/resources/entity_sprites.cpp
   src/game/move_scripts.gen.cpp
   src/game/tile_reactions.cpp
@@ -73,6 +74,7 @@ add_executable(bumpy_tests
   tests/cpp/app_test.cpp
   tests/cpp/world_map_test.cpp
   tests/cpp/world_graphs_test.cpp
+  tests/cpp/world_resources_test.cpp
   tests/cpp/screen_transition_test.cpp
   tests/cpp/map_renderer_test.cpp
   tests/cpp/hud_test.cpp
