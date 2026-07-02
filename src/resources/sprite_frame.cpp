@@ -68,8 +68,16 @@ std::size_t frame_data_offset(std::span<const std::uint8_t> bytes, int frame_ind
 struct SpriteHeader {
     std::uint16_t mask_count;
     std::uint16_t flags;
-    std::uint16_t origin_x;
+    // The origin/hotspot pair is stored Y FIRST: word [2] is the Y origin, word
+    // [3] the X origin. Pinned by the wide overlay frames: every 32px-wide frame
+    // has word[3] == 15 (the horizontal centre) while word[2] tracks the content
+    // height (the ball-on-cloud composite 0x21 is 32x21 with words (7, 15) --
+    // anchoring Y by 7 lands its cloud half exactly on the parked cloud tile,
+    // which is how the original keeps the ridden cloud level). Reading the pair
+    // as (x, y) mis-anchored every asymmetric frame; the symmetric ball frames
+    // (7,7) and the map cross (15,15) masked the swap.
     std::uint16_t origin_y;
+    std::uint16_t origin_x;
     std::uint16_t width_units;
     std::uint16_t height;
 };

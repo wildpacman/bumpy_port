@@ -563,6 +563,28 @@ run of every board × 9 worlds × 3 input patterns (`--render-play`) is clean.
   Static sprite coverage for all worlds' plane-A/B/C codes checked — complete
   (plane-B `0x15` has no sprite in the original either).
 
+Two follow-up fixes from user testing on world 2 (the cloud board 11):
+
+- **Cloud duplication**: `45a0` (the cloud-chain move commit) arms `6d94(0x30)`
+  — event `0x30` ERASES the departure tile (dissolve `b9 b9 ff`) — and
+  `450c`/`457a` dig (`0x2f`) when leaving a non-nest tile. The port had kept the
+  `856f=` side-effects but dropped all three `6d94` calls, so every chain move
+  left a stale cloud behind. Erase-at-departure + dig-at-arrival = the ridden
+  cloud *moves*. Exhaustive sweep: no other `6d94`/`69aa`/`6a89`/`6987` call
+  site is missing.
+- **Sprite header origin is stored Y-FIRST** (`word[2]=origin_Y`,
+  `word[3]=origin_X`): the decoder read the pair swapped, and the earlier
+  content-centre-X / `min(origin_y, h/2)`-Y ball anchors were per-case fits
+  around that swap (all symmetric frames coincide). Pinned by the wide frames
+  (every 32px frame has word[3]=15 = centre; word[2] tracks content height) and
+  by the flying cloud riding 3px high vs its parked tile (frame `0x21`, 32×21,
+  (7,15)). `draw_ball`/`draw_monster` now anchor faithfully at
+  `pos − (origin_X, origin_Y)`; `content_centred_x` is deleted; the
+  "sprite-positioning polish" notes below describe the superseded heuristics.
+  Verified: parked and flying cloud tops both at y=187 on world-2 board 11
+  (`--render-play` pixel check); the map-cross/marker path is unaffected
+  (symmetric (15,15)).
+
 ## Next step
 
 **All 9 worlds are playable** in sequence — launch, navigate the map, clear boards,

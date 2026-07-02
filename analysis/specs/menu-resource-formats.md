@@ -183,8 +183,8 @@ Frame headers are six big-endian 16-bit words:
 |---:|---|
 | 0 | Auxiliary mask/prefix count copied by `1cec:2ded` and clamped to at most 3. Cursor frame 0 uses 0. |
 | 1 | Format flags. Bits `0x40` and `0x20` select the compressed expansion paths in `1cec:2ded`; cursor frame 0 uses `0x0003`, so pixels are raw planar data. |
-| 2 | X origin/hotspot used by the blitter clipping math. Cursor frame 0 uses 0. |
-| 3 | Y origin/hotspot used by the blitter clipping math. Cursor frame 0 uses 0. |
+| 2 | **Y** origin/hotspot used by the blitter anchor math (top = y − word2). Cursor frame 0 uses 0. The pair is stored Y-first: every 32px overlay frame has word3 = 15 (horizontal centre) while word2 tracks the content height — e.g. the ball-on-cloud composite `0x21` (32×21) is (7, 15); reading the pair as (x, y) mis-anchored every asymmetric frame (the world-2 flying-cloud height bug, 2026-07-03). |
+| 3 | **X** origin/hotspot used by the blitter anchor math (left = x − word3). Cursor frame 0 uses 0. |
 | 4 | Width units. Pixel width is `word4 * 4`; the VGA setup processes `word4 >> 2` 16-pixel groups per row. Cursor frame 0 uses 4, i.e. 16 pixels. |
 | 5 | Height in pixels. Cursor frame 0 uses 16. |
 
