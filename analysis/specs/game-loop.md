@@ -622,6 +622,19 @@ plain up enters the vertical-hop chain (`4398` → `4454`, state `0x1d`).
 next decide parks in the fresh nest. This is the climb mechanic: hop up from a
 nest, dig, repeat. (The port previously treated this call as "settle sfx".)
 
+**Erasing — the cloud MOVES (2026-07-03 fix)**: the chain-move commit
+**`45a0`** (used by all four tree directions `4454`/`448a`/`44c0`/`4532` when
+the target cell is free) arms **`6d94(0x30)`** when the departure tile is
+non-zero — event `0x30` (new_tile `0x00`, dissolve stream `b9 b9 ff`) erases
+the tile being left. Erase-at-departure + dig-at-arrival is what makes the
+ridden cloud *move with the ball*. The diagonal-hop leaves `450c`/`457a`
+likewise call `6d94(0x2f)` first when leaving a NON-nest tile (a perch for the
+bonk return). The port had dropped all three `6d94` calls (same class of bug
+as the `6d26` structure trigger): every chain move left a stale cloud behind —
+the duplicated-cloud report from world 2 (`bumpy_008_port.png`, board 11). An
+exhaustive sweep of every `6d94`/`69aa`/`6a89`/`6987` call site in the binary
+confirms no other event-arming call is missing from the port.
+
 ### Block-top riding — states `0x21..0x2a`, `0x32/0x33` (Confirmed)
 
 Hopping onto a cell whose **plane-B** is `0x08` (slab) or `0x0d` (cushion) —

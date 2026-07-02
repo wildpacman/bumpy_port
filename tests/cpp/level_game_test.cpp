@@ -437,6 +437,17 @@ TEST_CASE("hopping up from a nest digs a fresh nest one row up (event 0x2f)") {
     CHECK(g.ball_cell() == 0x0c);       // one row up
     CHECK(g.grid()[0x0c] == 0x16);      // the tile became a nest
     CHECK(g.player_state() == 0x1c);    // ... and the ball parked in it
+
+    // The cloud MOVES with the ball: FUN_1000_45a0 erases the departure tile
+    // (event 0x30) as the hop commits, so exactly one cloud exists afterwards.
+    // Regression for the duplicated-cloud bug (world-2 screenshots): the port
+    // dropped the 6d94(0x30) call, leaving a stale cloud at every hop.
+    CHECK(g.grid()[0x14] == 0x00);
+    int clouds = 0;
+    for (int c = 0; c < 0x30; ++c) {
+        clouds += g.grid()[c] == 0x16;
+    }
+    CHECK(clouds == 1);
 }
 
 TEST_CASE("hopping onto a cushion block (plane-B 0x0d) sits and bobs; DOWN rolls off") {

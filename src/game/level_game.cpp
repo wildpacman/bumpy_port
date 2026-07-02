@@ -1679,23 +1679,29 @@ void LevelGame::f_4532() {  // DOWN -> hop up-right if the right cell is occupie
 }
 
 void LevelGame::f_450c() {
+    // Hopping up-left out of the cloud chain from a NON-cloud tile first digs a
+    // cloud at the departure cell (event 0x2f), so the bonk/return has a perch.
     if (d_7924 != 0x16) {
-        d_856f = ball_.cell;
+        f_6d94(0x2f);
     }
     f_2634();
 }
 
 void LevelGame::f_457a() {
     if (d_7924 != 0x16) {
-        d_856f = ball_.cell;
+        f_6d94(0x2f);
     }
     f_26a1();
 }
 
 void LevelGame::f_45a0(std::uint8_t state) {
+    // Commit a cloud-chain move. Event 0x30 (new_tile 0x00, the 2-frame dissolve)
+    // ERASES the tile being left -- this is what makes the ridden cloud (tile
+    // 0x16) move with the ball instead of duplicating: erased here, re-dug by
+    // 440c/450c/457a at the destination. The port used to drop this call.
     f_4263(state);
     if (d_7924 != 0) {
-        d_856f = ball_.cell;
+        f_6d94(0x30);
     }
     f_238e();
 }
