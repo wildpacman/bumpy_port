@@ -30,9 +30,16 @@ constexpr LevelInput right{false, true, false, false, false};
 TEST_CASE("a new board positions the ball on its start cell") {
     LevelGame game(lane_board(0x14));  // row 2, col 4
     CHECK(game.ball_cell() == 0x14);
-    // DS:0x274 slot for (col 4, row 2) + the (+7,+15) ball offset.
+    // DS:0x274 slot for (col 4, row 2) + the (+7,+15) ball offset. The board-entry
+    // drop (FUN_1000_31de) starts the ball 12px above its cell; the raw 10-step
+    // DS:0x1394 script settles it onto the slot.
+    const int rest_y = 8 + 2 * 32 + 15;
     CHECK(game.ball_x() == 8 + 4 * 40 + 7);
-    CHECK(game.ball_y() == 8 + 2 * 32 + 15);
+    CHECK(game.ball_y() == rest_y - 12);
+    for (int i = 0; i < 10; ++i) {
+        game.tick(none);
+    }
+    CHECK(game.ball_y() == rest_y);
     CHECK(game.lives() == 5);
     CHECK(game.status() == LevelStatus::playing);
 }
@@ -376,4 +383,115 @@ TEST_CASE("a monster in another row never reaches an idle ball") {
         REQUIRE(g.monster_cell() < 8);  // never leaves row 0
     }
     CHECK(g.status() == LevelStatus::playing);
+}
+
+// ===== Nest + block-top riding + picture-block puzzle (worlds 2+) ==============
+
+TEST_CASE("a nest tile (0x16) parks the ball spinning until fire+direction") {
+    // Start on a nest: after the entry drop the idle decide (28f9) sees tile 0x16
+    // and parks the ball (state 0x1c), cycling its frame through the DS:0x1b70
+    // spin table every 4 frames (FUN_1000_4305/4361/495c).
+    BumEntities board = lane_board(0x14);
+    board.bytes[0x14] = 0x16;
+    LevelGame g(board);
+    for (int i = 0; i < 11; ++i) {
+        g.tick(none);
+    }
+    CHECK(g.player_state() == 0x1c);
+    const std::uint8_t cell = g.ball_cell();
+    for (int i = 0; i < 100; ++i) {
+        g.tick(none);
+    }
+    CHECK(g.player_state() == 0x1c);  // no input: stays parked
+    CHECK(g.ball_cell() == cell);
+
+    // Fire+left hops out (FUN_1000_4344 -> 431b -> 2634).
+    LevelInput firel{};
+    firel.fire = true;
+    firel.left = true;
+    for (int i = 0; i < 20 && g.ball_cell() == cell; ++i) {
+        g.tick(firel);
+    }
+    CHECK(g.ball_cell() == cell - 1);
+}
+
+TEST_CASE("hopping up from a nest digs a fresh nest one row up (event 0x2f)") {
+    // From the nest, UP hops straight up a row (4454, state 0x1d); releasing every
+    // key makes 440c dig a nest into the new tile (event 0x2f writes 0x16), and the
+    // next decide parks in it (state 0x1c). Plane A above must be clear for 4454.
+    BumEntities board{};
+    board.bytes[0x14] = 0x16;   // nest at row 2, col 4; row 1 above left empty
+    board.bytes[0x90] = 0x15;   // start on the nest (header is 1-based)
+    LevelGame g(board);
+    for (int i = 0; i < 11; ++i) {
+        g.tick(none);
+    }
+    REQUIRE(g.player_state() == 0x1c);
+
+    for (int i = 0; i < 4; ++i) {
+        g.tick(up);  // arm the vertical hop
+    }
+    for (int i = 0; i < 40; ++i) {
+        g.tick(none);  // finish the hop, dig, park
+    }
+    CHECK(g.ball_cell() == 0x0c);       // one row up
+    CHECK(g.grid()[0x0c] == 0x16);      // the tile became a nest
+    CHECK(g.player_state() == 0x1c);    // ... and the ball parked in it
+}
+
+TEST_CASE("hopping onto a cushion block (plane-B 0x0d) sits and bobs; DOWN rolls off") {
+    // Hop up-left into a cell whose plane-B holds 0x0d: kNeigh4256[0xd] = state
+    // 0x21, whose decide (FUN_1000_1e5e) turns non-slab landings into the sitting
+    // state 0x24; the ball bobs via the DS:0x1cba frames until DOWN rolls it off
+    // (FUN_1000_1f7f, the raw DS:0x1460 script).
+    BumEntities board = lane_board(0x14);
+    board.bytes[0x30 + 0x13] = 0x0d;  // cushion on the up-left target
+    LevelGame g(board);
+    for (int i = 0; i < 11; ++i) {
+        g.tick(none);
+    }
+    for (int i = 0; i < 4; ++i) {
+        g.tick(left);  // LEFT (action bit 0x04) = hop up-left (2634)
+    }
+    bool sat = false;
+    for (int i = 0; i < 40 && !sat; ++i) {
+        g.tick(none);
+        sat = g.player_state() == 0x24;
+    }
+    REQUIRE(sat);
+
+    LevelInput down_in{};
+    down_in.down = true;  // DOWN (action bit 0x02) rolls off (FUN_1000_1f7f)
+    bool rolled = false;
+    for (int i = 0; i < 30 && !rolled; ++i) {
+        g.tick(down_in);
+        rolled = g.player_state() == 0x02;
+    }
+    CHECK(rolled);
+}
+
+TEST_CASE("matching the picture blocks pops every 0x05 block open") {
+    // Two picture blocks: one already 0x0e, one 0x11 that a bump cycles to 0x0e
+    // (layer-B event 0x0e). The bump's step-4 handler (FUN_1000_640c) then sees all
+    // pictures equal (FUN_1000_6183) and lists the 0x05 blocks; FUN_1000_629c pops
+    // them open (event 0x18, tile -> 0) one per 11 frames.
+    BumEntities board = lane_board(0x14);
+    board.bytes[0x30 + 0x13] = 0x11;  // picture block on the hop-up-left target
+    board.bytes[0x30 + 0x0b] = 0x0e;  // second picture block, already matching
+    board.bytes[0x30 + 0x17] = 0x05;  // the prize block
+    LevelGame g(board);
+    for (int i = 0; i < 11; ++i) {
+        g.tick(none);
+    }
+    for (int i = 0; i < 4; ++i) {
+        g.tick(left);  // hop up-left INTO the block (state 0x12 bonk)
+    }
+    bool cycled = false, popped = false;
+    for (int i = 0; i < 80; ++i) {
+        g.tick(none);
+        cycled = cycled || g.grid()[0x30 + 0x13] == 0x0e;
+        popped = popped || g.grid()[0x30 + 0x17] == 0x00;
+    }
+    CHECK(cycled);  // the bumped picture block cycled 0x11 -> 0x0e
+    CHECK(popped);  // ... and the matched puzzle popped the 0x05 block open
 }

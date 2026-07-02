@@ -128,6 +128,18 @@ private:
     std::uint8_t d_79b3{};   // PRNG output byte (used by 4747 idle-blink select)
     std::uint16_t prng_state_{0x2c9b};  // 16-bit LCG state behind FUN_1000_93b1
 
+    // --- nest spin / cushion bob frame cycling (FUN_1000_495c) ---
+    std::uint8_t d_855d{};   // 495c tick counter
+    std::uint8_t d_a0dc{};   // 495c frame-cycle index
+
+    // --- picture-block match cascade (FUN_1000_6183 / 629c) ---
+    // The DS:0x886 cell list (0xff-terminated) + the 9ba6 cursor and the 79b7
+    // inter-pop delay: once every picture block (plane-B 0x0e..0x11) shows the same
+    // art, the 0x05 blocks pop open one at a time.
+    std::array<std::uint8_t, 0x31> d_0886_{};
+    std::uint8_t cascade_cursor_{};  // 9ba6 (kept as an index, not a far pointer)
+    std::uint8_t d_79b7{};
+
     // --- moving entity (monster): DS:0x856x / 0x79bx, only board-2 has one ---
     std::uint8_t d_8562{};   // current movement-script id (also the AI-dispatch index)
     std::uint8_t d_9d2f{};   // script direction flag (mirrors dx)
@@ -239,6 +251,27 @@ private:
     void f_1fbe();  // special bumper
     void f_207d();  // special bumper
     void f_228d();  // death (entity)
+
+    // --- nest (tile 0x16) + block-top riding (worlds 2+) ---
+    void f_495c(std::uint8_t wrap, std::uint8_t period, const std::int16_t* frames);
+    void f_4995(std::uint8_t wrap, const std::int16_t* frames);  // advance the cycle
+    void f_4361();  // nest spin (ball frame cycle DS:0x1b70)
+    void f_4305();  // enter the nest: state 0x1c + spin
+    void f_1e5e();  // state 0x21: landed on a block from a hop up-left
+    void f_1e90();  // state 0x22: landed on a block from a hop up-right
+    void f_1ec2();  // state 0x23: sitting on a cushion block (bob; DOWN rolls off)
+    void f_1f3e();  // state 0x24
+    void f_1f03();  // roll off the cushion leftward (raw DS:0x140c script)
+    void f_1f7f();  // roll off the cushion rightward (raw DS:0x1460 script)
+    void f_2138();  // state 0x25: walking left along block tops
+    void f_21e7();  // state 0x26: walking right along block tops
+    void f_21bb();  // 0x25 sentinel: plane-A 0x0b check -> state 0x29/0x25
+    void f_2261();  // 0x26 sentinel: plane-A 0x0b check -> state 0x2a/0x26
+
+    // --- picture-block match puzzle (plane-B 0x0e..0x11) ---
+    void f_640c();  // block-bump anim step: re-check the match puzzle
+    void f_6183();  // all pictures equal? -> collect the 0x05 blocks into d_0886_
+    void f_629c();  // main-loop stepper: pop one listed 0x05 block per 11 frames
 
     // --- moving entity (monster): movement script + maze AI + collision ---
     void f_48a9();             // init col/row + pixel pos from the entity cell

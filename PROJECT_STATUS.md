@@ -1,6 +1,7 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-06-27 (worlds 2–9 done).
+Source of truth for new sessions. Last updated: 2026-07-03 (worlds 2–9 element
+parity: nests, block-top riding, picture puzzle, entry drop).
 
 ## Goal
 
@@ -530,6 +531,38 @@ All 9 worlds are now playable in sequence. The work spanned five tasks:
 **World 10 (`FUN_1000_3ed4` outro) is still stubbed → menu.** The outro sequence
 is deferred to a future task.
 
+## Stage 3 worlds 2–9 element parity (2026-07-03)
+
+A systematic audit (decode all 9 `D?.BUM`, enumerate plane-A/B/C codes + header
+fields per world, model the reaction tables, diff against the port's dispatch
+mapping) found four systems that are **unreachable in world 1** and were never
+ported. All recovered from the disassembly (`FUN_1000_6183`/`629c`/`31de` from
+raw bytes — Ghidra fails on them) and ported to `LevelGame`; spec:
+`analysis/specs/game-loop.md` ("Worlds 2+ elements"). 136 tests pass; a smoke
+run of every board × 9 worlds × 3 input patterns (`--render-play`) is clean.
+
+- **Board-entry drop (`31de`)**: the ball materializes 12px above its start
+  cell and settles via the raw 10-step DS:0x1394 script. Applies to world 1 too.
+- **Nests (tile `0x16`)**: park/spin (`4305`/`4361`, frame cycle DS:0x1b70 via
+  `495c`), fire+direction hops out, and the **dig** — in the vertical-hop states
+  `0x1d..0x20`, no-direction calls `6d94(0x2f)` which writes a fresh nest tile
+  under the ball (the climb mechanic). The port's `440c` had treated this as a
+  settle-sfx no-op.
+- **Block-top riding (states `0x21..0x2a`, `0x32/0x33`)**: hop onto plane-B
+  `0x08` slab → walk along block tops (`2138`/`21e7` + tables DS:0x42d6/0x42f6,
+  `21bb`/`2261` plane-A `0x0b` checks); onto `0x0d` cushion → sit bobbing
+  (`1ec2`/`1f3e`, frames DS:0x1ca4/0x1cba), DOWN rolls off (`1f03`/`1f7f`, raw
+  scripts DS:0x140c/0x1460, springing the seat block, event `0x16`); fire|down
+  smashes down through (states `0x32/0x33`).
+- **Picture-block match puzzle (plane-B `0x0e..0x11`)**: bumps cycle the art;
+  when all remaining pictures match, `6183` lists every plane-B `0x05` block
+  (buffer DS:0x886) and `629c` (new tick step before `f_1d26`) pops them open
+  one per 11 frames (event `0x18`).
+- Confirmed no-ops: anim steps `6305`/`64c1`/`645d` are sound-only, `673a` is
+  empty (`6e11`/`6e30` is the sfx synth; `DAT_689c` is the sound-device type).
+  Static sprite coverage for all worlds' plane-A/B/C codes checked — complete
+  (plane-B `0x15` has no sprite in the original either).
+
 ## Next step
 
 **All 9 worlds are playable** in sequence — launch, navigate the map, clear boards,
@@ -537,6 +570,12 @@ advance worlds 1→2→…→9→menu. Use `--start-world N` to jump to any worl
 
 Remaining Stage 3 milestones and optional polish:
 
+- **Live DOSBox side-by-side for worlds 2–9**: the new element systems (nests,
+  block-top riding, picture puzzle, entry drop) are tested + smoke-verified in
+  the port; a by-eye comparison against the original playing the same boards
+  (passwords or a save in DOSBox-X) is the remaining confirmation.
+- **Pause key** (`FUN_1000_7ab4(0x19)` → `49d7`): the main loop's P-pause is
+  not ported. Minor.
 - **In-level score/lives HUD**: the in-level HUD is intentionally absent (the
   original's `0816` call is gated on an event flag; normal play shows no
   persistent in-level score). Low priority.

@@ -590,3 +590,88 @@ implement the per-frame loop as a platform-independent state machine:
 - The two foreground blits go through the overlay raster core `0x1cec`
   (unrecovered) — the port already has its own blitter, so this only matters for
   pixel-exact comparison, not for a playable port.
+
+## Worlds 2+ elements: nests, block-top riding, the picture puzzle, entry drop (2026-07-03)
+
+Recovered while auditing per-element parity across all 9 worlds (the systems
+below are unreachable in world 1, which is why the world-1 port looked complete).
+All are ported to `LevelGame` and covered by `tests/cpp/level_game_test.cpp`.
+
+### Board-entry drop — `FUN_1000_31de` (Confirmed)
+
+Board entry is `FUN_1000_0bf9` = `32b0` (copy grid) → `2a78` (spawn) →
+**`31de`**: reset the per-board globals, then start the ball **12px above its
+start cell** (`9292 -= 12`) playing the raw 10-step script at **DS:0x1394**
+(`{frame 0, dy: -1,-1,0,0,1,1,2,3,3,4}`, armed directly: `a1ac=0x1394`,
+`824d=10`, `9bae=4`, `792a=4`) — the drop-in materialize. `31de` also rewinds
+the picture-puzzle list (`9ba6 = DS:0x886`, `[0] = 0xff`, `79b7 = 0`).
+
+### The nest, tile `0x16` — `FUN_1000_4305`/`4361`/`495c`/`4995` (Confirmed)
+
+Tile `0x16` is a **nest** the ball parks in. Idle decide (`28f9`) and the
+input-tree leaf `440c` route it to `4305`: `792c = 0x1c` (scriptless) + `4361`.
+While parked, `4361` cycles the ball frame through the word table **DS:0x1b70**
+(`7 6 6 5 5 6 6 7 0 1 2 2 3 3 2 2 1 0 0 0 0`, wrap 0x15) every 4 frames via
+`495c`/`4995` (counters `855d`/`a0dc`, frame → `824a`). Exits (`4344`):
+fire+left/right hops out (`431b` → `2634`/`26a1`); fire alone keeps spinning;
+plain up enters the vertical-hop chain (`4398` → `4454`, state `0x1d`).
+
+**Digging**: in the vertical-hop states `0x1d..0x20`, no-direction routes to
+`440c`; on a non-nest tile it calls `6d94(0x2f)` — layer-A event `0x2f` writes
+**tile `0x16` under the ball** (2-frame dig anim, stream `8c 8c ff`), and the
+next decide parks in the fresh nest. This is the climb mechanic: hop up from a
+nest, dig, repeat. (The port previously treated this call as "settle sfx".)
+
+### Block-top riding — states `0x21..0x2a`, `0x32/0x33` (Confirmed)
+
+Hopping onto a cell whose **plane-B** is `0x08` (slab) or `0x0d` (cushion) —
+`kNeigh4256/4276[v] = 0x21/0x22` — lands ON the block:
+
+- decide `0x21` = **`1e5e`**: `8551 == 8` (slab) → chain to `21e7` (walk);
+  else (`0x0d`) → state `0x24` (sit). `0x22` = **`1e90`** mirrors (→ `2138` /
+  state `0x23`). The `6e11(...)` calls these make are **sounds** (`6e30` is the
+  sfx synth; `DAT_689c == 4` selects the AdLib table `0x27ae` via `8a07`).
+- decide `0x23`/`0x24` = **`1ec2`/`1f3e`**: sit bobbing — `495c(0xb, 5,
+  DS:0x1ca4/0x1cba)` cycles ball frames `8 9 a b a a 9 a a a a`; **DOWN** rolls
+  off via **`1f03`/`1f7f`**: reuse roll state 1/2 with the raw 4-step script
+  **DS:0x140c/0x1460** (`{7,4,2},{7,2,3},{0,2,3},{0,2,4}` / frame 1 variant;
+  `9bae=9` mirrors the left roll, `792a=9` so the roll row's pickup steps run),
+  springing the seat block (layer-B event `0x16`) — `8570 = 856e` (state 0x23)
+  or `856e - 1` (0x24), matching which plane-B slot the ball sat on.
+- decide `0x25`/`0x26` = **`2138`/`21e7`**: walk left/right along block tops.
+  fire|down (`8244 & 0x12`) smashes down through (state `0x32`/`0x33`); at
+  column 0/7 hop off the edge (`8551 = 0x1f`, state `0x27`/`0x28`); otherwise
+  the next state comes from **DS:0x42d6/0x42f6** indexed by the neighbour /
+  current cell's plane-B value, where the `0x25`/`0x26` sentinel re-checks
+  plane-A via **`21bb`/`2261`** (`7921 == 0x0b` → state `0x29`/`0x2a`).
+  `2138` zeroes `8551` on entry; `21e7` does not (original asymmetry).
+
+### Picture-block match puzzle — plane-B `0x0e..0x11` (Confirmed)
+
+Bumping a picture block cycles its art through the ordinary layer-B bump events
+(`0x0e→0x0f→0x10→0x11→0x0e`, events `0x0b..0x0e`). The block-bump anim step
+**`640c`** (states `0x12..0x15`, `0x27/0x28`, `0x34/0x35`, `0x38/0x39`) plays a
+per-block sound and, for a pre-bump value in `0x0e..0x11`, calls **`6183`**
+(recovered from raw bytes at file `0x7213`; Ghidra's decompiler fails on it):
+
+1. rewind/clear the list at **DS:0x886** (cursor `9ba6`, terminator `0xff`) —
+   so any bump stops a running cascade;
+2. find the first plane-B value in `0x0e..0x11`; none → return;
+3. if any OTHER value in that range differs → return (still mixed);
+4. all pictures match: collect every cell with plane-B `0x05` into the list,
+   write the `0xff` terminator (skipped if the slot already holds a stale
+   `0xff` — original quirk), rewind the cursor, `79b7 = 0`.
+
+**`629c`** (called every main-loop frame between `1349` and `1d26`) pops one
+listed cell per 11 frames: `8570 = list[cursor++]`, layer-B event **`0x18`**
+(new_tile `0x00` — the `0x05` block opens/vanishes), delay `79b7 = 10`.
+At the terminator it rewinds and re-clears the list.
+
+### Misc
+
+- `FUN_1000_6305`/`64c1`/`645d` (anim steps) are sound-only; `673a` is empty.
+  They stay no-ops in the port.
+- The monster sub-type detours (`79b3 < 7920`, header `0x95` ≠ 0: values
+  61/100/102/201/255 across worlds 2-9) were already ported.
+- `FUN_1000_7ab4(0x19)` → `49d7` in the main loop is a key check (scancode
+  `0x19` = P — pause), not element behavior; not ported yet.

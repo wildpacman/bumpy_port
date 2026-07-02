@@ -53,6 +53,38 @@ constexpr std::uint8_t kHeldBump[0x30] = {
     0x39, 0x2a, 0x00, 0x2c, 0x2d, 0x2e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x5e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
+// FUN_1000_2138/21e7 block-top walk: the next state by the neighbour cell's
+// plane-B value (DS:0x42d6 walking left / 0x42f6 walking right). The 0x25/0x26
+// sentinels re-check plane A via FUN_1000_21bb/2261; 0x27/0x28 hop off the edge.
+constexpr std::uint8_t k42d6[32] = {
+    0x25, 0x27, 0x25, 0x25, 0x25, 0x27, 0x25, 0x27, 0x27, 0x27, 0x27, 0x27, 0x27, 0x27, 0x27, 0x27,
+    0x27, 0x27, 0x27, 0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+constexpr std::uint8_t k42f6[32] = {
+    0x26, 0x28, 0x26, 0x26, 0x26, 0x28, 0x28, 0x26, 0x28, 0x28, 0x28, 0x28, 0x28, 0x28, 0x28, 0x28,
+    0x28, 0x28, 0x28, 0x26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+// FUN_1000_495c ball-frame cycles: DS:0x1b70 the nest spin (FUN_1000_4361, wrap
+// 0x15 every 4 frames), DS:0x1ca4/0x1cba the cushion bob (states 0x23/0x24, wrap
+// 0x0b every 5 frames). Values are the ball's bank frame.
+constexpr std::int16_t kNestSpinFrames[0x15] = {
+    7, 6, 6, 5, 5, 6, 6, 7, 0, 1, 2, 2, 3, 3, 2, 2, 1, 0, 0, 0, 0};
+constexpr std::int16_t kCushionBobL[0x0b] = {8, 9, 0xa, 0xb, 0xa, 0xa, 9, 0xa, 0xa, 0xa, 0xa};
+constexpr std::int16_t kCushionBobR[0x0b] = {8, 9, 0xa, 0xb, 0xa, 0xa, 9, 0xa, 0xa, 0xa, 0xa};
+
+// Raw move scripts armed OUTSIDE the DS:0x2252 state table (the original writes
+// a1ac/824d/9bae/792a directly). kEntryDrop = the board-entry drop-in
+// (FUN_1000_31de, DS:0x1394: the ball materializes 12px above its cell and
+// settles); kCushionRoll* = rolling off a cushion block (FUN_1000_1f03/1f7f,
+// DS:0x140c/0x1460, reusing the roll states 1/2).
+constexpr MoveStep kEntryDropSteps[10] = {
+    {0, 0, -1}, {0, 0, -1}, {0, 0, 0}, {0, 0, 0}, {0, 0, 1},
+    {0, 0, 1},  {0, 0, 2},  {0, 0, 3}, {0, 0, 3}, {0, 0, 4}};
+constexpr MoveScript kEntryDrop{10, 0, kEntryDropSteps};
+constexpr MoveStep kCushionRollLSteps[4] = {{7, 4, 2}, {7, 2, 3}, {0, 2, 3}, {0, 2, 4}};
+constexpr MoveScript kCushionRollL{4, 0, kCushionRollLSteps};
+constexpr MoveStep kCushionRollRSteps[4] = {{1, 4, 2}, {1, 2, 3}, {0, 2, 3}, {0, 2, 4}};
+constexpr MoveScript kCushionRollR{4, 0, kCushionRollRSteps};
+
 // FUN_1000_6d26 structure trigger by plane-A (DAT_7921). DS:0x4396.
 constexpr std::uint8_t kStructTrigger[0x30] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -111,6 +143,17 @@ LevelGame::LevelGame(const BumEntities& board, std::uint8_t lives, std::uint32_t
     ball_.state = 0;  // idle hub
     ball_.set_cell(start);  // FUN_1000_4906: position the ball on its start cell
 
+    // FUN_1000_31de (via the board-entry FUN_1000_0bf9): the ball drops in from
+    // 12px above its cell over the raw 10-step DS:0x1394 script (step_index 4 so
+    // the state-0 anim row's tail runs during the drop), and the picture-block
+    // cascade list starts empty.
+    ball_.y -= 12;
+    ball_.script = &kEntryDrop;
+    ball_.steps_left = kEntryDrop.count;
+    ball_.facing = 4;
+    ball_.step_index = 4;
+    d_0886_[0] = 0xff;
+
     // Moving entity (monster). FUN_1000_2a78: cell from header 0x93 (value-1; a 0
     // byte wraps to 0xff = "no entity"), behaviour id from 0x94, sprite-frame base
     // from 0x96 via the DS:0x2546 table. Most boards have none (0x93 == 0).
@@ -163,6 +206,7 @@ void LevelGame::tick(const LevelInput& input) {
     f_15a1();      // step the layer-B block/spring animations
     f_5085();      // FUN_1000_5085: build the ball AABB collision box
     f_50c0();      // FUN_1000_50c0: build the entity AABB collision box
+    f_629c();      // FUN_1000_629c: pop the next matched-puzzle 0x05 block, if any
     f_1d26(input); // player tick (consumes a1aa from last frame -> death; may arm springs)
     f_4c99();      // FUN_1000_4c99: entity maze AI -- pick the next direction on arrival
     f_50fb();      // FUN_1000_50fb: ball-vs-entity overlap -> a1aa (death next frame)
@@ -264,6 +308,13 @@ void LevelGame::decide_dispatch(std::uint8_t state) {
     case 0x2810: f_2810(); break;
     case 0x22c1: f_22fc(); break;
     case 0x22d2: f_22d2(); break;  // death-tumble cascade (FUN_1000_22d2)
+    // Block-top riding (worlds 2+): landing on / walking along plane-B blocks.
+    case 0x1e5e: f_1e5e(); break;  // state 0x21: landed from a hop up-left
+    case 0x1e90: f_1e90(); break;  // state 0x22: landed from a hop up-right
+    case 0x1ec2: f_1ec2(); break;  // state 0x23: sitting on a cushion block
+    case 0x1f3e: f_1f3e(); break;  // state 0x24
+    case 0x2138: f_2138(); break;  // state 0x25: walking left on block tops
+    case 0x21e7: f_21e7(); break;  // state 0x26: walking right on block tops
     default: break;                // anim-only / death states: no rest decision
     }
 }
@@ -311,6 +362,7 @@ void LevelGame::anim_dispatch(std::uint8_t state, std::uint8_t step) {
     case 0x68bb: f_68bb(); break;
     case 0x6326: f_6326(); break;  // roll-left  spike-death check (plane-B 0x0c)
     case 0x6372: f_6372(); break;  // roll-right spike-death check (plane-B 0x0c)
+    case 0x640c: f_640c(); break;  // block bump: sfx + the picture-block match puzzle
     default: break;  // 0x7111 filler + cosmetic ball-sprite/sfx step handlers
     }
 }
@@ -321,7 +373,7 @@ void LevelGame::f_28f9() {
     d_824c = 8;
     if (d_79b4 == 0 && d_7924 != 0) {
         if (d_7924 == 0x16) {
-            ball_.state = 0x1c;  // pipe-enter (FUN_1000_4305); not present in world 1
+            f_4305();  // nest tile: park the ball in it (state 0x1c) and spin
         } else if (d_7924 == 0x03) {
             // FUN_1000_463d settle: a 3-frame delay (using the sub-step lock as the
             // counter, which also inhibits motion meanwhile) then re-decide.
@@ -758,6 +810,230 @@ void LevelGame::f_228d() {  // entity hit -> death (shared with the spike-death 
     ball_.step_index = 0;
     d_a1aa = 0;
     f_4263(0x2e);
+}
+
+// ===== Nest + block-top riding (worlds 2+) =====================================
+// Recovered from FUN_1000_4305/4361/495c/4995 (the nest, tile 0x16) and
+// FUN_1000_1e5e/1e90/1ec2/1f3e/1f03/1f7f/2138/21e7/21bb/2261 (riding the plane-B
+// blocks: land on one from a hop -> sit on a cushion (0x0d) or walk along slabs
+// (0x08), FIRE/DOWN smashing down through). The 6e11 calls these make are sound
+// only (FUN_1000_6e30 is the sfx synth) and are no-ops here.
+
+void LevelGame::f_495c(std::uint8_t wrap, std::uint8_t period, const std::int16_t* frames) {
+    // FUN_1000_495c: every `period` frames advance the a0dc cycle and show that
+    // ball frame (FUN_1000_4995). Drives the nest spin and the cushion bob.
+    ++d_855d;
+    if (d_855d == period) {
+        f_4995(wrap, frames);
+    } else if (d_855d > period) {
+        d_855d = 0;
+    }
+}
+
+void LevelGame::f_4995(std::uint8_t wrap, const std::int16_t* frames) {
+    d_855d = 0;
+    if (d_a0dc + 1 < wrap) {
+        ++d_a0dc;
+    } else {
+        d_a0dc = 0;
+    }
+    ball_.frame = frames[d_a0dc];
+}
+
+void LevelGame::f_4361() { f_495c(0x15, 4, kNestSpinFrames); }
+
+void LevelGame::f_4305() {
+    ball_.state = 0x1c;  // in the nest (scriptless); FUN_1000_4344 decides the exit
+    f_4361();
+}
+
+void LevelGame::f_1e5e() {
+    // State 0x21: just landed from a hop up-left onto a block (d_8551 still holds
+    // the target's plane-B value from FUN_1000_2634). A slab (0x08) chains straight
+    // into the block-top walk; anything else (the cushion 0x0d) sits on it.
+    if (d_8551 == 0x08) {
+        f_21e7();
+    } else {
+        ball_.state = 0x24;
+    }
+}
+
+void LevelGame::f_1e90() {
+    if (d_8551 == 0x08) {
+        f_2138();
+    } else {
+        ball_.state = 0x23;
+    }
+}
+
+void LevelGame::f_1ec2() {
+    // State 0x23: sitting on a cushion block -- bob through the DS:0x1ca4 frames;
+    // DOWN rolls off.
+    f_495c(0x0b, 5, kCushionBobL);
+    if (d_8244 & 0x02) {
+        f_1f03();
+    }
+}
+
+void LevelGame::f_1f3e() {
+    f_495c(0x0b, 5, kCushionBobR);
+    if (d_8244 & 0x02) {
+        f_1f7f();
+    }
+}
+
+void LevelGame::f_1f03() {
+    // Roll off the cushion leftward: reuse roll state 1 with the raw DS:0x140c
+    // script (facing 9 negates dx; step_index 9 so the roll row's pickup steps
+    // run), springing the block underneath (layer-B event 0x16).
+    ball_.state = 0x01;
+    ball_.script = &kCushionRollL;
+    ball_.steps_left = kCushionRollL.count;
+    ball_.facing = 9;
+    ball_.step_index = 9;
+    d_8570 = ball_.cell;
+    f_6a89(0x16);
+    f_238e();
+}
+
+void LevelGame::f_1f7f() {
+    ball_.state = 0x02;
+    ball_.script = &kCushionRollR;
+    ball_.steps_left = kCushionRollR.count;
+    ball_.facing = 0;
+    ball_.step_index = 9;
+    d_8570 = static_cast<std::uint8_t>(ball_.cell - 1);
+    f_6a89(0x16);
+    f_238e();
+}
+
+void LevelGame::f_2138() {
+    // State 0x25: walking left along block tops. FIRE/DOWN smashes down through
+    // (state 0x32); at column 0 hop off the edge (state 0x27); otherwise the next
+    // state comes from DS:0x42d6 by the left neighbour's plane-B value, the 0x25
+    // sentinel re-checking plane A (FUN_1000_21bb).
+    d_8551 = 0;
+    if ((d_8244 & 0x12) == 0) {
+        if (ball_.cell_col == 0) {
+            d_8551 = 0x1f;
+            f_4263(0x27);
+        } else {
+            d_8570 = static_cast<std::uint8_t>(ball_.cell - 1);
+            f_6bd4(d_8570);
+            const std::uint8_t code = k42d6[d_8551 & 0x1f];
+            if (code == 0x25) {
+                f_21bb();
+            } else {
+                f_4263(code);
+            }
+        }
+    } else {
+        f_4263(0x32);
+    }
+    f_238e();
+}
+
+void LevelGame::f_21e7() {
+    // State 0x26: walking right along block tops; symmetric to f_2138 but keyed by
+    // the CURRENT cell's plane-B via DS:0x42f6 (and no d_8551 reset -- original).
+    if ((d_8244 & 0x12) == 0) {
+        if (ball_.cell_col == 7) {
+            d_8551 = 0x1f;
+            f_4263(0x28);
+        } else {
+            d_8570 = ball_.cell;
+            f_6bd4(ball_.cell);
+            const std::uint8_t code = k42f6[d_8551 & 0x1f];
+            if (code == 0x26) {
+                f_2261();
+            } else {
+                f_4263(code);
+            }
+        }
+    } else {
+        f_4263(0x33);
+    }
+    f_238e();
+}
+
+void LevelGame::f_21bb() {
+    f_6bb5(static_cast<std::uint8_t>(ball_.cell - 1));
+    f_4263(d_7921 == 0x0b ? 0x29 : 0x25);
+}
+
+void LevelGame::f_2261() {
+    f_6bb5(static_cast<std::uint8_t>(ball_.cell + 1));
+    f_4263(d_7921 == 0x0b ? 0x2a : 0x26);
+}
+
+// ===== Picture-block match puzzle (plane-B 0x0e..0x11) =========================
+// Bumping a picture block cycles its art (0x0e -> 0x0f -> 0x10 -> 0x11 -> 0x0e,
+// via the ordinary layer-B bump events); FUN_1000_6183 (recovered from raw bytes,
+// Ghidra failed on it) checks after each such bump whether every remaining
+// picture block shows the SAME picture, and if so lists every plane-B 0x05 block
+// in the DS:0x886 buffer. FUN_1000_629c (main loop) then pops them open one at a
+// time -- layer-B event 0x18 clears the tile -- every 11 frames.
+
+void LevelGame::f_640c() {
+    // Block-bump anim step: the per-block sound is a no-op here; a bump on a
+    // picture block (d_8551 = its pre-bump value) re-checks the puzzle.
+    if (d_8551 > 0x0d && d_8551 < 0x12) {
+        f_6183();
+    }
+}
+
+void LevelGame::f_6183() {
+    // Any check first rewinds/clears the list (so re-bumping mid-cascade stops it).
+    cascade_cursor_ = 0;
+    d_0886_[0] = 0xff;
+    std::uint8_t found = 0;
+    for (int c = 0; c < 0x30 && found == 0; ++c) {
+        const std::uint8_t v = grid_[c + 0x30];
+        if (v >= 0x0e && v < 0x12) {
+            found = v;
+        }
+    }
+    if (found == 0) {
+        return;
+    }
+    bool mixed = false;
+    for (int c = 0; c < 0x30 && !mixed; ++c) {
+        const std::uint8_t v = grid_[c + 0x30];
+        if (v >= 0x0e && v < 0x12 && v != found) {
+            mixed = true;
+        }
+    }
+    if (mixed) {
+        return;
+    }
+    std::uint8_t count = 0;
+    for (int c = 0; c < 0x30; ++c) {
+        if (grid_[c + 0x30] == 0x05) {
+            d_0886_[count++] = static_cast<std::uint8_t>(c);
+        }
+    }
+    if (d_0886_[count] == 0xff) {
+        return;  // original quirk: a stale terminator at this slot skips the re-arm
+    }
+    d_0886_[count] = 0xff;
+    cascade_cursor_ = 0;
+    d_79b7 = 0;
+}
+
+void LevelGame::f_629c() {
+    if (d_0886_[cascade_cursor_] == 0xff) {
+        cascade_cursor_ = 0;
+        d_0886_[0] = 0xff;
+        return;
+    }
+    if (d_79b7 == 0) {
+        d_79b7 = 0x0a;
+        d_8570 = d_0886_[cascade_cursor_];
+        f_6a89(0x18);  // pop the block open (new_tile 0x00) -- sfx is a no-op
+        ++cascade_cursor_;
+    } else {
+        --d_79b7;
+    }
 }
 
 // ===== Moving entity (monster) =================================================
@@ -1299,11 +1575,13 @@ void LevelGame::f_4437() {
 
 void LevelGame::f_4344() {
     if (d_8244 & 0x10) {
-        // FUN_1000_431b: fire on a pipe tile; world 1 has none, so just hop on dir.
+        // FUN_1000_431b: fire in the nest -- hop out on a direction, else keep spinning.
         if (d_8244 & 0x04) {
             f_2634();
         } else if (d_8244 & 0x08) {
             f_26a1();
+        } else {
+            f_4361();
         }
     } else {
         f_4398();
@@ -1346,9 +1624,12 @@ void LevelGame::f_440c() {
     d_856f = ball_.cell;
     f_236f();
     if (d_7924 == 0x16) {
-        ball_.state = 0x1c;  // pipe-enter; not in world 1
+        f_4305();  // already a nest: park in it
+    } else {
+        // Dig a fresh nest: event 0x2f writes tile 0x16 under the ball (with a
+        // 2-frame dig anim); the next decide then parks in it via the branch above.
+        f_6d94(0x2f);
     }
-    // else: no direction -> stay at rest (the original only queues a settle sfx).
 }
 
 void LevelGame::f_4454() {  // LEFT -> hop UP if the cell above is clear
