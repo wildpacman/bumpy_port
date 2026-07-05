@@ -43,10 +43,13 @@ TEST_CASE("render_high_scores draws the backdrop and glyph rows") {
     REQUIRE(nonzero_pixels(frame, 65, 81) > 50);
 }
 
-TEST_CASE("render_game_over draws the GAME OVER band at y=96") {
+TEST_CASE("render_game_over draws GAME OVER text on a black background") {
     const auto score_vec = bumpy::read_binary_file("SCORE.VEC");  // raw screen image, not a VEC
     const auto bank = bumpy::decode_sprite_archive("BUMSPJEU.BIN");
     bumpy::IndexedFramebuffer frame(320, 200);
     bumpy::render_game_over(score_vec, bank.bytes(), frame);
-    REQUIRE(nonzero_pixels(frame, 96, 112) > 30);  // the text band
+    REQUIRE(nonzero_pixels(frame, 96, 112) > 30);  // the text band (y=96) has glyphs
+    // FUN_1000_11eb does NOT paint the SCORE.VEC image -- the rest of the screen stays black.
+    REQUIRE(nonzero_pixels(frame, 0, 90) == 0);     // above the text (was the HALL OF FAME title)
+    REQUIRE(nonzero_pixels(frame, 116, 200) == 0);  // below the text (was the dotted frame)
 }

@@ -70,7 +70,15 @@ int high_score_glyph_frame(char c) noexcept {
 
 void render_game_over(std::span<const std::uint8_t> score_vec,
                       std::span<const std::uint8_t> sprite_bank, IndexedFramebuffer& target) {
-    draw_background(score_vec, target);
+    // FUN_1000_11eb draws "GAME OVER" on a BLACK screen. Unlike the high-score screen
+    // (FUN_1000_5681, which deplanes SCORE.VEC via FUN_1000_7b5a), 11eb never decodes the
+    // image into the buffer -- only the text shows over the darkened background. We still
+    // install SCORE.VEC's palette so the glyph colour resolves (index 0 = black), then clear
+    // to black rather than drawing the HALL OF FAME art.
+    if (is_screen_image(score_vec)) {
+        apply_screen_image_palette(score_vec, target);
+    }
+    target.clear(0);
     static constexpr char kText[] = "GAME OVER";  // DS:0x1327, 9 chars
     draw_glyph_string(kText, 9, kGameOverX0, kGameOverY, sprite_bank, target);
 }
