@@ -42,6 +42,7 @@ add_library(bumpy_core
   src/video/map_renderer.cpp
   src/video/screen_transition.cpp
   src/video/hud.cpp
+  src/video/high_score_renderer.cpp
   src/game/world_map.cpp
   src/game/world_graphs.gen.cpp)
 target_include_directories(bumpy_core PUBLIC src)
@@ -75,6 +76,7 @@ add_executable(bumpy_tests
   tests/cpp/menu_test.cpp
   tests/cpp/high_scores_test.cpp
   tests/cpp/high_score_screen_test.cpp
+  tests/cpp/high_score_renderer_test.cpp
   tests/cpp/app_test.cpp
   tests/cpp/world_map_test.cpp
   tests/cpp/world_graphs_test.cpp

@@ -18,7 +18,7 @@ std::string hex_offset(std::size_t offset) {
 
 namespace bumpy {
 
-BinaryReader BinaryReader::from_file(const std::filesystem::path& path) {
+std::vector<std::uint8_t> read_binary_file(const std::filesystem::path& path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         throw std::runtime_error("cannot open resource: " + path.string());
@@ -32,6 +32,11 @@ BinaryReader BinaryReader::from_file(const std::filesystem::path& path) {
     if (!input.eof()) {
         throw std::runtime_error("cannot read resource: " + path.string());
     }
+    return data;
+}
+
+BinaryReader BinaryReader::from_file(const std::filesystem::path& path) {
+    std::vector<std::uint8_t> data = read_binary_file(path);
 
     auto name = path.filename().string();
     if (name.empty()) {

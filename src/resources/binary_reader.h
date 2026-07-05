@@ -9,6 +9,10 @@
 
 namespace bumpy {
 
+// Read an entire binary file into a byte vector (throws on open/read failure). For raw
+// resources that are not VEC-compressed -- e.g. SCORE.VEC, a stored 320x200 screen image.
+[[nodiscard]] std::vector<std::uint8_t> read_binary_file(const std::filesystem::path& path);
+
 class BinaryReader {
 public:
     static BinaryReader from_file(const std::filesystem::path& path);
