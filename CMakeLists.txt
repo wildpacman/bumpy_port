@@ -28,6 +28,7 @@ add_library(bumpy_core
   src/resources/sprite_frame.cpp
   src/resources/font.cpp
   src/resources/adlib_bank.cpp
+  src/resources/midi_song.cpp
   src/resources/level_resources.cpp
   src/resources/world_resources.cpp
   src/resources/entity_sprites.cpp
@@ -72,6 +73,7 @@ add_executable(bumpy_tests
   tests/cpp/sprite_frame_test.cpp
   tests/cpp/font_test.cpp
   tests/cpp/adlib_bank_test.cpp
+  tests/cpp/midi_song_test.cpp
   tests/cpp/menu_resources_test.cpp
   tests/cpp/menu_renderer_test.cpp
   tests/cpp/level_resources_test.cpp
