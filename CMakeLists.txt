@@ -19,6 +19,7 @@ add_library(bumpy_core
   src/core/asset_manifest.cpp
   src/game/menu.cpp
   src/game/high_scores.cpp
+  src/game/high_score_screen.cpp
   src/game/app.cpp
   src/resources/binary_reader.cpp
   src/resources/vec.cpp
@@ -73,6 +74,7 @@ add_executable(bumpy_tests
   tests/cpp/entity_sprites_test.cpp
   tests/cpp/menu_test.cpp
   tests/cpp/high_scores_test.cpp
+  tests/cpp/high_score_screen_test.cpp
   tests/cpp/app_test.cpp
   tests/cpp/world_map_test.cpp
   tests/cpp/world_graphs_test.cpp
