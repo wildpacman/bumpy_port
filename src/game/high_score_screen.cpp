@@ -5,15 +5,18 @@
 namespace bumpy {
 namespace {
 
-// The name-entry glyph cycle. Recovered from FUN_1000_59d3, which steps the glyph frame
-// through [0x1ad, 0x1cf] (chars '1'-'9','A'-'Z') with the 0x1d0 -> 0x1a3 ('.') wrap; the
-// port models it as a wrapping char list with '.' (blank) between 'Z' and '1'.
-constexpr char kNameCycle[] = ".123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-constexpr int kNameCycleLen = 36;  // number of chars in kNameCycle (excludes the NUL)
+// The name-entry glyph cycle (FUN_1000_59d3, twin of the password editor FUN_1000_5c87). It
+// steps a sprite-frame index over the CONTIGUOUS run 0x1ac..0x1d0 = glyphs '0'-'9','A'-'Z','.'
+// (verified by dumping the frames), CLAMPED not wrapped: UP decrements and floors at '0'
+// (0x1ac); DOWN increments and ceils at '.' (0x1d0). Seed 'A'.
+constexpr char kNameCycle[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ.";
+constexpr int kNameCycleLen = 37;  // number of chars in kNameCycle (excludes the NUL)
 
-// Pacing (tuned by eye; the original clocks name entry by buffer commits, not retraces).
-constexpr int kNameRepeatFrames = 7;   // held-repeat cadence for the editor
-constexpr int kCaretBlinkFrames = 15;  // caret blink half-period
+// Pacing (matches the password editor -- both are twins of 59d3/5c87; 8-frame blink and hold
+// cadence confirmed from the original capture, with an added initial delay so a tap = one step).
+constexpr int kHoldRepeatFrames = 7;     // 8-frame cadence for sustained holds
+constexpr int kInitialRepeatDelay = 17;  // ~18-frame delay before the FIRST auto-repeat
+constexpr int kCaretBlinkFrames = 8;     // caret blink half-period (8 on / 8 off)
 
 int cycle_index(char c) noexcept {
     for (int i = 0; i < kNameCycleLen; ++i) {
@@ -37,6 +40,7 @@ void HighScoreScreen::enter_view() noexcept {
     table_ = nullptr;
     waiting_for_release_ = true;
     repeat_ = 0;
+    first_step_ = true;
     blink_ = 0;
 }
 
@@ -49,6 +53,7 @@ void HighScoreScreen::enter_entry(HighScoreTable& table, std::uint32_t score) no
     table_ = &table;
     waiting_for_release_ = true;
     repeat_ = 0;
+    first_step_ = true;
     blink_ = 0;
 }
 
@@ -58,8 +63,12 @@ void HighScoreScreen::cycle_glyph(int direction) noexcept {
     }
     char& c = table_->entry(static_cast<std::size_t>(view_.insert_row))
                   .name[static_cast<std::size_t>(view_.cursor_col)];
-    int idx = cycle_index(c);
-    idx = (idx + direction + kNameCycleLen) % kNameCycleLen;
+    int idx = cycle_index(c) + direction;  // CLAMP (no wrap): floor '0', ceil '.'
+    if (idx < 0) {
+        idx = 0;
+    } else if (idx >= kNameCycleLen) {
+        idx = kNameCycleLen - 1;
+    }
     c = kNameCycle[idx];
 }
 
@@ -90,16 +99,21 @@ HighScoreResult HighScoreScreen::update(const MenuInput& input) noexcept {
     if (input.confirm) {
         return HighScoreResult::done;
     }
+    const bool any_dir = input.up || input.down || input.left || input.right;
+    if (!any_dir) {
+        first_step_ = true;
+        repeat_ = 0;
+    }
     if (repeat_ > 0) {
         --repeat_;
         return HighScoreResult::none;
     }
     bool acted = false;
     if (input.up) {
-        cycle_glyph(+1);
+        cycle_glyph(-1);  // UP -> toward '0' (9,8,...,0), floors at '0' (FUN_1000_59d3)
         acted = true;
     } else if (input.down) {
-        cycle_glyph(-1);
+        cycle_glyph(+1);  // DOWN -> toward '.' (B,...,Z,.), ceils at '.'
         acted = true;
     } else if (input.left) {
         if (view_.cursor_col > 0) {
@@ -113,7 +127,8 @@ HighScoreResult HighScoreScreen::update(const MenuInput& input) noexcept {
         }
     }
     if (acted) {
-        repeat_ = kNameRepeatFrames;
+        repeat_ = first_step_ ? kInitialRepeatDelay : kHoldRepeatFrames;
+        first_step_ = false;
         view_.caret_visible = true;
         blink_ = 0;
     }

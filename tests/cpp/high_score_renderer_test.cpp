@@ -18,14 +18,16 @@ int nonzero_pixels(bumpy::IndexedFramebuffer& f, int y0, int y1) {
 }
 }  // namespace
 
-TEST_CASE("glyph frames map digits, letters and the caret") {
+TEST_CASE("glyph frames map digits, letters and the dot") {
     REQUIRE(bumpy::high_score_glyph_frame('0') == 0x1ac);
     REQUIRE(bumpy::high_score_glyph_frame('9') == 0x1b5);
     REQUIRE(bumpy::high_score_glyph_frame('A') == 0x1b6);
     REQUIRE(bumpy::high_score_glyph_frame('Z') == 0x1cf);
-    REQUIRE(bumpy::high_score_glyph_frame('[') == 0x1d0);
-    REQUIRE(bumpy::high_score_glyph_frame('.') == -1);  // blank
     REQUIRE(bumpy::high_score_glyph_frame(' ') == -1);  // blank
+    // '.' is blank in a *displayed* name row, but the '.' glyph (0x1d0) in an edit field.
+    REQUIRE(bumpy::high_score_glyph_frame('.') == -1);
+    REQUIRE(bumpy::editor_glyph_frame('.') == 0x1d0);
+    REQUIRE(bumpy::editor_glyph_frame('A') == 0x1b6);  // letters unchanged
 }
 
 TEST_CASE("render_high_scores draws the backdrop and glyph rows") {

@@ -17,21 +17,30 @@ App::App(std::size_t board_count, int start_world) noexcept
       board_count_(board_count),
       world_(start_world),
       start_world_(start_world),
+      selected_world_(start_world),
       cleared_(board_count, 0) {}
 
 void App::reset_run() noexcept {
     lives_ = 5;
     score_ = 0;
-    if (world_ == start_world_) {
-        // The start world's resources are already loaded: clear progress in place and
-        // reset the map to node 1 (arming the release guard).
+    menu_.reset_selection();  // DAT_79b5 = 0: the menu shows EASY again on return
+
+    // The run starts at selected_world_ (the start world, or a world set by a valid password).
+    const int target = selected_world_;
+    if (world_ == target) {
+        // That world's resources are already loaded: clear progress in place and reset the
+        // map to node 1 (arming the release guard).
         std::fill(cleared_.begin(), cleared_.end(), std::uint8_t{0});
         world_map_.enter();
     } else {
-        // A later world is loaded (advanced past the start, then game over): ask the
-        // shell to reload the start world. enter_world resizes cleared_ + resets the map.
-        request_world(start_world_);
+        // A different world is loaded: ask the shell to (re)load the target world.
+        // enter_world resizes cleared_ + resets the map.
+        request_world(target);
     }
+    // Consume the selection: unless another password is entered, the next fresh PLAY returns
+    // to the default start world (the original persists DAT_79b2, but a one-shot start-here is
+    // cleaner and avoids replaying the game-over world).
+    selected_world_ = start_world_;
 }
 
 void App::request_world(int world) noexcept {
@@ -94,6 +103,20 @@ AppOutcome App::update(const MenuInput& input) noexcept {
         return AppOutcome::running;
     }
 
+    // The PASSWORD entry screen (FUN_1000_0f7a). On commit it validates the 6-char code and,
+    // once the result flash finishes, returns to the menu. A valid code (world 2..9) sets the
+    // next PLAY's start world; an invalid one resets it to world 1 (the original sets 79b2=1).
+    // Cancel is ignored here (5c87 leaves only on fire), so this is handled before cancel-edge.
+    if (screen_ == Screen::password) {
+        if (password_screen_.update(input) == PasswordResult::done) {
+            const int world = password_screen_.matched_world();
+            selected_world_ = world >= 2 ? world : 1;
+            screen_ = Screen::menu;
+            waiting_for_release_ = true;  // guard the menu's cancel until keys release
+        }
+        return AppOutcome::running;
+    }
+
     // The high-score table (FUN_1000_5681). done -> menu; a game-over path (entry mode) also
     // resets the run first (the original returns to a fresh menu after 5681).
     if (screen_ == Screen::high_scores) {
@@ -117,6 +140,9 @@ AppOutcome App::update(const MenuInput& input) noexcept {
     if (screen_ == Screen::menu) {
         switch (menu_.update(input)) {
         case MenuAction::start_first_level:
+            // Latch the LEVEL difficulty (DAT_854f = table[79b5]) before reset_run clears
+            // the menu selection; it drives the in-level speed for the whole run.
+            difficulty_ = menu_.cycle_value();
             reset_run();  // resets lives/score/progress; reloads the start world if needed
             screen_ = Screen::map;
             return AppOutcome::running;
@@ -124,13 +150,15 @@ AppOutcome App::update(const MenuInput& input) noexcept {
             high_score_screen_.enter_view();  // FUN_1000_5681 from the menu (score 0 -> view)
             screen_ = Screen::high_scores;
             return AppOutcome::running;
-        case MenuAction::quit:
-            return AppOutcome::quit;
+        case MenuAction::password:
+            password_screen_.enter();  // FUN_1000_0f7a: enter a world code
+            screen_ = Screen::password;
+            return AppOutcome::running;
         case MenuAction::none:
             break;
         }
         if (cancel_edge) {
-            return AppOutcome::quit;  // Escape from the menu exits the game
+            return AppOutcome::quit;  // Escape from the menu exits the game (port addition)
         }
         return AppOutcome::running;
     }

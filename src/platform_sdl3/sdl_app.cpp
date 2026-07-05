@@ -1,11 +1,13 @@
 #include "platform_sdl3/sdl_app.h"
 
 #include "game/level_game.h"
+#include "game/speed_pacer.h"
 #include "resources/world_resources.h"
 #include "video/board_renderer.h"
 #include "video/high_score_renderer.h"
 #include "video/hud.h"
 #include "video/map_renderer.h"
+#include "video/password_renderer.h"
 #include "video/screen_image.h"
 #include "video/screen_transition.h"
 
@@ -125,6 +127,10 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
     // first input. Peer of the screen-darken in FUN_1000_0c18's per-board setup (see
     // analysis/specs/game-loop.md), so it lives here in the shell, not in LevelGame::tick.
     bool level_awaiting_start = false;
+    // The in-level frame pacer (FUN_1000_1349): the LEVEL menu difficulty selects an
+    // 8-bit mask (App::level_pattern) that decides, per frame, whether the loop waits one
+    // or two vertical retraces. Reset to the run's pattern when each board is created.
+    SpeedPacer level_pacer;
     auto live_entities = [&]() {
         // Build a BumEntities view of LevelGame's live grid so collected collectibles
         // (cleared in plane C) stop being drawn.
@@ -278,6 +284,8 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             break;
         }
         bool screen_changed = app.screen() != before;
+        bool level_ticked = false;  // did an in-level game tick advance this frame?
+        Uint64 level_period = 0;    // its FUN_1000_1349 pace (retrace count * period_full)
 
         // Drive the in-level game state machine on the playfield. Arrow keys move the
         // ball; confirm (Enter/Space) is the fire button. Skipped on the frame a screen
@@ -292,6 +300,7 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                         game.emplace(world.level().bum_entities(app.board_index()), app.lives(),
                                      app.score());
                         level_awaiting_start = true;  // FUN_1000_328f: hold until first input
+                        level_pacer.reset(app.level_pattern());  // arm the difficulty pace (854f)
                     } else {
                         app.leave_level();  // no entity data for this board
                     }
@@ -312,6 +321,10 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                     }
                     if (!level_awaiting_start) {
                         game->tick(li);
+                        level_ticked = true;
+                        // FUN_1000_1349: this frame waits 1 or 2 retraces per the difficulty
+                        // mask, so the board runs slower on EASY (2) and faster on HARD (1).
+                        level_period = static_cast<Uint64>(level_pacer.step()) * period_full;
                     }
                     if (game->status() != LevelStatus::playing) {
                         // Draw the resolved terminal frame (ball sunk into the pit on a win,
@@ -368,18 +381,27 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             // FUN_1000_5681/57e1: the high-score table (+ blinking caret during name entry).
             render_high_scores(score_screen, app.high_scores(), sprite_bank,
                                app.high_score_screen().view(), frame);
+        } else if (app.screen() == Screen::password) {
+            // FUN_1000_0f7a: the code-entry screen over the SCORE.VEC backdrop.
+            render_password(score_screen, sprite_bank, app.password_screen().view(), frame);
         } else {
             render_level();
         }
 
         present_frame();
 
-        // Pick this frame's period from the live phase: half-rate for the 13df-driven
-        // sequences (in-level gameplay, world-map cloud-jump), full retrace rate
-        // otherwise (menu, world-map navigation/slide). See period_full/period_half.
-        const bool half_rate = app.screen() == Screen::level ||
-                               (app.screen() == Screen::map && app.world_map().is_jumping());
-        wait_next_tick(half_rate ? period_half : period_full);
+        // Pick this frame's period from the live phase. An in-level game tick is paced by
+        // the difficulty mask (FUN_1000_1349): EASY = 2 retraces (35.043 Hz, the historical
+        // pace), HARD = 1 (70.086 Hz), MEDIUM alternates. Non-ticking level frames (the
+        // board-start hang) and the world-map cloud-jump use the fixed half rate; the menu
+        // and world-map navigation/slide use the full retrace rate.
+        if (level_ticked) {
+            wait_next_tick(level_period);
+        } else {
+            const bool half_rate = app.screen() == Screen::level ||
+                                   (app.screen() == Screen::map && app.world_map().is_jumping());
+            wait_next_tick(half_rate ? period_half : period_full);
+        }
     }
     return 0;
 }

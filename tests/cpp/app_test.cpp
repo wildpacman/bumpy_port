@@ -54,6 +54,35 @@ TEST_CASE("app starts on the menu at board zero") {
     REQUIRE(app.board_count() == 15);
 }
 
+TEST_CASE("app latches the LEVEL difficulty chosen in the menu and then resets it") {
+    bumpy::App app(15);
+    REQUIRE(app.difficulty() == 0);          // EASY default
+    REQUIRE(app.level_pattern() == 0xff);
+
+    // Move to row 2 (LEVEL) and cycle once to MEDIUM.
+    REQUIRE(app.update(bumpy::MenuInput{.down = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    REQUIRE(app.update(bumpy::MenuInput{.down = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    REQUIRE(app.menu().view().cursor_row == 2);
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    REQUIRE(app.menu().cycle_value() == 1);   // MEDIUM
+
+    // Back up to PLAY and start the run.
+    REQUIRE(app.update(bumpy::MenuInput{.up = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    REQUIRE(app.update(bumpy::MenuInput{.up = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    REQUIRE(app.menu().view().cursor_row == 0);
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+
+    REQUIRE(app.screen() == bumpy::Screen::map);
+    REQUIRE(app.difficulty() == 1);           // MEDIUM latched for the whole run
+    REQUIRE(app.level_pattern() == 0xaa);
+    REQUIRE(app.menu().cycle_value() == 0);   // the menu resets to EASY for the next visit
+}
+
 TEST_CASE("confirming the top menu item enters the world map on node 1") {
     bumpy::App app(15);
 
@@ -121,14 +150,83 @@ TEST_CASE("cancel on the menu quits") {
     REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::quit);
 }
 
-TEST_CASE("quitting from the menu's exit row propagates") {
+TEST_CASE("quitting from the menu uses Escape, not a menu row") {
+    bumpy::App app(15);
+
+    // Escape on the menu quits (the original menu has no quit row; the port adds it on cancel).
+    REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::quit);
+}
+
+TEST_CASE("the fourth menu row opens the password screen") {
     bumpy::App app(15);
 
     for (int row = 0; row < 3; ++row) {
         REQUIRE(app.update(bumpy::MenuInput{.down = true}) == bumpy::AppOutcome::running);
         REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
     }
-    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::quit);
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::password);
+}
+
+namespace {
+
+// Hold down until the caret cell reaches `target` (held-repeat cycles the glyph). Codes are
+// letters (>= the 'A' seed), reached by DOWN (A -> B -> ...); UP would walk toward the digits.
+void app_set_cell(bumpy::App& app, char target) {
+    auto cell = [&] {
+        const auto& v = app.password_screen().view();
+        return v.code[static_cast<std::size_t>(v.cursor_col)];
+    };
+    for (int guard = 0; guard < 400 && cell() != target; ++guard) {
+        app.update(bumpy::MenuInput{.down = true});
+    }
+}
+
+void app_move_right(bumpy::App& app) {
+    for (int i = 0; i < 10; ++i) app.update(bumpy::MenuInput{});  // let the repeat delay expire
+    app.update(bumpy::MenuInput{.right = true});
+}
+
+}  // namespace
+
+TEST_CASE("a valid password sets the world the next PLAY starts at") {
+    bumpy::App app(15);
+
+    // Menu row 3 -> password screen.
+    for (int row = 0; row < 3; ++row) {
+        app.update(bumpy::MenuInput{.down = true});
+        app.update(bumpy::MenuInput{});
+    }
+    app.update(bumpy::MenuInput{.confirm = true});
+    REQUIRE(app.screen() == bumpy::Screen::password);
+    app.update(bumpy::MenuInput{});  // release the opening confirm
+
+    // Spell ACCESS (world 2) and commit.
+    const char code[] = "ACCESS";
+    for (int col = 0; col < 6; ++col) {
+        app_set_cell(app, code[col]);
+        if (col < 5) app_move_right(app);
+    }
+    for (int i = 0; i < 10; ++i) app.update(bumpy::MenuInput{});  // let the repeat delay expire
+    app.update(bumpy::MenuInput{.confirm = true});  // commit
+
+    // Run out the result flash; the screen returns to the menu with world 2 selected.
+    for (int i = 0; i < 120 && app.screen() == bumpy::Screen::password; ++i) {
+        app.update(bumpy::MenuInput{});
+    }
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+    REQUIRE(app.selected_world() == 2);
+
+    // Navigate up to PLAY and start: the run targets world 2, so the shell is asked to load it.
+    app.update(bumpy::MenuInput{});
+    while (app.menu().view().cursor_row > 0) {
+        app.update(bumpy::MenuInput{.up = true});
+        app.update(bumpy::MenuInput{});
+    }
+    app.update(bumpy::MenuInput{.confirm = true});
+    REQUIRE(app.screen() == bumpy::Screen::map);
+    REQUIRE(app.pending_world() == 2);       // shell must load world 2
+    REQUIRE(app.selected_world() == 1);      // selection consumed back to the default
 }
 
 TEST_CASE("a held confirm does not bounce menu -> map -> level") {

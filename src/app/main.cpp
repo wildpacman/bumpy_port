@@ -7,6 +7,7 @@
 #include "game/high_scores.h"
 #include "game/level_game.h"
 #include "game/menu.h"
+#include "game/password_screen.h"
 #include "platform_sdl3/sdl_app.h"
 #include "resources/binary_reader.h"
 #include "resources/font.h"
@@ -21,6 +22,7 @@
 #include "video/hud.h"
 #include "video/map_renderer.h"
 #include "video/menu_renderer.h"
+#include "video/password_renderer.h"
 #include "video/screen_image.h"
 #include "video/screen_transition.h"
 
@@ -149,17 +151,20 @@ void write_24bit_bmp(const std::filesystem::path& path, const bumpy::IndexedFram
     }
 }
 
-bumpy::IndexedFramebuffer render_menu_frame(const std::filesystem::path& asset_root) {
+bumpy::IndexedFramebuffer render_menu_frame(const std::filesystem::path& asset_root, int level_value) {
     const auto resources = bumpy::MenuResources::load_from(asset_root);
     const bumpy::MenuRenderer renderer(resources);
     bumpy::Menu menu;
+    bumpy::MenuView view = menu.view();
+    view.level_value = level_value;  // 0/1/2 = EASY/MEDIUM/HARD indicator
     bumpy::IndexedFramebuffer frame(320, 200);
-    renderer.render(menu.view(), frame);
+    renderer.render(view, frame);
     return frame;
 }
 
-int render_title_to_bmp(const std::filesystem::path& asset_root, const std::filesystem::path& out_path) {
-    write_24bit_bmp(out_path, render_menu_frame(asset_root));
+int render_title_to_bmp(const std::filesystem::path& asset_root, const std::filesystem::path& out_path,
+                        int level_value) {
+    write_24bit_bmp(out_path, render_menu_frame(asset_root, level_value));
     std::cout << "wrote " << out_path.string() << '\n';
     return 0;
 }
@@ -348,6 +353,29 @@ int render_gameover_to_bmp(const std::filesystem::path& asset_root,
     const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
     bumpy::IndexedFramebuffer frame(320, 200);
     bumpy::render_game_over(score_bytes, bank.bytes(), frame);
+    write_24bit_bmp(out_path, frame);
+    std::cout << "wrote " << out_path.string() << '\n';
+    return 0;
+}
+
+// Dump the PASSWORD screen (FUN_1000_0f7a) through the shared renderer for by-eye checking.
+// With an optional 6-letter `code`, show it in the entry field and its OK/ERROR result flash;
+// otherwise show the default AAAAAA field with the caret.
+int render_password_to_bmp(const std::filesystem::path& asset_root,
+                           const std::filesystem::path& score_path,
+                           const std::filesystem::path& out_path, const std::string& code) {
+    const auto score_bytes = bumpy::read_binary_file(score_path);  // raw screen image
+    const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+    bumpy::PasswordScreenView view{};
+    if (!code.empty()) {
+        for (std::size_t i = 0; i < view.code.size() && i < code.size(); ++i) {
+            view.code[i] = code[i];
+        }
+        view.showing_result = true;
+        view.result_ok = bumpy::password_world(view.code) >= 2;
+    }
+    bumpy::IndexedFramebuffer frame(320, 200);
+    bumpy::render_password(score_bytes, bank.bytes(), view, frame);
     write_24bit_bmp(out_path, frame);
     std::cout << "wrote " << out_path.string() << '\n';
     return 0;
@@ -598,10 +626,13 @@ int main(int argc, char* argv[]) {
     try {
         const auto asset_root =
             find_asset_root(argc > 0 ? std::string_view(argv[0]) : std::string_view{});
-        if ((argc == 2 || argc == 3) && std::string_view(argv[1]) == "--render-title") {
-            const auto out_path = argc == 3 ? std::filesystem::path(argv[2])
+        if (argc >= 2 && argc <= 4 && std::string_view(argv[1]) == "--render-title") {
+            const auto out_path = argc >= 3 ? std::filesystem::path(argv[2])
                                             : asset_root / "analysis/generated/menu_with_marker.bmp";
-            return render_title_to_bmp(asset_root, out_path);
+            // Optional difficulty 0/1/2 (EASY/MEDIUM/HARD) to preview the LEVEL indicator.
+            const int level_value =
+                (argc == 4 && argv[3][0] >= '0' && argv[3][0] <= '2') ? argv[3][0] - '0' : 0;
+            return render_title_to_bmp(asset_root, out_path, level_value);
         }
         if (argc == 3 && std::string_view(argv[1]) == "--dump-title-raw") {
             return dump_title_raw(asset_root, argv[2]);
@@ -624,6 +655,10 @@ int main(int argc, char* argv[]) {
         if (argc == 4 && std::string_view(argv[1]) == "--render-gameover") {
             // --render-gameover <SCORE.VEC> <out.bmp>
             return render_gameover_to_bmp(asset_root, argv[2], argv[3]);
+        }
+        if ((argc == 4 || argc == 5) && std::string_view(argv[1]) == "--render-password") {
+            // --render-password <SCORE.VEC> <out.bmp> [CODE]: [CODE] shows the OK/ERROR flash.
+            return render_password_to_bmp(asset_root, argv[2], argv[3], argc == 5 ? argv[4] : "");
         }
         if ((argc == 5 || argc == 6) && std::string_view(argv[1]) == "--render-map") {
             // --render-map <world> <MONDE.VEC> <out.bmp> [cleared_node_count]

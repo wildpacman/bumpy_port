@@ -30,6 +30,20 @@ constexpr int marker_x = 48;
 constexpr int marker_y = 112;
 constexpr int marker_row_height = 16;
 
+// The LEVEL difficulty indicator (EASY/MEDIUM/HARD). The three labels are baked into
+// MASKBUMP.VEC at char (0, 13/17/21) = pixel (0, 104/136/168), each 6x2 char cells =
+// 96x16 px; FUN_1000_51d8 grabs them at menu prep and FUN_1000_35a5 re-blits the
+// selected one opaquely to char (11, 18) = pixel (176, 144), the LEVEL menu row.
+// See analysis/specs/menu-behavior.md ("Difficulty selection").
+constexpr int level_label_width = 96;
+constexpr int level_label_height = 16;
+constexpr int level_label_source_x = 0;
+constexpr int level_label_first_source_y = 104;  // char row 13
+constexpr int level_label_source_stride = 32;    // 4 char rows (32 px) between labels
+constexpr int level_label_dest_x = 176;
+constexpr int level_label_dest_y = 144;
+constexpr int level_label_count = 3;
+
 bumpy::MenuImage deplane_screen(std::span<const std::uint8_t> decoded) {
     const std::size_t required = pixel_data_offset + plane_count * plane_size;
     if (decoded.size() < required) {
@@ -152,6 +166,21 @@ void MenuRenderer::render(const MenuView& view, IndexedFramebuffer& target) cons
     if (view.draw_title) {
         draw_menu_command(
             MenuDrawCommand{deplane_screen(title), 0, 0, screen_width, screen_height, 0, 0},
+            target);
+
+        // The current EASY/MEDIUM/HARD label, opaque-blitted over the LEVEL row. TITRE.VEC
+        // bakes "LEVEL: EASY" so idx 0 matches the backdrop; MEDIUM/HARD overwrite the word.
+        const int level = std::clamp(view.level_value, 0, level_label_count - 1);
+        draw_menu_command(
+            MenuDrawCommand{
+                deplane_screen(resources_.mask_bump.decoded_bytes()),
+                level_label_source_x,
+                level_label_first_source_y + level * level_label_source_stride,
+                level_label_width,
+                level_label_height,
+                level_label_dest_x,
+                level_label_dest_y,
+            },
             target);
     }
 

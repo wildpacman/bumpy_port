@@ -20,6 +20,7 @@ add_library(bumpy_core
   src/game/menu.cpp
   src/game/high_scores.cpp
   src/game/high_score_screen.cpp
+  src/game/password_screen.cpp
   src/game/app.cpp
   src/resources/binary_reader.cpp
   src/resources/vec.cpp
@@ -43,6 +44,7 @@ add_library(bumpy_core
   src/video/screen_transition.cpp
   src/video/hud.cpp
   src/video/high_score_renderer.cpp
+  src/video/password_renderer.cpp
   src/game/world_map.cpp
   src/game/world_graphs.gen.cpp)
 target_include_directories(bumpy_core PUBLIC src)
@@ -74,6 +76,8 @@ add_executable(bumpy_tests
   tests/cpp/board_renderer_test.cpp
   tests/cpp/entity_sprites_test.cpp
   tests/cpp/menu_test.cpp
+  tests/cpp/speed_pacer_test.cpp
+  tests/cpp/password_screen_test.cpp
   tests/cpp/high_scores_test.cpp
   tests/cpp/high_score_screen_test.cpp
   tests/cpp/high_score_renderer_test.cpp

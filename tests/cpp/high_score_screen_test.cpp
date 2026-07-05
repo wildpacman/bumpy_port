@@ -37,9 +37,14 @@ TEST_CASE("up/down cycle the caret glyph; left/right move the caret 0..7") {
     s.enter_entry(table, 2000000);
     REQUIRE(s.update(MenuInput{}) == HighScoreResult::none);  // release guard
 
-    // Up once: 'A' -> 'B' at column 0.
-    REQUIRE(s.update(MenuInput{.up = true}) == HighScoreResult::none);
+    // DOWN once: 'A' -> 'B' at column 0 (DOWN advances toward '.').
+    REQUIRE(s.update(MenuInput{.down = true}) == HighScoreResult::none);
     REQUIRE(table.entry(2).name[0] == 'B');
+    for (int i = 0; i < 20; ++i) s.update(MenuInput{});  // let the repeat delay expire
+    s.update(MenuInput{.up = true});                     // 'B' -> 'A'
+    for (int i = 0; i < 20; ++i) s.update(MenuInput{});
+    s.update(MenuInput{.up = true});                     // 'A' -> '9' (UP advances toward '0')
+    REQUIRE(table.entry(2).name[0] == '9');
 
     // Right to column 1 (release between actions so the repeat delay does not swallow it).
     for (int i = 0; i < 20; ++i) s.update(MenuInput{});  // let the repeat delay expire

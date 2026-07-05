@@ -417,9 +417,9 @@ functions), DOSBox-X reference harness.
   uncompressed and the compressed `BUMPYSPR.BIN`/`SPRITE.BIN` are not shipped. The
   decoder is documented (`analysis/specs/menu-resource-formats.md`) but not
   transcribed into the port (nothing to decode/validate).
-- The **HIGH-SCORE** menu sub-screen is **implemented** (see "Stage 3 high-score
-  screen"); only **PASSWORD** (`FUN_1000_0f7a`/`0d9d`/`5c87`) remains, drawing the
-  same per-glyph character sprites.
+- The **HIGH-SCORE** and **PASSWORD** menu sub-screens are both **implemented** (see
+  "Stage 3 high-score screen" and "Stage 3 password screen"). All menu items are done.
+  Only the between-worlds password *display* (`FUN_1000_0d9d`) is unported.
 - The in-window level screen is **live** (ball state machine + collect/score/win +
   the tile bump/spring animations + the **moving entity / enemy AI + death** — see the
   in-level-loop and "moving entity" sections above). Still missing in-level: the
@@ -433,7 +433,7 @@ functions), DOSBox-X reference harness.
 ```powershell
 cmake --build --preset windows-debug
 & build/windows-debug/Debug/bumpy_port.exe                       # menu window
-& build/windows-debug/Debug/bumpy_port.exe --render-title out.bmp  # headless dump
+& build/windows-debug/Debug/bumpy_port.exe --render-title out.bmp [0|1|2]  # headless menu dump (optional LEVEL difficulty)
 & build/windows-debug/Debug/bumpy_port.exe --decode-vec D1.PAV out.bin          # decode any VEC/PAV/DEC/BUM
 & build/windows-debug/Debug/bumpy_port.exe --render-screen MONDE1.VEC out.bmp   # 320x200 screen-format VEC
 & build/windows-debug/Debug/bumpy_port.exe --render-pav D1.PAV MONDE1.VEC out.bmp planeseq 320 192 6
@@ -443,6 +443,7 @@ cmake --build --preset windows-debug
 & build/windows-debug/Debug/bumpy_port.exe --render-jump 6 MONDE1.VEC jump_              # fire-to-enter cloud-jump animation on a node, dump jump_NN.bmp
 & build/windows-debug/Debug/bumpy_port.exe --render-transition MONDE1.VEC trans_         # edge-to-centre screen-change darken, dump trans_NN.bmp (00 = un-darkened)
 & build/windows-debug/Debug/bumpy_port.exe --render-outro DESSFIN.VEC outro.bmp          # post-world-9 ending screen (DESSFIN.VEC) via the shell render path
+& build/windows-debug/Debug/bumpy_port.exe --render-password SCORE.VEC pw.bmp [CODE]     # PASSWORD entry screen; [CODE] shows its OK/ERROR flash
 ```
 
 In the window: confirm "start" on the menu → world map; arrows move Bumpy between
@@ -709,6 +710,78 @@ cancel/held-cancel cases updated); originals verify clean. Specs corrected:
 `game-loop.md` (flags table + `1d26` key poll + lose-a-life triggers), `screen-flow.md`
 (map-Escape + the two-GAME-OVER asymmetry).
 
+## Stage 3 difficulty selection — the `LEVEL` menu item (2026-07-05)
+
+The menu's **`LEVEL`** item is now a working **difficulty / game-speed selector**, both
+the on-screen indicator and the actual gameplay effect, matching the original. Recovered
+from `FUN_1000_35a5` (menu loop), `FUN_1000_51d8`/`FUN_1000_2ef8` (label prep),
+`FUN_1000_1349`/`FUN_1000_05e7` (the in-level speed effect), and the data tables
+`DS:0x11b2` / `DS:0x75e`. Full recovery: `analysis/specs/menu-behavior.md`
+("Difficulty selection").
+
+- **Selection.** Confirm on row 2 cycles `DAT_79b5` `0→1→2→0` (EASY/MEDIUM/HARD), stays in
+  the menu; default EASY; resets to EASY on menu re-entry (`LAB_0c2c`). The port's
+  `Menu::cycle_value_` already cycled; now `MenuView::level_value` mirrors it and
+  `Menu::reset_selection()` clears it on a fresh run (`App::reset_run`).
+- **Indicator.** The `EASY`/`MEDIUM`/`HARD` label is baked into **`MASKBUMP.VEC`** (menu
+  resource 1) at char `(0, 13/17/21)` = pixel `(0, 104/136/168)`, 96×16; `MenuRenderer`
+  now opaque-blits the selected one to `(176, 144)` — the LEVEL row. It renders through
+  TITRE's palette (menu green), background seamless. Verified by eye at all three settings
+  (`analysis/generated/menu_easy/medium/hard.png`); the EASY blit aligns pixel-for-pixel
+  with the baked "LEVEL: EASY".
+- **Speed effect.** On run start `App` latches `difficulty_` from the menu; `level_pattern()`
+  maps it through the `DS:0x11b2` table **`{0xff, 0xaa, 0x00}`** to the `DAT_854f` mask. The
+  new pure `src/game/speed_pacer.h` (`SpeedPacer`) transcribes `FUN_1000_1349` 1:1: each
+  in-level frame it waits `(mask low bit ? 2 : 1)` retraces and rotates the mask. The SDL
+  shell resets the pacer per board (`level_pacer.reset(app.level_pattern())`) and paces each
+  in-level tick by `pacer.step() * period_full`: **EASY = 2 retraces (35.043 Hz, unchanged
+  from the historical pace), MEDIUM = alternating (~46.7 Hz), HARD = 1 (70.086 Hz, 2×
+  faster)**. The "second retrace the disassembly never showed" **is** `1349`→`9864` — so
+  EASY is byte-identical to the prior verified 35 Hz (no regression).
+- **Scope.** `854f` only paces the in-level loop (the map forces it to 0, the cloud-jump to
+  `0xaa`); the port already runs those at full/half rate, unchanged. In-level F1–F5 stay a
+  debug override (noted in `level_game.cpp`).
+- New: `--render-title out.bmp [0|1|2]` previews the indicator per difficulty. **164 C++
+  tests pass** (`speed_pacer_test` ×5, `menu_test` indicator/reset, `app_test` latch/reset);
+  originals verify clean.
+
+## Stage 3 password screen — the `PASSWORD` menu item (2026-07-05)
+
+The last menu sub-screen is done: **`PASSWORD`** (row 3) opens the code-entry screen; a
+valid code jumps the run to that world. Recovered from `FUN_1000_0f7a` (entry screen),
+`FUN_1000_5c87` (6-char editor + validation), `FUN_1000_2d14` (world start), and the tables
+`DS:0x135c` / message pointers `DS:0x11a2..0x11aa` — confirmed against the **raw
+disassembly** (Ghidra dropped the `736f`/`a9f5` args; recovered with capstone). Full
+recovery: `analysis/specs/menu-behavior.md` ("Password screen").
+
+- **8 codes → worlds 2–9**: `ACCESS BUTTON ISLAND PRETTY WINNER ZOMBIE LOVELY SYSTEM`
+  (`DS:0x135c`, all clean ASCII, 6 letters). `src/game/password_screen` bakes them +
+  `password_world(code)` → world (2–9) or 0.
+- **Background = BLACK** (not the HALL OF FAME art). `0f7a` loads SCORE.VEC (menu resource 3)
+  only for its palette; it never deplanes/blits the image (`FUN_1000_7b5a` + `FUN_1000_80bc`
+  are absent, unlike the real high-score screen `FUN_1000_5681`), and the `3467` darken leaves
+  the page black — identical to GAME OVER (`11eb`). An earlier note wrongly claimed the framed
+  backdrop shows; corrected after verifying against the disassembly (the same fix GAME OVER got).
+- **`PasswordScreen`** (mirror of `HighScoreScreen`): seed `AAAAAA`; the glyph cycle is the
+  contiguous frame run `0x1ac..0x1d0` = `'0'-'9','A'-'Z','.'`, **clamped** — UP steps toward
+  `'0'` (9,8,…,0, floors at `'0'`), DOWN toward `'.'` (B,…,Z,., ceils at `'.'`) (verified by
+  dumping the bank; earlier the direction was inverted and the run mis-read). ←/→ move the caret
+  over 6 columns, fire commits, then a brief `PASSWORD OK` / `PASSWORD ERROR` flash.
+  `src/video/password_renderer` draws it on black (SCORE.VEC palette only + prompt y16 + entry
+  field y160 + result y96); the cursor cell blinks a **solid block** (not the `0x1d0` '.' glyph
+  the earlier port drew as a caret). Glyph drawing is the shared `draw_glyph_string` /
+  `draw_editor_glyphs` (the latter shows a '.' cell; display rows keep '.' blank per 57e1).
+- **Integration.** Menu row 3 was mis-mapped to `quit` (a port placeholder — the original
+  menu has no quit row; Escape quits); it now emits `MenuAction::password`. `App` gains
+  `Screen::password` and `selected_world_` (DAT_79b2): a valid code sets it, an invalid one
+  resets it to world 1, and `reset_run` starts the next PLAY at that world (via the existing
+  `pending_world` reload) then consumes it back to the default. `sdl_app` renders the screen
+  and `--render-password SCORE.VEC out.bmp [CODE]` dumps it headlessly.
+- **172 C++ tests pass** (`password_screen_test` ×7, `menu`/`app` row-3 + valid-code-start
+  cases); originals verify clean; all three states verified by eye
+  (`analysis/generated/pw_entry/pw_ok/pw_err.png`). The between-worlds password **display**
+  screen (`FUN_1000_0d9d`) is a separate feature, not ported.
+
 ## Next step
 
 **All 9 worlds are playable end-to-end** — launch, navigate the map, clear boards,
@@ -729,10 +802,9 @@ Remaining Stage 3 milestones and optional polish:
 - **Compressed sprite frames** (flags `0x40`/`0x20`, `1cec:2ded`): fully recovered
   from disassembly but unused by the supplied assets — `BUMSPJEU` is all
   uncompressed. Deferred until needed.
-- **Menu sub-screen — PASSWORD**: HIGH-SCORE is done; the remaining sub-screen is
-  PASSWORD entry/display (`FUN_1000_0f7a` / `0d9d` / `5c87`, the password table at
-  `DS:0x135c` → worlds 2-9). Reuses the same per-glyph text the high-score screen
-  now has. Optional polish.
+- **Menu sub-screens — all done.** HIGH-SCORE, LEVEL (difficulty), and PASSWORD are
+  implemented. Optional leftover: the between-worlds password **display** screen
+  (`FUN_1000_0d9d`) shown after clearing a world — a separate feature, not the menu item.
 
 ## Placeholders / remaining work
 
@@ -741,9 +813,9 @@ Remaining Stage 3 milestones and optional polish:
   uncompressed and the compressed `BUMPYSPR.BIN`/`SPRITE.BIN` are not shipped. The
   decoder is documented (`analysis/specs/menu-resource-formats.md`) but not
   transcribed into the port (nothing to decode/validate).
-- The **HIGH-SCORE** menu sub-screen is **implemented** (see "Stage 3 high-score
-  screen"); only **PASSWORD** (`FUN_1000_0f7a`/`0d9d`/`5c87`) remains, drawing the
-  same per-glyph character sprites.
+- The **HIGH-SCORE** and **PASSWORD** menu sub-screens are both **implemented** (see
+  "Stage 3 high-score screen" and "Stage 3 password screen"). All menu items are done.
+  Only the between-worlds password *display* (`FUN_1000_0d9d`) is unported.
 - The in-window level screen is **live** (ball state machine + collect/score/win +
   the tile bump/spring animations + the **moving entity / enemy AI + death** — see the
   in-level-loop and "moving entity" sections above). Still missing in-level: the
@@ -751,6 +823,7 @@ Remaining Stage 3 milestones and optional polish:
 - World-9 outro (`FUN_1000_3ed4`, `DESSFIN.VEC` ending screen) is **implemented** —
   see "Stage 3 world-9 outro" above.
 
-Optional menu polish: implement the remaining **PASSWORD** sub-screen
-(`FUN_1000_0f7a` / `0d9d` / `5c87`) — it reuses the per-glyph text the HIGH-SCORE
-screen already provides. (HIGH-SCORE is done — see "Stage 3 high-score screen".)
+The menu is complete: **PLAY**, **HIGH-SCORE** (see "Stage 3 high-score screen"),
+**LEVEL** difficulty (see "Stage 3 difficulty selection"), and **PASSWORD** (see
+"Stage 3 password screen") are all implemented. Optional leftover: the between-worlds
+password **display** screen (`FUN_1000_0d9d`), a separate feature.

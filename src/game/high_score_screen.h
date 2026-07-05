@@ -45,6 +45,7 @@ private:
     HighScoreTable* table_{};         // the table being edited (entry mode); null in view mode
     bool waiting_for_release_{true};  // swallow the key that opened the screen
     int repeat_{0};                   // frames until the next held-repeat action
+    bool first_step_{true};           // next action is a fresh press (takes the initial delay)
     int blink_{0};                    // caret blink counter
 };
 

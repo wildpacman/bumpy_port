@@ -87,6 +87,41 @@ TEST_CASE("menu state cycles the confirmed row-two value without exiting") {
     REQUIRE(menu.cycle_value() == 0);
 }
 
+TEST_CASE("menu view mirrors the LEVEL difficulty for the indicator") {
+    bumpy::Menu menu;
+    REQUIRE(menu.view().level_value == 0);  // EASY
+
+    REQUIRE(menu.update(bumpy::MenuInput{.down = true}) == bumpy::MenuAction::none);
+    REQUIRE(menu.update(bumpy::MenuInput{}) == bumpy::MenuAction::none);
+    REQUIRE(menu.update(bumpy::MenuInput{.down = true}) == bumpy::MenuAction::none);
+    REQUIRE(menu.view().cursor_row == 2);
+
+    REQUIRE(menu.update(bumpy::MenuInput{}) == bumpy::MenuAction::none);
+    REQUIRE(menu.update(bumpy::MenuInput{.confirm = true}) == bumpy::MenuAction::none);
+    REQUIRE(menu.view().level_value == 1);  // MEDIUM
+
+    REQUIRE(menu.update(bumpy::MenuInput{}) == bumpy::MenuAction::none);
+    REQUIRE(menu.update(bumpy::MenuInput{.confirm = true}) == bumpy::MenuAction::none);
+    REQUIRE(menu.view().level_value == 2);  // HARD
+}
+
+TEST_CASE("menu reset_selection returns difficulty to EASY without moving the cursor") {
+    bumpy::Menu menu;
+
+    REQUIRE(menu.update(bumpy::MenuInput{.down = true}) == bumpy::MenuAction::none);
+    REQUIRE(menu.update(bumpy::MenuInput{}) == bumpy::MenuAction::none);
+    REQUIRE(menu.update(bumpy::MenuInput{.down = true}) == bumpy::MenuAction::none);
+    REQUIRE(menu.update(bumpy::MenuInput{}) == bumpy::MenuAction::none);
+    REQUIRE(menu.update(bumpy::MenuInput{.confirm = true}) == bumpy::MenuAction::none);
+    REQUIRE(menu.cycle_value() == 1);
+    REQUIRE(menu.view().cursor_row == 2);
+
+    menu.reset_selection();
+    REQUIRE(menu.cycle_value() == 0);
+    REQUIRE(menu.view().level_value == 0);
+    REQUIRE(menu.view().cursor_row == 2);  // cursor untouched (matches 35a5 re-entry)
+}
+
 TEST_CASE("menu state starts the first level from the first playable selection") {
     bumpy::Menu menu;
 
@@ -103,7 +138,7 @@ TEST_CASE("menu confirms high scores from the second selection") {
     REQUIRE(menu.update(bumpy::MenuInput{.confirm = true}) == bumpy::MenuAction::high_scores);
 }
 
-TEST_CASE("menu state emits quit from the fourth confirmed selection") {
+TEST_CASE("menu state opens the password screen from the fourth selection") {
     bumpy::Menu menu;
 
     for (int row = 0; row < 3; ++row) {
@@ -112,5 +147,5 @@ TEST_CASE("menu state emits quit from the fourth confirmed selection") {
     }
 
     REQUIRE(menu.view().cursor_row == 3);
-    REQUIRE(menu.update(bumpy::MenuInput{.confirm = true}) == bumpy::MenuAction::quit);
+    REQUIRE(menu.update(bumpy::MenuInput{.confirm = true}) == bumpy::MenuAction::password);
 }
