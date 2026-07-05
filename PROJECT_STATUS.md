@@ -1,7 +1,7 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-07-05 (world-9 outro / ending
-screen `DESSFIN.VEC`, `FUN_1000_3ed4`).
+Source of truth for new sessions. Last updated: 2026-07-05 (HIGH-SCORE screen —
+`SCORE.VEC` + `FUN_1000_5681`/`57e1`/`59d3` + GAME OVER `FUN_1000_11eb`).
 
 ## Goal
 
@@ -273,7 +273,7 @@ functions), DOSBox-X reference harness.
   top/bottom/left/right black bar (fill colour = index 0), together covering the whole
   screen. The fill is committed by `FUN_1000_9864` (a per-mode latch-flush, **not** a
   retrace wait), so on the original it is one fast un-paced burst. Called at the start
-  of the menu (`35a5`), world map (`3852`) and password (`11eb`) screens and before a
+  of the menu (`35a5`), world map (`3852`) and GAME-OVER (`11eb`) screens and before a
   board loads (`0c18`) — i.e. on menu↔map, map→level and level→menu.
 - **`src/video/screen_transition`** is pure geometry (one ring per `advance()`): it
   snapshots the outgoing frame and, after step `s`, leaves the centre rectangle
@@ -416,8 +416,9 @@ functions), DOSBox-X reference harness.
   uncompressed and the compressed `BUMPYSPR.BIN`/`SPRITE.BIN` are not shipped. The
   decoder is documented (`analysis/specs/menu-resource-formats.md`) but not
   transcribed into the port (nothing to decode/validate).
-- The menu sub-screens (HIGH-SCORE / PASSWORD draw per-glyph character sprites
-  via the same archive) are not implemented.
+- The **HIGH-SCORE** menu sub-screen is **implemented** (see "Stage 3 high-score
+  screen"); only **PASSWORD** (`FUN_1000_0f7a`/`0d9d`/`5c87`) remains, drawing the
+  same per-glyph character sprites.
 - The in-window level screen is **live** (ball state machine + collect/score/win +
   the tile bump/spring animations + the **moving entity / enemy AI + death** — see the
   in-level-loop and "moving entity" sections above). Still missing in-level: the
@@ -610,6 +611,45 @@ menu. The image renders from its **own embedded VGA palette** (offset 51); the `
   render path. **138 C++ tests pass** (3 outro cases: entry, release-then-dismiss, the
   Escape-no-bounce guard); originals verify clean; verified by eye.
 
+## Stage 3 high-score screen (2026-07-05)
+
+The original's **HIGH-SCORE screen** is now implemented, both entry points, fully
+faithful. Recovered from **`FUN_1000_5681` → `FUN_1000_57e1`** (table draw + insert
+test) + **`FUN_1000_59d3`** (name entry) + **`FUN_1000_11eb`** (GAME OVER). NOTE:
+earlier status notes mislabeled `0d9d/0f7a/11eb` as "HIGH-SCORE" — those are the
+PASSWORD-display / PASSWORD-entry / GAME-OVER screens; the high-score table is the
+`5681/57e1/59d3` set. Design + plan:
+`docs/superpowers/specs/2026-07-05-high-score-screen-design.md`,
+`docs/superpowers/plans/2026-07-05-high-score-screen.md`.
+
+- **Background = `SCORE.VEC`** (MENU resource index 3). It ships as a **raw** 320×200
+  screen image (99-byte header + 4×8000 planes = 32099 bytes), **not** a compressed VEC
+  container — so it loads via a new shared `read_binary_file` (`resources/binary_reader`)
+  and renders through the existing `screen_image` helpers. The "HALL OF FAME" title +
+  dotted entry-guide frame are baked into the image.
+- **Table = 7 baked entries, no persistence** (`src/game/high_scores`): `BIG JIM. 5000000`
+  … `MIKE.... 500`, held in memory for the session and reset each launch (the original's
+  data-segment table at `DS:0x8f0` — there is no disk I/O anywhere in the game).
+  `qualifies` (strict `>`) / `insert` (shift down, seed `AAAAAAAA`, drop the last).
+- **Text = BUMSPJEU sprite glyphs** (`src/video/high_score_renderer`): `'0'-'9'` = frames
+  `0x1ac..0x1b5`, `'A'-'Z'` = `0x1b6..0x1cf`, `'['` caret = `0x1d0`, `'.'`/space = blank;
+  glyphs are top-left anchored (origin 0,0). Names at `(col*16, row*16+65)`, 7-digit
+  zero-padded scores at `(176+i*16, …)`, `GAME OVER` at `(96, 96)`.
+- **Two entry points** (`src/game/high_score_screen` state machine + `App`): **menu row 1**
+  → view-only, any key → menu; **out of lives** (`LevelStatus::quit`) → `Screen::game_over`
+  (SCORE.VEC + "GAME OVER", a timed ~0.5 s flash, no keypress — `11eb` uses a fixed delay)
+  → `Screen::high_scores` (name editor if the score qualifies: held-repeat up/down cycle the
+  glyph, left/right move the caret over all 8 columns, fire commits — `59d3`) → reset run →
+  menu. The faithful **two-darken** flow (level→game_over→table) falls out of the existing
+  darken-on-screen-change mechanism for free. Victory still goes outro → menu (the original
+  does **not** show high-scores after winning).
+- **`--render-highscores SCORE.VEC out.bmp [insert_score]`** and **`--render-gameover
+  SCORE.VEC out.bmp`** dump the screens headlessly. **154 C++ tests pass** (high_scores,
+  high_score_screen, high_score_renderer, menu row-1, App game-over/high-score cases);
+  originals verify clean; all three screens verified by eye
+  (`analysis/generated/highscores*.png`, `gameover.png`). Two pacing constants
+  (`kGameOverFrames`, the editor repeat/blink cadence) are tuned by eye.
+
 ## Next step
 
 **All 9 worlds are playable end-to-end** — launch, navigate the map, clear boards,
@@ -630,8 +670,10 @@ Remaining Stage 3 milestones and optional polish:
 - **Compressed sprite frames** (flags `0x40`/`0x20`, `1cec:2ded`): fully recovered
   from disassembly but unused by the supplied assets — `BUMSPJEU` is all
   uncompressed. Deferred until needed.
-- **Menu sub-screens** (HIGH-SCORE / PASSWORD): implement compressed sprites +
-  per-glyph text (`FUN_1000_0d9d` / `0f7a` / `11eb`). Optional polish.
+- **Menu sub-screen — PASSWORD**: HIGH-SCORE is done; the remaining sub-screen is
+  PASSWORD entry/display (`FUN_1000_0f7a` / `0d9d` / `5c87`, the password table at
+  `DS:0x135c` → worlds 2-9). Reuses the same per-glyph text the high-score screen
+  now has. Optional polish.
 
 ## Placeholders / remaining work
 
@@ -640,8 +682,9 @@ Remaining Stage 3 milestones and optional polish:
   uncompressed and the compressed `BUMPYSPR.BIN`/`SPRITE.BIN` are not shipped. The
   decoder is documented (`analysis/specs/menu-resource-formats.md`) but not
   transcribed into the port (nothing to decode/validate).
-- The menu sub-screens (HIGH-SCORE / PASSWORD draw per-glyph character sprites
-  via the same archive) are not implemented.
+- The **HIGH-SCORE** menu sub-screen is **implemented** (see "Stage 3 high-score
+  screen"); only **PASSWORD** (`FUN_1000_0f7a`/`0d9d`/`5c87`) remains, drawing the
+  same per-glyph character sprites.
 - The in-window level screen is **live** (ball state machine + collect/score/win +
   the tile bump/spring animations + the **moving entity / enemy AI + death** — see the
   in-level-loop and "moving entity" sections above). Still missing in-level: the
@@ -649,5 +692,6 @@ Remaining Stage 3 milestones and optional polish:
 - World-9 outro (`FUN_1000_3ed4`, `DESSFIN.VEC` ending screen) is **implemented** —
   see "Stage 3 world-9 outro" above.
 
-Optional menu polish: implement compressed sprites + per-glyph text to bring up
-the HIGH-SCORE / PASSWORD sub-screens (`FUN_1000_0d9d` / `0f7a` / `11eb`).
+Optional menu polish: implement the remaining **PASSWORD** sub-screen
+(`FUN_1000_0f7a` / `0d9d` / `5c87`) — it reuses the per-glyph text the HIGH-SCORE
+screen already provides. (HIGH-SCORE is done — see "Stage 3 high-score screen".)
