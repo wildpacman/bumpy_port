@@ -113,6 +113,7 @@ SdlApp::~SdlApp() {
 
 int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesystem::path& asset_root,
                 WorldResources world, std::span<const std::uint8_t> sprite_bank, const Font& font,
+                std::span<const std::uint8_t> splash_screen,
                 std::span<const std::uint8_t> outro_screen,
                 std::span<const std::uint8_t> score_screen, IndexedFramebuffer& frame) {
     bool running = true;
@@ -358,7 +359,13 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             continue;
         }
 
-        if (app.screen() == Screen::menu) {
+        if (app.screen() == Screen::splash) {
+            // Startup splash (FUN_1000_2fac): BUMPRESE.VEC drawn once before the menu.
+            if (is_screen_image(splash_screen)) {
+                apply_screen_image_palette(splash_screen, frame);
+                draw_screen_image(splash_screen, frame);
+            }
+        } else if (app.screen() == Screen::menu) {
             menu_renderer.render(app.menu().view(), frame);
         } else if (app.screen() == Screen::map) {
             render_map(world.backdrop(), app.world_map().view(), sprite_bank, frame,

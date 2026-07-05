@@ -5,6 +5,13 @@
 
 namespace {
 
+void dismiss_splash(bumpy::App& app) {
+    REQUIRE(app.screen() == bumpy::Screen::splash);
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+}
+
 // Tick the App until the world-map fire jump (cloud-jump animation) finishes and the
 // level screen is reached.
 void finish_jump(bumpy::App& app) {
@@ -18,6 +25,9 @@ void finish_jump(bumpy::App& app) {
 // (menu -> world map), release, then fire on node 1 (map -> jump animation -> level
 // board 0), release.
 void enter_level(bumpy::App& app) {
+    if (app.screen() == bumpy::Screen::splash) {
+        dismiss_splash(app);
+    }
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
     REQUIRE(app.screen() == bumpy::Screen::map);
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);  // release
@@ -46,16 +56,38 @@ void pass_game_over(bumpy::App& app) {
 
 }  // namespace
 
-TEST_CASE("app starts on the menu at board zero") {
+TEST_CASE("app starts on the startup splash at board zero") {
     const bumpy::App app(15);
 
-    REQUIRE(app.screen() == bumpy::Screen::menu);
+    REQUIRE(app.screen() == bumpy::Screen::splash);
     REQUIRE(app.board_index() == 0);
     REQUIRE(app.board_count() == 15);
 }
 
+TEST_CASE("confirm dismisses the startup splash to the menu") {
+    bumpy::App app(15);
+
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+}
+
+TEST_CASE("a held confirm does not bounce splash -> menu -> map") {
+    bumpy::App app(15);
+
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::map);
+}
+
 TEST_CASE("app latches the LEVEL difficulty chosen in the menu and then resets it") {
     bumpy::App app(15);
+    dismiss_splash(app);
     REQUIRE(app.difficulty() == 0);          // EASY default
     REQUIRE(app.level_pattern() == 0xff);
 
@@ -85,6 +117,7 @@ TEST_CASE("app latches the LEVEL difficulty chosen in the menu and then resets i
 
 TEST_CASE("confirming the top menu item enters the world map on node 1") {
     bumpy::App app(15);
+    dismiss_splash(app);
 
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
     REQUIRE(app.screen() == bumpy::Screen::map);
@@ -93,6 +126,7 @@ TEST_CASE("confirming the top menu item enters the world map on node 1") {
 
 TEST_CASE("firing on a map node enters that node's board") {
     bumpy::App app(15);
+    dismiss_splash(app);
 
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // -> map
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
@@ -110,6 +144,7 @@ TEST_CASE("cancel on the world map is a game over, then the menu") {
     // flash (11eb) then `goto LAB_0c2c` (menu), WITHOUT the high-score table -- so map
     // Escape drops the run: game_over -> menu.
     bumpy::App app(15);
+    dismiss_splash(app);
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // -> map
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
     REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);
@@ -120,6 +155,7 @@ TEST_CASE("cancel on the world map is a game over, then the menu") {
 
 TEST_CASE("re-entering the map resets the avatar to node 1") {
     bumpy::App app(15);
+    dismiss_splash(app);
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // -> map
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
     REQUIRE(app.update(bumpy::MenuInput{.right = true}) == bumpy::AppOutcome::running);    // slide to node 2
@@ -146,12 +182,14 @@ TEST_CASE("the App does not treat in-level cancel as a jump to the menu") {
 
 TEST_CASE("cancel on the menu quits") {
     bumpy::App app(15);
+    dismiss_splash(app);
 
     REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::quit);
 }
 
 TEST_CASE("quitting from the menu uses Escape, not a menu row") {
     bumpy::App app(15);
+    dismiss_splash(app);
 
     // Escape on the menu quits (the original menu has no quit row; the port adds it on cancel).
     REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::quit);
@@ -159,6 +197,7 @@ TEST_CASE("quitting from the menu uses Escape, not a menu row") {
 
 TEST_CASE("the fourth menu row opens the password screen") {
     bumpy::App app(15);
+    dismiss_splash(app);
 
     for (int row = 0; row < 3; ++row) {
         REQUIRE(app.update(bumpy::MenuInput{.down = true}) == bumpy::AppOutcome::running);
@@ -191,6 +230,7 @@ void app_move_right(bumpy::App& app) {
 
 TEST_CASE("a valid password sets the world the next PLAY starts at") {
     bumpy::App app(15);
+    dismiss_splash(app);
 
     // Menu row 3 -> password screen.
     for (int row = 0; row < 3; ++row) {
@@ -231,6 +271,7 @@ TEST_CASE("a valid password sets the world the next PLAY starts at") {
 
 TEST_CASE("a held confirm does not bounce menu -> map -> level") {
     bumpy::App app(15);
+    dismiss_splash(app);
 
     // First confirm edge: menu -> map.
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
@@ -249,6 +290,7 @@ TEST_CASE("a held confirm does not bounce menu -> map -> level") {
 
 TEST_CASE("a held cancel does not bounce map -> game over -> menu -> quit") {
     bumpy::App app(15);
+    dismiss_splash(app);
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // -> map
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
 
@@ -314,6 +356,7 @@ TEST_CASE("running out of lives goes to game over then high scores, then resets 
 
 TEST_CASE("menu row 1 opens the high-score table in view mode and returns to the menu") {
     bumpy::App app(15);
+    dismiss_splash(app);
     REQUIRE(app.update(bumpy::MenuInput{.down = true}) == bumpy::AppOutcome::running);   // row 1
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);               // release
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
@@ -395,6 +438,7 @@ TEST_CASE("starting a new game reloads the world (clears progress)") {
 
 TEST_CASE("left/right do nothing on the menu screen") {
     bumpy::App app(15);
+    dismiss_splash(app);
 
     REQUIRE(app.update(bumpy::MenuInput{.left = true, .right = true}) ==
             bumpy::AppOutcome::running);

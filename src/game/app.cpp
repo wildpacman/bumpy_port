@@ -61,6 +61,18 @@ bool App::all_boards_cleared() const noexcept {
 }
 
 AppOutcome App::update(const MenuInput& input) noexcept {
+    // Startup splash (FUN_1000_2ef8 -> FUN_1000_2fac): BUMPRESE.VEC is shown once before
+    // the menu. FUN_1000_30dd's normal path waits for fire (input bit 0x10). Feed the
+    // opening confirm to Menu and ignore the returned action so a held key cannot bounce
+    // splash -> menu -> map on the next tick; Menu will require release before PLAY works.
+    if (screen_ == Screen::splash) {
+        if (input.confirm) {
+            (void)menu_.update(input);
+            screen_ = Screen::menu;
+        }
+        return AppOutcome::running;
+    }
+
     // The outro (FUN_1000_3ed4 -> FUN_1000_328f) is a static ending screen that blocks on a
     // keypress. Mirror 328f, which clears the input latch (DAT_8244 = 0) then waits for any
     // key: require the keys held on entry to be released first, then the next fresh press

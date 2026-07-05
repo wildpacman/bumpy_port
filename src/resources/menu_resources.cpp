@@ -163,6 +163,7 @@ SpriteArchive decode_sprite_archive(std::span<const std::uint8_t> bytes, std::st
 MenuResources MenuResources::load_from(const std::filesystem::path& root) {
     return MenuResources{
         decode_vec_resource(root / "TITRE.VEC"),
+        decode_vec_resource(root / "BUMPRESE.VEC"),
         decode_vec_resource(root / "MASKBUMP.VEC"),
         decode_sprite_archive(root / "BUMSPJEU.BIN"),
         read_file(root / "FLECHE.BIN"),

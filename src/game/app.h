@@ -19,6 +19,7 @@ enum class LevelStatus;  // game/level_game.h -- the in-level loop's terminal st
 
 // Which screen the running game is showing.
 enum class Screen {
+    splash,       // startup-only BUMPRESE.VEC splash (FUN_1000_2fac -> 30dd)
     menu,
     map,
     level,
@@ -42,6 +43,7 @@ enum class AppOutcome {
 // map -> menu -> quit in one press). WorldMap owns confirm debounce on the map.
 //
 // Transitions (Escape/cancel matches the original FUN_1000_0c18 exactly):
+//   splash --confirm/fire------> menu (startup-only BUMPRESE.VEC, FUN_1000_2fac/30dd)
 //   menu  --confirm "start"--> map (world map, node 1)
 //   menu  --cancel-----------> quit
 //   map   --fire (confirm)----> level (board = selected node - 1)
@@ -128,7 +130,7 @@ private:
 
     Menu menu_;
     WorldMap world_map_;
-    Screen screen_{Screen::menu};
+    Screen screen_{Screen::splash};
     std::size_t board_count_{};
     std::size_t board_index_{};
     int world_{1};          // current world (1..kWorldCount)

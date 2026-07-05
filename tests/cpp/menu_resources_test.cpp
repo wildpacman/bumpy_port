@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "resources/menu_resources.h"
+#include "video/screen_image.h"
 
 #include <array>
 #include <cstdint>
@@ -28,6 +29,11 @@ TEST_CASE("menu resource bundle exposes one typed field per confirmed resource r
     REQUIRE(resources.title.terminal_offset() == std::filesystem::file_size("TITRE.VEC"));
     REQUIRE(resources.title.layers().size() == 1);
     REQUIRE(resources.title.decoded_bytes().size() == 32099);
+    REQUIRE(bumpy::is_screen_image(resources.title.decoded_bytes()));
+
+    REQUIRE(resources.splash.terminal_offset() == std::filesystem::file_size("BUMPRESE.VEC"));
+    REQUIRE(resources.splash.decoded_bytes().size() == 32099);
+    REQUIRE(bumpy::is_screen_image(resources.splash.decoded_bytes()));
 
     REQUIRE(resources.mask_bump.terminal_offset() == std::filesystem::file_size("MASKBUMP.VEC"));
     REQUIRE(resources.mask_bump.layers().size() == 3);

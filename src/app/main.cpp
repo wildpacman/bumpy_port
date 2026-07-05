@@ -613,11 +613,14 @@ int run_sdl_menu(const std::filesystem::path& asset_root, int start_world) {
 
     bumpy::App app(world.board_count(), start_world);
     bumpy::IndexedFramebuffer frame(320, 200);
-    renderer.render(app.menu().view(), frame);
+    if (bumpy::is_screen_image(resources.splash.decoded_bytes())) {
+        bumpy::apply_screen_image_palette(resources.splash.decoded_bytes(), frame);
+        bumpy::draw_screen_image(resources.splash.decoded_bytes(), frame);
+    }
 
     bumpy::SdlApp sdl;
     return sdl.run(app, renderer, asset_root, std::move(world), sprite_bank.bytes(), font,
-                   outro.decoded_bytes(), score_screen, frame);
+                   resources.splash.decoded_bytes(), outro.decoded_bytes(), score_screen, frame);
 }
 
 }  // namespace

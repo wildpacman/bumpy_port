@@ -51,6 +51,7 @@ private:
 
 struct MenuResources {
     VecResource title;
+    VecResource splash;
     VecResource mask_bump;
     SpriteArchive bumper_sprites;
     std::vector<std::uint8_t> cursor_sprites;

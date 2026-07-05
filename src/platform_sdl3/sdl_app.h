@@ -23,12 +23,14 @@ public:
 
     // Drive the top-level App. Owns the current world's resources (`world`, by value) and
     // reloads them from `asset_root` whenever App requests a new world (pending_world).
-    // sprite_bank is the whole BUMSPJEU.BIN; font is DDFNT2.CAR; outro_screen is the decoded
-    // DESSFIN.VEC ending image; score_screen is the raw SCORE.VEC high-score/GAME-OVER backdrop
-    // (all world-independent, must outlive run()).
+    // sprite_bank is the whole BUMSPJEU.BIN; font is DDFNT2.CAR; splash_screen is the decoded
+    // BUMPRESE.VEC startup image; outro_screen is the decoded DESSFIN.VEC ending image;
+    // score_screen is the raw SCORE.VEC high-score/GAME-OVER backdrop (all world-independent,
+    // must outlive run()).
     int run(App& app, const MenuRenderer& menu_renderer, const std::filesystem::path& asset_root,
             WorldResources world, std::span<const std::uint8_t> sprite_bank, const Font& font,
-            std::span<const std::uint8_t> outro_screen, std::span<const std::uint8_t> score_screen,
+            std::span<const std::uint8_t> splash_screen, std::span<const std::uint8_t> outro_screen,
+            std::span<const std::uint8_t> score_screen,
             IndexedFramebuffer& frame);
 
 private:
