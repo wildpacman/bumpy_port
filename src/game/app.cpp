@@ -71,12 +71,25 @@ AppOutcome App::update(const MenuInput& input) noexcept {
         return AppOutcome::running;
     }
 
-    // The timed GAME OVER screen (FUN_1000_11eb): show it for kGameOverFrames, then hand off
-    // to the high-score table in entry mode with the run's final score. Input is ignored.
+    // The timed GAME OVER screen (FUN_1000_11eb): show it for kGameOverFrames, then hand off.
+    // Input is ignored while it flashes. Two callers, and they differ (see FUN_1000_0c18):
+    //   - out of lives (FUN_1000_22fc set 928d=0xff): the loop runs 11eb THEN FUN_1000_5681
+    //     (the high-score table) -> menu.
+    //   - Escape on the world map: caught right after FUN_1000_3852 as 11eb then `goto
+    //     LAB_0c2c` -- straight to the menu, WITHOUT the high-score table.
     if (screen_ == Screen::game_over) {
         if (++game_over_frames_ >= kGameOverFrames) {
-            high_score_screen_.enter_entry(high_scores_, score_);  // FUN_1000_5681 -> 57e1
-            screen_ = Screen::high_scores;
+            if (game_over_to_menu_) {
+                // World-map Escape path: reset the run and return straight to the menu
+                // (LAB_0c2c resets lives=5/score=0), no high-score table.
+                game_over_to_menu_ = false;
+                reset_run();
+                screen_ = Screen::menu;
+                waiting_for_release_ = true;  // a held Escape must not bounce into a menu quit
+            } else {
+                high_score_screen_.enter_entry(high_scores_, score_);  // FUN_1000_5681 -> 57e1
+                screen_ = Screen::high_scores;
+            }
         }
         return AppOutcome::running;
     }
@@ -130,7 +143,13 @@ AppOutcome App::update(const MenuInput& input) noexcept {
             screen_ = Screen::level;
             return AppOutcome::running;
         case WorldMapResult::back_to_menu:
-            screen_ = Screen::menu;
+            // FUN_1000_3852: Escape on the world map sets DAT_928d = 0xff; back in
+            // FUN_1000_0c18 that runs FUN_1000_11eb (the timed GAME OVER flash) and then
+            // `goto LAB_0c2c` -- straight to the menu, NOT the high-score table. So map
+            // Escape is a game over: level progress is lost and the run resets.
+            screen_ = Screen::game_over;
+            game_over_frames_ = 0;
+            game_over_to_menu_ = true;  // this path skips FUN_1000_5681 (see the game_over branch)
             return AppOutcome::running;
         case WorldMapResult::none:
             break;
@@ -138,11 +157,11 @@ AppOutcome App::update(const MenuInput& input) noexcept {
         return AppOutcome::running;
     }
 
-    // Screen::level: the shell ticks the in-level LevelGame; cancel returns to the menu.
-    if (cancel_edge) {
-        screen_ = Screen::menu;
-        return AppOutcome::running;
-    }
+    // Screen::level: the shell ticks the in-level LevelGame, which owns Escape (scancode
+    // 0x01 -> FUN_1000_22fc, lose a life -> back to the map, or GAME OVER on the last life;
+    // see LevelGame::f_1d26). The App does NOT treat in-level cancel as a jump to the menu
+    // -- doing so discarded the whole run. cancel_edge is intentionally unused here.
+    (void)cancel_edge;
     return AppOutcome::running;
 }
 

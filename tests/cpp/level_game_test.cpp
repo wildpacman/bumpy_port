@@ -24,6 +24,7 @@ constexpr LevelInput none{};
 constexpr LevelInput up{false, false, true, false, false};
 constexpr LevelInput left{true, false, false, false, false};
 constexpr LevelInput right{false, true, false, false, false};
+constexpr LevelInput cancel{false, false, false, false, false, true};  // Escape (scancode 0x01)
 
 }  // namespace
 
@@ -133,6 +134,25 @@ TEST_CASE("rolling into a vertical spike triggers the fly-around death") {
     CHECK(saw_tumble);                 // entered the fly-around death-tumble state
     CHECK(dead);                       // ... and ultimately ended the life
     CHECK(g.lives() == lives0 - 1);    // exactly one life lost
+}
+
+TEST_CASE("in-level Escape loses a life and ends the board (FUN_1000_1d26 -> 22fc)") {
+    // Scancode 0x01 (Escape) in the player tick calls FUN_1000_22fc directly -- the same
+    // lose-a-life exit as a spike/enemy death, but with no fly-around: DAT_856d = 1 and
+    // DAT_791a--. The board ends "dead" so the shell returns to the world map with the
+    // node unmarked (replayable) and one life spent. It fires exactly once.
+    LevelGame game(lane_board(0x14));  // 5 lives
+    game.tick(cancel);
+    CHECK(game.status() == LevelStatus::dead);
+    CHECK(game.lives() == 4);
+}
+
+TEST_CASE("in-level Escape with no lives left is a game over (FUN_1000_22fc: 928d=0xff)") {
+    // When DAT_791a is already 0, FUN_1000_22fc sets DAT_928d = 0xff instead of
+    // decrementing -- the out-of-lives quit that FUN_1000_0c18 routes to 11eb + 5681.
+    LevelGame game(lane_board(0x14), /*lives=*/0);
+    game.tick(cancel);
+    CHECK(game.status() == LevelStatus::quit);
 }
 
 TEST_CASE("the '#' tile grants a life and does not count toward the exit") {

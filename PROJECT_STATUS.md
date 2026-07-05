@@ -1,7 +1,8 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-07-05 (HIGH-SCORE screen —
-`SCORE.VEC` + `FUN_1000_5681`/`57e1`/`59d3` + GAME OVER `FUN_1000_11eb`).
+Source of truth for new sessions. Last updated: 2026-07-05 (Escape / exit flow now
+matches `FUN_1000_0c18`: in-level Escape = lose a life → world map; map Escape = GAME
+OVER → menu; see "Stage 3 Escape / exit flow" below).
 
 ## Goal
 
@@ -446,8 +447,11 @@ cmake --build --preset windows-debug
 
 In the window: confirm "start" on the menu → world map; arrows move Bumpy between
 linked nodes (**hold a direction to walk node to node continuously**); Enter/Space
-enters that node's board; Escape steps back (level → map's menu, map → menu, menu →
-quit). Every screen change plays the edge-to-centre darken.
+enters that node's board. **Escape matches the original** (`FUN_1000_0c18`): in a level
+it **loses a life** and returns to the world map (node replayable), or triggers GAME
+OVER on the last life; on the world map it is a **GAME OVER → menu** (drops the run, no
+high-score table); on the menu it quits. Every screen change plays the edge-to-centre
+darken.
 
 ## Reverse-engineering workflow
 
@@ -674,6 +678,36 @@ between the first-frame draw and the frame loop — a **peer of the screen-darke
 - Spec fix: `analysis/specs/game-loop.md` had mislabeled `328f` as "wait for the
   screen-reveal curtain"; corrected to the wait-for-keypress start pause (same
   spin-until-key as the outro `328f`, which `screen-flow.md` already labels correctly).
+
+## Stage 3 Escape / exit flow — match the original (2026-07-05)
+
+Fixed the port's Escape handling to match `FUN_1000_0c18` exactly. The port previously
+made Escape a jump straight to the menu on **every** screen, which threw away the whole
+run. The original is a two-step exit, and disassembling `FUN_1000_1d26`/`FUN_1000_3852`
+(the decompiler had dropped the `7ab4` scancode args, so the F-key attribution in the
+old specs was wrong) pins it down:
+
+- **In-level** (`1d26` polls scancode `0x01` = Escape → `FUN_1000_22fc`): Escape **loses
+  a life** (like a spike/enemy death but with no fly-around — `22fc` just spins `236f`
+  1000×, sets `856d=1`, `791a--`) and the board ends → back to the **world map** with the
+  node unmarked (replayable), the run's score/cleared-nodes intact. On the **last life**
+  (`791a==0`) `22fc` sets `928d=0xff` → GAME OVER. (The old specs mislabeled this "F2
+  skip"; F2 is actually a debug-palette key. F10 `0x44`, not F7, is the hard quit.)
+- **World map** (`3852` polls scancode `0x01` → `928d=0xff`): a **GAME OVER** — `0c18`
+  runs `FUN_1000_11eb` (the timed flash) then `goto LAB_0c2c` (menu), **without** the
+  high-score table `FUN_1000_5681`. So map-Escape drops the run to the menu. This differs
+  from running **out of lives in play**, which runs `11eb` **and** `5681` (high scores).
+
+Ported: `LevelInput` gains `cancel` (Escape), handled in `LevelGame::f_1d26` → `f_22fc`
+(fires once per board — the shell tears the board down on the terminal status). `App`
+no longer treats in-level cancel as a menu jump; `finish_level(dead)` → map,
+`finish_level(quit)` → `game_over` → `high_scores` → menu (unchanged, correct). World-map
+cancel now routes `map → game_over → menu` with a new `game_over_to_menu_` flag that
+skips the high-score table for that path. `sdl_app` feeds `input.cancel` into the level.
+**156 C++ tests pass** (2 new `level_game` Escape cases; `app_test` map-cancel/level-
+cancel/held-cancel cases updated); originals verify clean. Specs corrected:
+`game-loop.md` (flags table + `1d26` key poll + lose-a-life triggers), `screen-flow.md`
+(map-Escape + the two-GAME-OVER asymmetry).
 
 ## Next step
 

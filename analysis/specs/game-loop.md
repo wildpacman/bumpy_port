@@ -44,18 +44,28 @@ The per-frame loop runs while all three are zero (decomp line 1211):
 
 | Flag | Meaning | Set by |
 |---|---|---|
-| `DAT_928d` | quit / escape (`1`=quit-to-menu via F7, `0xff`=out of lives, `-1`=escape) | `1d26` (F7), `22fc` (0 lives), `3ed4` |
-| `DAT_856d` | **board ended, lost a life** (enemy death / deadly pit / F2 skip) | `22fc` only |
+| `DAT_928d` | quit / game over (`1` = hard-quit; `0xff` = `-1` signed = out of lives **or** world-map Escape) | `1d26` (F10 → `1`), `22fc` (last life → `0xff`), `3852` (map Escape → `0xff`), `3ed4` |
+| `DAT_856d` | **board ended, lost a life** (enemy death / deadly pit / **in-level Escape**) | `22fc` only |
 | `DAT_9d30` | **board CLEARED** (ball fell into the exit portal; node marked done) | `1e3d` only |
 
 `0bf9` (in setup) clears `9d30`/`856d`; `0c18` clears `928d` at the menu entry.
+`DAT_928d` is a signed char, so `0xff` and `-1` are the same value — the tests
+`928d == -1` (map-escape / out-of-lives) and `928d != 0` (hard quit) select the path.
 
 > **Corrected 2026-06-23** (was: `856d`=win, `9d30`=dead). The names were
 > transposed. `22fc` *decrements a life* and never marks the node cleared, so it is
 > the **lose-a-life** exit (entity death routes `228d`→`0x2e`→`22d2`×3→`22fc`; the
-> chute tiles `0x12`/`0x1f` in `253f`→`22b0`→`22fc` are deadly pits; F2 is the skip
-> cheat). The real **board clear** is the exit portal: `1e3d` sets `9d30=1` *and*
-> marks the world-map node done (`*9baa=1`). See "Exit portal" below.
+> chute tiles `0x12`/`0x1f` in `253f`→`22b0`→`22fc` are deadly pits; **in-level Escape
+> (scancode `0x01`) calls `22fc` directly** — see the `1d26` key poll below). The real
+> **board clear** is the exit portal: `1e3d` sets `9d30=1` *and* marks the world-map
+> node done (`*9baa=1`). See "Exit portal" below.
+>
+> **Corrected 2026-07-05** (was: `1d26` F-key attribution). Disassembling `1d26`'s
+> `7ab4` calls (the decompiler dropped the scancode args) shows the polled keys are
+> F1-F5 (`0x3b`-`0x3f`, debug `854f`), then **Escape `0x01` → `22fc`** (lose a life),
+> then **F10 `0x44` → `928d = 1`** (hard quit) — not "F2 → 22fc / F7 → quit". So the
+> player-facing in-level exit is **Escape = lose a life** (→ world map, or GAME OVER on
+> the last life). Ported: `LevelInput.cancel` → `LevelGame::f_1d26` → `f_22fc`.
 
 ## Per-board setup — lines 1189-1210 (Confirmed)
 
@@ -131,9 +141,11 @@ decision runs.
 
 ### Driver — `FUN_1000_1d26` each frame
 
-1. Poll function keys via `7ab4`: F1-F6 set debug byte `854f` (0/0x88/0xaa/0xee/
-   0xff); **F2 → `22fc` (skip board — costs a life, see the flags note)**; **F7 →
-   `928d=1` (quit-to-menu)**.
+1. Poll keys via `7ab4` in this order (raw disassembly — the decompiler dropped the
+   scancode args): F1-F5 (`0x3b`-`0x3f`) set debug byte `854f` (0/0x88/0xaa/0xee/0xff);
+   **Escape (`0x01`) → `22fc` (lose a life — the in-level exit, see the flags note),
+   then falls through to the state machine (`jmp 0x1dbb`)**; **F10 (`0x44`) → `928d=1`
+   (hard quit → `0258` exits the game)**.
 2. Then advance the ball:
    - `a1aa != 0` (enemy hit pending) → `FUN_1000_228d` → death path (`4263(0x2e)`).
    - else `236f` (sample tile under ball → `7924`), `1dde` (read input → `8244`),
@@ -385,11 +397,13 @@ the ball bends into a U and recoils, matching the original.
   - rendered by the decimal formatter `FUN_1000_0816` (7 digits), not 6c95.
 - **Lives** `DAT_791a` (init 5); decremented in `22fc` (the lose-a-life exit); when
   it reaches 0 there → `928d=0xff` (out of lives).
-- **Lose a life** (`22fc`, sets `856d=1`): runs the finish animation, `791a--`.
-  Reached by entity death (`50fb` AABB of `5085`×`50c0` → `a1aa=1` → `228d` → state
-  `0x2e` death tumble → `22d2`×3 → `22fc`), by the deadly chute pits `0x12`/`0x1f`
-  (`253f`→`22b0`→`22fc`), and by the F2 debug skip. The node is **not** marked
-  cleared, so `3e8a` keeps the node open and the player retries from the map.
+- **Lose a life** (`22fc`, sets `856d=1`): spins `236f` 1000× (a brief settle, no
+  visible animation), then `791a--`. Reached by entity death (`50fb` AABB of
+  `5085`×`50c0` → `a1aa=1` → `228d` → state `0x2e` death tumble → `22d2`×3 → `22fc`), by
+  the deadly chute pits `0x12`/`0x1f` (`253f`→`22b0`→`22fc`), and by **the in-level
+  Escape key** (`1d26` scancode `0x01` → `22fc` directly, no fly-around). The node is
+  **not** marked cleared, so `3e8a` keeps the node open and the player retries from the
+  map. On the last life (`791a==0`) `22fc` sets `928d=0xff` instead → GAME OVER.
 - **Win / board clear** (the exit portal): the ball rolls into the opened pit and
   falls in — tile `0x20` → reaction `0x30` → state `0x30` descent → its `0x7ca`
   decide slot `1e3d` → `9d30=1`, `a1a9=1`, `*9baa=1` (node done). After the loop,

@@ -37,12 +37,15 @@ enum class AppOutcome {
 // bounce across a screen transition (e.g. holding Escape must not go
 // map -> menu -> quit in one press). WorldMap owns confirm debounce on the map.
 //
-// Transitions:
+// Transitions (Escape/cancel matches the original FUN_1000_0c18 exactly):
 //   menu  --confirm "start"--> map (world map, node 1)
 //   menu  --cancel-----------> quit
 //   map   --fire (confirm)----> level (board = selected node - 1)
-//   map   --cancel-----------> menu
-//   level --cancel-----------> menu
+//   map   --cancel-----------> game_over -> menu (FUN_1000_3852 sets 928d=0xff -> 11eb,
+//                              then `goto LAB_0c2c`; no high-score table, run resets)
+//   level --cancel-----------> handled inside LevelGame (FUN_1000_22fc: lose a life ->
+//                              map, or out of lives -> game_over); the App does not jump
+//                              to the menu on in-level cancel (that discarded the run)
 //   level --win last world 9 board--> outro (DESSFIN.VEC ending); any key --> menu
 //
 // The App is the persistent run: score, lives, and per-board completion carry across
@@ -122,6 +125,7 @@ private:
     HighScoreTable high_scores_;         // session table (baked defaults, no persistence)
     HighScoreScreen high_score_screen_;  // transient view/entry screen state
     int game_over_frames_{0};            // frames the GAME OVER screen has been shown
+    bool game_over_to_menu_{};           // GAME OVER via world-map Escape: skip high scores, reset -> menu
 };
 
 }  // namespace bumpy

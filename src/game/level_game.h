@@ -11,14 +11,18 @@
 namespace bumpy {
 
 // One frame of player input (already debounced/sticky handling is internal). The
-// fields are physical directions; build_input_bits() maps them to the original
-// FUN_1000_75a2 action bits (up=0x01, down=0x02, left=0x04, right=0x08, fire=0x10).
+// direction/fire fields map (build_input_bits) to the original FUN_1000_75a2 action
+// bits (up=0x01, down=0x02, left=0x04, right=0x08, fire=0x10). `cancel` is the Escape
+// key: FUN_1000_1d26 polls scancode 0x01 separately (it is NOT part of the 75a2 action
+// mask) and calls FUN_1000_22fc -- lose a life -- so in-level Escape ends the board like
+// a death (back to the world map, node unmarked; GAME OVER on the last life).
 struct LevelInput {
     bool left{};
     bool right{};
     bool up{};
     bool down{};
     bool fire{};
+    bool cancel{};
 };
 
 enum class LevelStatus {

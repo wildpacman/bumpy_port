@@ -230,7 +230,18 @@ void LevelGame::tick(const LevelInput& input) {
 }
 
 void LevelGame::f_1d26(const LevelInput& input) {
-    // Function keys (F1-F7) are not modelled here.
+    // FUN_1000_1d26 polls the function keys first (F1-F5 -> debug DAT_854f; F10 ->
+    // DAT_928d = 1 hard quit) and, between them, scancode 0x01 (Escape) -> FUN_1000_22fc,
+    // then falls through (jmp 0x1dbb) into the state machine below. Only Escape is a
+    // player-facing key, so it is the only one modelled: it loses a life (DAT_856d = 1;
+    // DAT_791a--, or DAT_928d = 0xff on the last life), ending the board like a death.
+    // f_22fc only fires once per board because tick() reports the terminal status right
+    // after this and the shell tears the board down. (Escape is NOT in the 75a2 action
+    // mask, so it never satisfies the board-start pause FUN_1000_328f -- matching the
+    // original, where Escape at the start does nothing until play begins.)
+    if (input.cancel) {
+        f_22fc();
+    }
     if (d_a1aa != 0) {
         f_228d();
         return;

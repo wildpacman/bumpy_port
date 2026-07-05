@@ -76,12 +76,17 @@ TEST_CASE("firing on a map node enters that node's board") {
     REQUIRE(app.board_index() == 1);  // node 2 -> board 1
 }
 
-TEST_CASE("cancel on the world map returns to the menu") {
+TEST_CASE("cancel on the world map is a game over, then the menu") {
+    // FUN_1000_3852 Escape sets DAT_928d = 0xff -> FUN_1000_0c18 runs the timed GAME OVER
+    // flash (11eb) then `goto LAB_0c2c` (menu), WITHOUT the high-score table -- so map
+    // Escape drops the run: game_over -> menu.
     bumpy::App app(15);
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // -> map
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
     REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);
-    REQUIRE(app.screen() == bumpy::Screen::menu);
+    REQUIRE(app.screen() == bumpy::Screen::game_over);
+    pass_game_over(app);
+    REQUIRE(app.screen() == bumpy::Screen::menu);  // straight to the menu, no high-score table
 }
 
 TEST_CASE("re-entering the map resets the avatar to node 1") {
@@ -91,18 +96,23 @@ TEST_CASE("re-entering the map resets the avatar to node 1") {
     REQUIRE(app.update(bumpy::MenuInput{.right = true}) == bumpy::AppOutcome::running);    // slide to node 2
     finish_slide(app);                                                                     // glide there
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
-    REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);   // -> menu
+    REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);   // -> game over
+    pass_game_over(app);                                                                   // -> menu
+    REQUIRE(app.screen() == bumpy::Screen::menu);
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // -> map
     REQUIRE(app.world_map().current_node() == 1);
 }
 
-TEST_CASE("cancel on the level screen returns to the menu") {
+TEST_CASE("the App does not treat in-level cancel as a jump to the menu") {
+    // In-level Escape is owned by LevelGame (scancode 0x01 -> FUN_1000_22fc, lose a life;
+    // see level_game_test), NOT by the App. App::update must therefore leave the level
+    // screen alone on cancel -- the old "level -> menu" jump discarded the whole run.
     bumpy::App app(15);
     enter_level(app);
 
     REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);
-    REQUIRE(app.screen() == bumpy::Screen::menu);
+    REQUIRE(app.screen() == bumpy::Screen::level);
 }
 
 TEST_CASE("cancel on the menu quits") {
@@ -139,17 +149,24 @@ TEST_CASE("a held confirm does not bounce menu -> map -> level") {
     REQUIRE(app.screen() == bumpy::Screen::level);
 }
 
-TEST_CASE("a held cancel does not bounce map -> menu -> quit") {
+TEST_CASE("a held cancel does not bounce map -> game over -> menu -> quit") {
     bumpy::App app(15);
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // -> map
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
 
-    // First cancel edge: map -> menu.
+    // First cancel edge: map -> game over. Then, holding cancel the whole time (the flash
+    // advances on a frame count, ignoring input), it must never quit -- not through the
+    // GAME OVER flash, and not on arrival at the menu (a held Escape is release-guarded).
+    REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::game_over);
+    int guard = 0;
+    while (app.screen() != bumpy::Screen::menu && guard++ < 1000) {
+        REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);
+    }
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+    // Still holding cancel on the menu: must not quit until released.
     REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);
     REQUIRE(app.screen() == bumpy::Screen::menu);
-
-    // Still holding cancel: must not quit until released.
-    REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);
 
     // Release, then a fresh cancel edge quits from the menu.
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
@@ -256,10 +273,12 @@ TEST_CASE("starting a new game reloads the world (clears progress)") {
     REQUIRE(app.is_board_cleared(0));
     REQUIRE(app.screen() == bumpy::Screen::map);
 
-    // Back to the menu (release first -- the map guards fire/cancel), then start again:
+    // Escape off the map is a game over (release first -- the map guards fire/cancel):
+    // map -> game_over -> menu, and the run resets on the way. Then start again:
     // start_first_level reloads the world (FUN_1000_2d14), wiping progress + score/lives.
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
-    REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);   // map -> menu
+    REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);   // map -> game over
+    pass_game_over(app);                                                                   // -> menu
     REQUIRE(app.screen() == bumpy::Screen::menu);
     REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
     REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // start

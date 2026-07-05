@@ -19,9 +19,12 @@ LAB_0c2c:                              <- menu restart point
       FUN_1000_2d14()                   // load D{world}.PAV/DEC/BUM; DAT_854e = 1
       while (true) {
           FUN_1000_3852()               // *** WORLD MAP *** (navigate nodes, pick one)
-              // escape on the map sets DAT_928d = -1 -> FUN_11eb; goto LAB_0c2c (menu)
+              // escape on the map sets DAT_928d = 0xff (=-1); 0c18 runs FUN_11eb
+              // (timed GAME OVER flash) then `goto LAB_0c2c` (menu) -- NO 5681 high scores
           DAT_7310 = DAT_854e - 1        // board index = selected node - 1
           ... board setup + the in-level gameplay loop ...   // see game-loop.md
+              // in-level Escape -> FUN_22fc (lose a life): loop exits, back to the map,
+              // OR (last life) 928d=0xff -> FUN_11eb + FUN_5681 (high scores) -> menu
           // on win: FUN_3e8a; DAT_79b2++ (next world); == 10 -> FUN_3ed4 (game end)
       }
       FUN_0d9d()
@@ -58,7 +61,11 @@ map**, which is the missing screen.
    held** keys via `FUN_1000_1dde` → `FUN_1000_75a2` (which ORs the live key-state
    table at `DAT_4d42`) into `DAT_8244`, then dispatches **one** action:
    `1`=up→`3ab2`, `2`=down→`3b0f`, `4`=left→`3b6c`, `8`=right→`3bc9`,
-   `0x10`=fire→`3cf7`, else Escape (`7ab4` → `DAT_928d = -1`, back to menu).
+   `0x10`=fire→`3cf7`, else Escape (`7ab4(1)` → `DAT_928d = 0xff`). Escape is a **game
+   over**: `0c18` catches `928d == -1` right after `3852` and runs `FUN_1000_11eb` (the
+   timed GAME OVER flash) then `goto LAB_0c2c` (menu) — **without** the high-score table
+   `FUN_1000_5681`, unlike running out of lives in play (which runs `11eb` **and** `5681`).
+   So map-Escape drops the run to the menu; the port routes it `map → game_over → menu`.
    There is **no release debounce**: a move (`3ab2`..`3bc9`) animates the whole
    `dist>>2`-step slide inline (each step waits a retrace via `3c26`→`7bdd`), and the
    loop then re-polls — so **holding a direction walks node to node continuously**, the
@@ -100,9 +107,15 @@ score (`a0d4/a0d6`), lives (`791a`), and per-node completion.
   (`'\n'`) the game plays the outro `FUN_1000_3ed4`; otherwise the next world's
   MONDE/D-files load via `FUN_1000_2d14`, which also **clears all node bytes**.
 - **Lose a life** (`FUN_1000_22fc`): always sets `DAT_856d = 1`; if `DAT_791a == 0`
-  it sets `DAT_928d = 0xff` (**game over** → main loop returns to the menu), else
-  `DAT_791a--`. The node is **not** marked, so a failed board is replayable from
+  it sets `DAT_928d = 0xff` (**game over** → `11eb` + `5681` → menu), else `DAT_791a--`
+  (back to the map). The node is **not** marked, so a failed board is replayable from
   the map. `'#'` collectible → `DAT_791a++` (extra life). Lives init `5` (`2d14`).
+  Triggers: entity/spike death, deadly pits, **and the in-level Escape key** (`1d26`
+  scancode `0x01` → `22fc` directly) — so pressing Escape in a level costs a life and
+  returns to the map. Two GAME OVERs, and they differ: **out of lives** shows the
+  high-score table (`11eb` + `5681`), **map Escape** does not (`11eb` → menu). The port
+  mirrors both (`App`: `LevelStatus::quit` → `game_over` → `high_scores`; map cancel →
+  `game_over` → menu via `game_over_to_menu_`).
 
 ### Outro — `FUN_1000_3ed4` (Confirmed from disassembly)
 

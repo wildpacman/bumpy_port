@@ -266,8 +266,10 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             continue;
         }
 
-        // The App owns all screen transitions, including Escape/cancel (menu -> quit,
-        // level -> menu), so the event loop no longer special-cases Escape.
+        // The App owns menu/map screen transitions (menu -> quit, map -> game over on
+        // Escape). In-level Escape is owned by LevelGame (fed via LevelInput.cancel below:
+        // FUN_1000_1d26 -> FUN_1000_22fc, lose a life), so the event loop no longer
+        // special-cases Escape.
         const Screen before = app.screen();
         if (app.update(input) == AppOutcome::quit) {
             running = false;
@@ -295,8 +297,8 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                     }
                 }
                 if (game) {
-                    const LevelInput li{input.left, input.right, input.up, input.down,
-                                        input.confirm};
+                    const LevelInput li{input.left,  input.right,  input.up,
+                                        input.down,   input.confirm, input.cancel};
                     // FUN_1000_328f: the original sets up the board (ball hanging 12px above
                     // its start cell), draws it, then spins reading input until any key/button
                     // is pressed -- only then does the frame loop run and play the drop in.
