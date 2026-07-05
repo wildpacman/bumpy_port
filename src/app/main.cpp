@@ -3,9 +3,12 @@
 #include "core/asset_manifest.h"
 #include "core/indexed_framebuffer.h"
 #include "game/app.h"
+#include "game/high_score_screen.h"
+#include "game/high_scores.h"
 #include "game/level_game.h"
 #include "game/menu.h"
 #include "platform_sdl3/sdl_app.h"
+#include "resources/binary_reader.h"
 #include "resources/font.h"
 #include "resources/level_resources.h"
 #include "resources/menu_resources.h"
@@ -14,6 +17,7 @@
 #include "game/world_graphs.h"
 #include "game/world_map.h"
 #include "video/board_renderer.h"
+#include "video/high_score_renderer.h"
 #include "video/hud.h"
 #include "video/map_renderer.h"
 #include "video/menu_renderer.h"
@@ -314,6 +318,41 @@ int render_outro_to_bmp(const std::filesystem::path& in_path, const std::filesys
     return 0;
 }
 
+// Dump the HIGH-SCORE table (FUN_1000_5681/57e1) through the shared renderer for by-eye
+// checking. With an optional `insert_score`, insert it and show the name-entry caret.
+int render_highscores_to_bmp(const std::filesystem::path& asset_root,
+                             const std::filesystem::path& score_path,
+                             const std::filesystem::path& out_path, long insert_score) {
+    const auto score_bytes = bumpy::read_binary_file(score_path);  // raw screen image
+    const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+    bumpy::HighScoreTable table;
+    bumpy::HighScoreScreenView view{};  // view mode
+    if (insert_score > 0) {
+        view.mode = bumpy::HighScoreMode::entry;
+        view.insert_row = table.insert(static_cast<std::uint32_t>(insert_score));
+        view.cursor_col = 0;
+        view.caret_visible = true;
+    }
+    bumpy::IndexedFramebuffer frame(320, 200);
+    bumpy::render_high_scores(score_bytes, table, bank.bytes(), view, frame);
+    write_24bit_bmp(out_path, frame);
+    std::cout << "wrote " << out_path.string() << '\n';
+    return 0;
+}
+
+// Dump the GAME OVER screen (FUN_1000_11eb) through the shared renderer for by-eye checking.
+int render_gameover_to_bmp(const std::filesystem::path& asset_root,
+                           const std::filesystem::path& score_path,
+                           const std::filesystem::path& out_path) {
+    const auto score_bytes = bumpy::read_binary_file(score_path);  // raw screen image
+    const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+    bumpy::IndexedFramebuffer frame(320, 200);
+    bumpy::render_game_over(score_bytes, bank.bytes(), frame);
+    write_24bit_bmp(out_path, frame);
+    std::cout << "wrote " << out_path.string() << '\n';
+    return 0;
+}
+
 // Compose a static playfield board (MONDE backdrop + D?.PAV objects on the 16x16
 // grid) and dump it to a BMP for by-eye comparison with the original.
 int render_board_to_bmp(const std::filesystem::path& asset_root, int level_number,
@@ -540,6 +579,9 @@ int run_sdl_menu(const std::filesystem::path& asset_root, int start_world) {
     // The post-world-9 ending screen (FUN_1000_3ed4). World-independent, so decode it once;
     // decoded_bytes() is a view into this resource, which must outlive run().
     const auto outro = bumpy::decode_vec_resource(asset_root / "DESSFIN.VEC");
+    // The HIGH-SCORE / GAME-OVER backdrop (SCORE.VEC, MENU index 3). Ships as a raw 320x200
+    // screen image (not a compressed VEC), so read it directly. World-independent; outlives run().
+    const auto score_screen = bumpy::read_binary_file(asset_root / "SCORE.VEC");
 
     bumpy::App app(world.board_count(), start_world);
     bumpy::IndexedFramebuffer frame(320, 200);
@@ -547,7 +589,7 @@ int run_sdl_menu(const std::filesystem::path& asset_root, int start_world) {
 
     bumpy::SdlApp sdl;
     return sdl.run(app, renderer, asset_root, std::move(world), sprite_bank.bytes(), font,
-                   outro.decoded_bytes(), frame);
+                   outro.decoded_bytes(), score_screen, frame);
 }
 
 }  // namespace
@@ -573,6 +615,15 @@ int main(int argc, char* argv[]) {
         if (argc == 4 && std::string_view(argv[1]) == "--render-outro") {
             // --render-outro <DESSFIN.VEC> <out.bmp>: the ending screen via the shell's path.
             return render_outro_to_bmp(argv[2], argv[3]);
+        }
+        if ((argc == 4 || argc == 5) && std::string_view(argv[1]) == "--render-highscores") {
+            // --render-highscores <SCORE.VEC> <out.bmp> [insert_score]
+            const long insert = argc == 5 ? std::stol(argv[4]) : 0;
+            return render_highscores_to_bmp(asset_root, argv[2], argv[3], insert);
+        }
+        if (argc == 4 && std::string_view(argv[1]) == "--render-gameover") {
+            // --render-gameover <SCORE.VEC> <out.bmp>
+            return render_gameover_to_bmp(asset_root, argv[2], argv[3]);
         }
         if ((argc == 5 || argc == 6) && std::string_view(argv[1]) == "--render-map") {
             // --render-map <world> <MONDE.VEC> <out.bmp> [cleared_node_count]

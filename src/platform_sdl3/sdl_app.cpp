@@ -3,6 +3,7 @@
 #include "game/level_game.h"
 #include "resources/world_resources.h"
 #include "video/board_renderer.h"
+#include "video/high_score_renderer.h"
 #include "video/hud.h"
 #include "video/map_renderer.h"
 #include "video/screen_image.h"
@@ -110,7 +111,8 @@ SdlApp::~SdlApp() {
 
 int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesystem::path& asset_root,
                 WorldResources world, std::span<const std::uint8_t> sprite_bank, const Font& font,
-                std::span<const std::uint8_t> outro_screen, IndexedFramebuffer& frame) {
+                std::span<const std::uint8_t> outro_screen,
+                std::span<const std::uint8_t> score_screen, IndexedFramebuffer& frame) {
     bool running = true;
     MenuInput input{};
 
@@ -335,6 +337,14 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                 apply_screen_image_palette(outro_screen, frame);
                 draw_screen_image(outro_screen, frame);
             }
+        } else if (app.screen() == Screen::game_over) {
+            // FUN_1000_11eb: SCORE.VEC + "GAME OVER". The level->game_over darken already
+            // wiped in via the screen-change transition above.
+            render_game_over(score_screen, sprite_bank, frame);
+        } else if (app.screen() == Screen::high_scores) {
+            // FUN_1000_5681/57e1: the high-score table (+ blinking caret during name entry).
+            render_high_scores(score_screen, app.high_scores(), sprite_bank,
+                               app.high_score_screen().view(), frame);
         } else {
             render_level();
         }
