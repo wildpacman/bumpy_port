@@ -95,8 +95,13 @@ any key.
 
 ### GAME OVER — `FUN_1000_11eb`
 
-- Loads **the same `SCORE.VEC`** (MENU index 3) as its background, calls
-  **`FUN_1000_3467` (the edge-to-centre darken) itself**, then blits it.
+- Loads resource index 3 (`FUN_1000_736f(3)`) and calls **`FUN_1000_3467` (the
+  edge-to-centre darken)**, but — unlike the high-score screen `FUN_1000_5681`,
+  which deplanes SCORE.VEC via **`FUN_1000_7b5a`** — it **never deplanes the image
+  into the buffer** (no `7b5a` call, line 1452 vs 6714). So the visible result is
+  **"GAME OVER" text on the darkened BLACK screen**, not the HALL OF FAME art.
+  (Confirmed against the original by the project owner.) The port keeps SCORE.VEC's
+  palette (so the glyph colour resolves) but clears to black.
 - Overlays `"GAME OVER"` (9 chars, `DS:0x1327`) with the same glyph frames
   (`ascii + 0x175`) at **column start 6**, `y = 0x60 (96)`, `x = col*16`
   (cells at x = 96,112,…,224; the space at index 4 is skipped).

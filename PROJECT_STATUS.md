@@ -637,7 +637,8 @@ PASSWORD-display / PASSWORD-entry / GAME-OVER screens; the high-score table is t
   zero-padded scores at `(176+i*16, …)`, `GAME OVER` at `(96, 96)`.
 - **Two entry points** (`src/game/high_score_screen` state machine + `App`): **menu row 1**
   → view-only, any key → menu; **out of lives** (`LevelStatus::quit`) → `Screen::game_over`
-  (SCORE.VEC + "GAME OVER", a timed ~0.5 s flash, no keypress — `11eb` uses a fixed delay)
+  ("GAME OVER" on **black**, a timed ~0.5 s flash, no keypress — `11eb` uses a fixed delay;
+  it loads SCORE.VEC's palette but never deplanes the image, unlike `5681`)
   → `Screen::high_scores` (name editor if the score qualifies: held-repeat up/down cycle the
   glyph, left/right move the caret over all 8 columns, fire commits — `59d3`) → reset run →
   menu. The faithful **two-darken** flow (level→game_over→table) falls out of the existing
