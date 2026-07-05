@@ -14,5 +14,6 @@ TEST_CASE("BUMPY.MID parses as a 7-track SMF") {
     bool has_note_on = false;
     for (const auto& e : ev) if ((e.status & 0xF0) == 0x90 && e.data2 != 0) { has_note_on = true; break; }
     REQUIRE(has_note_on);
+    REQUIRE(song.end_tick() == 54095);  // true last tick (incl. trailing delta before FF 2F)
     REQUIRE(song.end_tick() >= ev.back().tick);
 }

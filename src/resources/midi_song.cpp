@@ -39,14 +39,15 @@ MidiSong MidiSong::from_bytes(std::vector<std::uint8_t> b) {
         std::uint8_t running = 0;
         while (p < end) {
             tick += read_vlq(b, p);
+            song.end_tick_ = std::max(song.end_tick_, tick);
             std::uint8_t status = b.at(p);
-            if (status & 0x80) { ++p; running = status; }
+            if (status & 0x80) { ++p; if (status < 0xF0) running = status; }
             else status = running;  // running status
             if (status == 0xFF) {           // meta
                 std::uint8_t type = b.at(p++);
                 std::uint32_t mlen = read_vlq(b, p);
                 if (type == 0x51 && mlen == 3)
-                    song.tempo_.push_back({tick, static_cast<std::uint32_t>((b[p] << 16) | (b[p + 1] << 8) | b[p + 2])});
+                    song.tempo_.push_back({tick, static_cast<std::uint32_t>((b.at(p) << 16) | (b.at(p + 1) << 8) | b.at(p + 2))});
                 p += mlen;
             } else if (status == 0xF0 || status == 0xF7) {  // sysex
                 std::uint32_t mlen = read_vlq(b, p);
@@ -56,7 +57,6 @@ MidiSong MidiSong::from_bytes(std::vector<std::uint8_t> b) {
                 const std::uint8_t d1 = b.at(p++);
                 const std::uint8_t d2 = (hi == 0xC0 || hi == 0xD0) ? 0 : b.at(p++);
                 song.events_.push_back({tick, status, d1, d2});
-                song.end_tick_ = std::max(song.end_tick_, tick);
             }
         }
         pos = end;
