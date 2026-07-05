@@ -36,6 +36,14 @@ void finish_slide(bumpy::App& app) {
     }
 }
 
+// Tick the App with no input until it leaves the timed GAME OVER screen.
+void pass_game_over(bumpy::App& app) {
+    int guard = 0;
+    while (app.screen() == bumpy::Screen::game_over && guard++ < 1000) {
+        REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    }
+}
+
 }  // namespace
 
 TEST_CASE("app starts on the menu at board zero") {
@@ -172,16 +180,54 @@ TEST_CASE("dying returns to the map without clearing the board (replayable)") {
     REQUIRE(app.score() == 500);
 }
 
-TEST_CASE("running out of lives ends the game and resets the run") {
+TEST_CASE("running out of lives goes to game over then high scores, then resets the run") {
     bumpy::App app(15);
     enter_level(app);
 
     app.finish_level(bumpy::LevelStatus::quit, 0, 9999);  // 22fc set 928d=0xff
+    REQUIRE(app.screen() == bumpy::Screen::game_over);
+    pass_game_over(app);
+    REQUIRE(app.screen() == bumpy::Screen::high_scores);
 
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // dismiss
     REQUIRE(app.screen() == bumpy::Screen::menu);
     REQUIRE(app.lives() == 5);  // run reset
     REQUIRE(app.score() == 0);
     REQUIRE_FALSE(app.is_board_cleared(0));
+}
+
+TEST_CASE("menu row 1 opens the high-score table in view mode and returns to the menu") {
+    bumpy::App app(15);
+    REQUIRE(app.update(bumpy::MenuInput{.down = true}) == bumpy::AppOutcome::running);   // row 1
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);               // release
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::high_scores);
+    REQUIRE(app.high_score_screen().view().mode == bumpy::HighScoreMode::view);
+
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);               // release
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+}
+
+TEST_CASE("game over shows GAME OVER, then the high-score table with the run's score") {
+    bumpy::App app(15);
+    enter_level(app);
+
+    app.finish_level(bumpy::LevelStatus::quit, 0, 9999);  // out of lives
+    REQUIRE(app.screen() == bumpy::Screen::game_over);
+
+    pass_game_over(app);
+    REQUIRE(app.screen() == bumpy::Screen::high_scores);
+    REQUIRE(app.high_score_screen().view().mode == bumpy::HighScoreMode::entry);
+    REQUIRE(app.high_score_screen().view().insert_row >= 0);  // 9999 beats MIKE (500)
+
+    // Release the (absent) key, then fire commits the name; the run resets, returns to menu.
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+    REQUIRE(app.lives() == 5);   // run reset after the high-score screen
+    REQUIRE(app.score() == 0);
 }
 
 TEST_CASE("clearing every board in a non-final world requests the next world") {
@@ -292,7 +338,13 @@ TEST_CASE("a game over after advancing requests a reload of the start world") {
     REQUIRE(app.world() == 2);
 
     enter_level(app);                                    // play a world-2 board
-    app.finish_level(bumpy::LevelStatus::quit, 0, 200);  // out of lives -> game over
+    app.finish_level(bumpy::LevelStatus::quit, 0, 200);  // out of lives -> game over (200 < 500)
+    REQUIRE(app.screen() == bumpy::Screen::game_over);
+    pass_game_over(app);
+    REQUIRE(app.screen() == bumpy::Screen::high_scores);
+    REQUIRE(app.high_score_screen().view().insert_row == -1);  // 200 does not qualify
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);                 // release
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);  // dismiss
 
     REQUIRE(app.screen() == bumpy::Screen::menu);
     REQUIRE(app.pending_world() == 1);  // reset_run asks the shell to reload world 1

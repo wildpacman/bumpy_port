@@ -1,5 +1,7 @@
 #pragma once
 
+#include "game/high_score_screen.h"
+#include "game/high_scores.h"
 #include "game/menu.h"
 #include "game/world_graphs.h"
 #include "game/world_map.h"
@@ -18,7 +20,9 @@ enum class Screen {
     menu,
     map,
     level,
-    outro,  // DESSFIN.VEC ending screen after world 9 (FUN_1000_3ed4); any key -> menu
+    outro,        // DESSFIN.VEC ending screen after world 9 (FUN_1000_3ed4); any key -> menu
+    game_over,    // FUN_1000_11eb: SCORE.VEC + "GAME OVER", timed, then high_scores
+    high_scores,  // FUN_1000_5681/57e1: the high-score table (+ name entry on game over)
 };
 
 // What the platform shell should do after an App update.
@@ -71,6 +75,13 @@ public:
         return cleared_;
     }
 
+    // The session high-score table and the transient high-score screen state, for the
+    // renderer on Screen::high_scores.
+    [[nodiscard]] const HighScoreTable& high_scores() const noexcept { return high_scores_; }
+    [[nodiscard]] const HighScoreScreen& high_score_screen() const noexcept {
+        return high_score_screen_;
+    }
+
     AppOutcome update(const MenuInput& input) noexcept;
 
     // Leave the playfield back to the world map without scoring (the shell uses this
@@ -107,6 +118,10 @@ private:
     std::uint8_t lives_{5};            // DAT_791a
     std::uint32_t score_{0};           // DAT_a0d4 / a0d6
     std::vector<std::uint8_t> cleared_;  // per board index (0/1); node N -> board N-1
+
+    HighScoreTable high_scores_;         // session table (baked defaults, no persistence)
+    HighScoreScreen high_score_screen_;  // transient view/entry screen state
+    int game_over_frames_{0};            // frames the GAME OVER screen has been shown
 };
 
 }  // namespace bumpy

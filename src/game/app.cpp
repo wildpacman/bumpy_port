@@ -6,6 +6,11 @@
 #include <algorithm>
 
 namespace bumpy {
+namespace {
+// How long the timed GAME OVER screen (FUN_1000_11eb, ~100 un-paced commits) is shown
+// before auto-advancing to the high-score table. Tuned by eye (~0.5 s at 70 Hz).
+constexpr int kGameOverFrames = 35;
+}  // namespace
 
 App::App(std::size_t board_count, int start_world) noexcept
     : world_map_(start_world),
@@ -66,6 +71,30 @@ AppOutcome App::update(const MenuInput& input) noexcept {
         return AppOutcome::running;
     }
 
+    // The timed GAME OVER screen (FUN_1000_11eb): show it for kGameOverFrames, then hand off
+    // to the high-score table in entry mode with the run's final score. Input is ignored.
+    if (screen_ == Screen::game_over) {
+        if (++game_over_frames_ >= kGameOverFrames) {
+            high_score_screen_.enter_entry(high_scores_, score_);  // FUN_1000_5681 -> 57e1
+            screen_ = Screen::high_scores;
+        }
+        return AppOutcome::running;
+    }
+
+    // The high-score table (FUN_1000_5681). done -> menu; a game-over path (entry mode) also
+    // resets the run first (the original returns to a fresh menu after 5681).
+    if (screen_ == Screen::high_scores) {
+        if (high_score_screen_.update(input) == HighScoreResult::done) {
+            const bool from_game_over = high_score_screen_.view().mode == HighScoreMode::entry;
+            if (from_game_over) {
+                reset_run();
+            }
+            screen_ = Screen::menu;
+            waiting_for_release_ = true;  // guard the menu's cancel until the dismiss key releases
+        }
+        return AppOutcome::running;
+    }
+
     // App owns the cancel key on every screen so a cancel that causes a transition
     // (e.g. map -> menu) cannot bounce into the next screen's cancel. confirm is owned
     // per-screen: Menu debounces it on the menu, WorldMap on the map.
@@ -77,6 +106,10 @@ AppOutcome App::update(const MenuInput& input) noexcept {
         case MenuAction::start_first_level:
             reset_run();  // resets lives/score/progress; reloads the start world if needed
             screen_ = Screen::map;
+            return AppOutcome::running;
+        case MenuAction::high_scores:
+            high_score_screen_.enter_view();  // FUN_1000_5681 from the menu (score 0 -> view)
+            screen_ = Screen::high_scores;
             return AppOutcome::running;
         case MenuAction::quit:
             return AppOutcome::quit;
@@ -158,9 +191,11 @@ void App::finish_level(LevelStatus status, std::uint8_t lives, std::uint32_t sco
         waiting_for_release_ = true;
         break;
     case LevelStatus::quit:
-        // Out of lives (FUN_1000_22fc set DAT_928d = 0xff) -> game over.
-        reset_run();
-        screen_ = Screen::menu;
+        // Out of lives (FUN_1000_22fc set DAT_928d = 0xff) -> the GAME OVER screen
+        // (FUN_1000_11eb) then the high-score table (FUN_1000_5681). The run is reset only
+        // once the player leaves the high-score screen (see the high_scores branch in update()).
+        screen_ = Screen::game_over;
+        game_over_frames_ = 0;
         break;
     case LevelStatus::playing:
         break;  // not a terminal status; the shell only calls this when != playing
