@@ -88,8 +88,9 @@ TEST_CASE("BUMPY.BNK decodes the AdLib instrument bank") {
     REQUIRE(rol000->mod.level == 15);
     REQUIRE(rol000->mod.connection == 1);
     REQUIRE(rol000->car.ksl == 0);
-    REQUIRE(rol000->car.attack == 12);
-    REQUIRE(rol000->car.decay == 9);
+    REQUIRE(rol000->car.feedback == 12);
+    REQUIRE(rol000->car.attack == 9);
+    REQUIRE(rol000->car.decay == 2);
     REQUIRE(rol000->wave_mod == 0);
     REQUIRE(rol000->wave_car == 0);
 
