@@ -48,6 +48,9 @@ MenuAction Menu::update(const MenuInput& input) noexcept {
         if (view_.cursor_row == 0) {
             return MenuAction::start_first_level;
         }
+        if (view_.cursor_row == 1) {
+            return MenuAction::high_scores;  // FUN_1000_5681
+        }
         if (view_.cursor_row == 2) {
             cycle_value_ = static_cast<std::uint8_t>((cycle_value_ + 1U) % 3U);
             return MenuAction::none;

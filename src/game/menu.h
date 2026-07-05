@@ -16,6 +16,7 @@ struct MenuInput {
 enum class MenuAction {
     none,
     start_first_level,
+    high_scores,  // row 1 (FUN_1000_5681)
     quit,
 };
 

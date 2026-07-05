@@ -94,6 +94,15 @@ TEST_CASE("menu state starts the first level from the first playable selection")
             bumpy::MenuAction::start_first_level);
 }
 
+TEST_CASE("menu confirms high scores from the second selection") {
+    bumpy::Menu menu;
+
+    REQUIRE(menu.update(bumpy::MenuInput{.down = true}) == bumpy::MenuAction::none);  // row 1
+    REQUIRE(menu.update(bumpy::MenuInput{}) == bumpy::MenuAction::none);              // release
+    REQUIRE(menu.view().cursor_row == 1);
+    REQUIRE(menu.update(bumpy::MenuInput{.confirm = true}) == bumpy::MenuAction::high_scores);
+}
+
 TEST_CASE("menu state emits quit from the fourth confirmed selection") {
     bumpy::Menu menu;
 
