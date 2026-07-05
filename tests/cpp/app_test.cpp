@@ -352,8 +352,15 @@ TEST_CASE("clearing every board in a non-final world requests the next world") {
     app.finish_level(bumpy::LevelStatus::won, 5, 7000);
 
     REQUIRE(app.is_board_cleared(0));
-    REQUIRE(app.screen() == bumpy::Screen::map);  // returns to the map, not the menu
-    REQUIRE(app.pending_world() == 2);            // shell must load world 2
+    REQUIRE(app.screen() == bumpy::Screen::password_display);
+    REQUIRE(app.password_display_world() == 2);
+    REQUIRE(app.pending_world() == 0);  // shell must not load world 2 until the display is dismissed
+
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::password_display);
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::map);
+    REQUIRE(app.pending_world() == 2);
 
     // The shell satisfies the request (world 2, also one board for the test).
     app.enter_world(2, 1);
@@ -451,6 +458,9 @@ TEST_CASE("a game over after advancing requests a reload of the start world") {
     bumpy::App app(1);    // start world 1
     enter_level(app);
     app.finish_level(bumpy::LevelStatus::won, 5, 100);  // clear world 1 -> pending world 2
+    REQUIRE(app.screen() == bumpy::Screen::password_display);
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::map);
     app.enter_world(2, 1);                               // shell loads world 2
     REQUIRE(app.world() == 2);
 

@@ -78,6 +78,7 @@ add_executable(bumpy_tests
   tests/cpp/menu_test.cpp
   tests/cpp/speed_pacer_test.cpp
   tests/cpp/password_screen_test.cpp
+  tests/cpp/password_renderer_test.cpp
   tests/cpp/high_scores_test.cpp
   tests/cpp/high_score_screen_test.cpp
   tests/cpp/high_score_renderer_test.cpp

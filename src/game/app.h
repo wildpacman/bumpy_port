@@ -23,6 +23,7 @@ enum class Screen {
     map,
     level,
     outro,        // DESSFIN.VEC ending screen after world 9 (FUN_1000_3ed4); any key -> menu
+    password_display,  // FUN_1000_0d9d: show the next world's password; fire -> next world
     game_over,    // FUN_1000_11eb: SCORE.VEC + "GAME OVER", timed, then high_scores
     high_scores,  // FUN_1000_5681/57e1: the high-score table (+ name entry on game over)
     password,     // FUN_1000_0f7a: enter a world code (row 3); a valid code sets the start world
@@ -97,6 +98,7 @@ public:
     [[nodiscard]] const PasswordScreen& password_screen() const noexcept {
         return password_screen_;
     }
+    [[nodiscard]] int password_display_world() const noexcept { return password_display_world_; }
     // The world the next PLAY will start at (DAT_79b2). Defaults to the start world; a valid
     // password code (FUN_1000_0f7a) sets it, and starting a run consumes it back to the default.
     [[nodiscard]] int selected_world() const noexcept { return selected_world_; }
@@ -109,7 +111,7 @@ public:
 
     // Finish the in-level board with the LevelGame's terminal status, carrying the
     // resulting lives/score back into the run. won -> mark the board cleared (world
-    // complete returns to the menu); dead -> back to the map (board replayable); quit
+    // complete shows the password display or outro); dead -> back to the map (board replayable); quit
     // (out of lives, FUN_1000_22fc set 928d=0xff) -> game over, reset run, menu.
     // No-op unless on the level screen.
     void finish_level(LevelStatus status, std::uint8_t lives, std::uint32_t score) noexcept;
@@ -143,6 +145,7 @@ private:
     HighScoreTable high_scores_;         // session table (baked defaults, no persistence)
     HighScoreScreen high_score_screen_;  // transient view/entry screen state
     PasswordScreen password_screen_;     // transient PASSWORD entry screen state
+    int password_display_world_{0};       // next world whose password is being shown (2..9)
     int game_over_frames_{0};            // frames the GAME OVER screen has been shown
     bool game_over_to_menu_{};           // GAME OVER via world-map Escape: skip high scores, reset -> menu
 };

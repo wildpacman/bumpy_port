@@ -80,6 +80,18 @@ AppOutcome App::update(const MenuInput& input) noexcept {
         return AppOutcome::running;
     }
 
+    // The between-world password display (FUN_1000_0d9d): after 3e8a increments DAT_79b2,
+    // the original shows "YOUR PASSWORD" plus the new world's code on a black page and waits
+    // for fire (bit 0x10). The next world's resources are loaded only after this screen exits.
+    if (screen_ == Screen::password_display) {
+        if (input.confirm) {
+            request_world(password_display_world_);
+            screen_ = Screen::map;
+            waiting_for_release_ = true;  // a held fire must not enter node 1 after load
+        }
+        return AppOutcome::running;
+    }
+
     // The timed GAME OVER screen (FUN_1000_11eb): show it for kGameOverFrames, then hand off.
     // Input is ignored while it flashes. Two callers, and they differ (see FUN_1000_0c18):
     //   - out of lives (FUN_1000_22fc set 928d=0xff): the loop runs 11eb THEN FUN_1000_5681
@@ -215,10 +227,9 @@ void App::finish_level(LevelStatus status, std::uint8_t lives, std::uint32_t sco
         if (all_boards_cleared()) {
             // World complete (FUN_1000_3e8a).
             if (world_ < kWorldCount) {
-                // Advance to the next world: ask the shell to load it, return to the map.
-                request_world(world_ + 1);
-                screen_ = Screen::map;
-                waiting_for_release_ = true;
+                // Advance DAT_79b2 and show FUN_1000_0d9d before loading the next world.
+                password_display_world_ = world_ + 1;
+                screen_ = Screen::password_display;
             } else {
                 // World 9 cleared: the game is complete. Show the DESSFIN.VEC ending screen
                 // (FUN_1000_3ed4); the run is reset and the menu restored only once the

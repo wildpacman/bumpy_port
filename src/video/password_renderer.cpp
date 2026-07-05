@@ -16,8 +16,13 @@ constexpr int kEntryX = 7 * 16;  // cols 7..12
 constexpr int kEntryY = 0xa0;    // 160
 constexpr int kResultX = 3 * 16;  // cols 3..16
 constexpr int kResultY = 0x60;   // 96
+constexpr int kDisplayPromptX = 4 * 16;  // cols 4..16
+constexpr int kDisplayPromptY = 0x50;    // 80
+constexpr int kDisplayCodeX = 7 * 16;    // cols 7..12
+constexpr int kDisplayCodeY = 0x70;      // 112
 constexpr int kGlyphStepX = 16;
 
+constexpr char kDisplayPrompt[] = "YOUR PASSWORD";       // DS:0x12e7, 13 chars
 constexpr char kPrompt[] = "ENTER YOUR PASSWORD";  // DS:0x12f5, 19 chars
 constexpr char kOk[] = " PASSWORD OK  ";           // DS:0x1309, 14 chars
 constexpr char kError[] = "PASSWORD ERROR";        // DS:0x1318, 14 chars
@@ -57,6 +62,17 @@ void render_password(std::span<const std::uint8_t> score_vec,
         const char* msg = view.result_ok ? kOk : kError;
         draw_glyph_string(msg, 14, kResultX, kResultY, sprite_bank, target);
     }
+}
+
+void render_password_display(std::span<const std::uint8_t> score_vec,
+                             std::span<const std::uint8_t> sprite_bank,
+                             const std::array<char, 6>& code, IndexedFramebuffer& target) {
+    if (is_screen_image(score_vec)) {
+        apply_screen_image_palette(score_vec, target);
+    }
+    target.clear(0);
+    draw_glyph_string(kDisplayPrompt, 13, kDisplayPromptX, kDisplayPromptY, sprite_bank, target);
+    draw_glyph_string(code.data(), code.size(), kDisplayCodeX, kDisplayCodeY, sprite_bank, target);
 }
 
 }  // namespace bumpy

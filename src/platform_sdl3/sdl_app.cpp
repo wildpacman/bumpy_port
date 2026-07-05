@@ -377,6 +377,10 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             // FUN_1000_11eb: SCORE.VEC + "GAME OVER". The level->game_over darken already
             // wiped in via the screen-change transition above.
             render_game_over(score_screen, sprite_bank, frame);
+        } else if (app.screen() == Screen::password_display) {
+            // FUN_1000_0d9d: between-world password display on black.
+            render_password_display(score_screen, sprite_bank,
+                                    password_code_for_world(app.password_display_world()), frame);
         } else if (app.screen() == Screen::high_scores) {
             // FUN_1000_5681/57e1: the high-score table (+ blinking caret during name entry).
             render_high_scores(score_screen, app.high_scores(), sprite_bank,

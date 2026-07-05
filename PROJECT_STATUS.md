@@ -418,8 +418,8 @@ functions), DOSBox-X reference harness.
   decoder is documented (`analysis/specs/menu-resource-formats.md`) but not
   transcribed into the port (nothing to decode/validate).
 - The **HIGH-SCORE** and **PASSWORD** menu sub-screens are both **implemented** (see
-  "Stage 3 high-score screen" and "Stage 3 password screen"). All menu items are done.
-  Only the between-worlds password *display* (`FUN_1000_0d9d`) is unported.
+  "Stage 3 high-score screen" and "Stage 3 password screen"). The between-worlds
+  password display (`FUN_1000_0d9d`) is implemented too.
 - The in-window level screen is **live** (ball state machine + collect/score/win +
   the tile bump/spring animations + the **moving entity / enemy AI + death** — see the
   in-level-loop and "moving entity" sections above). Still missing in-level: the
@@ -777,10 +777,25 @@ recovery: `analysis/specs/menu-behavior.md` ("Password screen").
   resets it to world 1, and `reset_run` starts the next PLAY at that world (via the existing
   `pending_world` reload) then consumes it back to the default. `sdl_app` renders the screen
   and `--render-password SCORE.VEC out.bmp [CODE]` dumps it headlessly.
-- **172 C++ tests pass** (`password_screen_test` ×7, `menu`/`app` row-3 + valid-code-start
-  cases); originals verify clean; all three states verified by eye
-  (`analysis/generated/pw_entry/pw_ok/pw_err.png`). The between-worlds password **display**
-  screen (`FUN_1000_0d9d`) is a separate feature, not ported.
+- `password_screen_test`, menu/app row-3, and valid-code-start cases are covered; originals
+  verify clean; all three states were verified by eye
+  (`analysis/generated/pw_entry/pw_ok/pw_err.png`).
+
+## Stage 3 between-world password display (2026-07-06)
+
+The post-world screen is implemented: after `FUN_1000_3e8a` clears a non-final
+world, the port now shows `FUN_1000_0d9d` before loading the next world.
+
+- **Flow.** Clearing all boards in worlds 1-8 moves `App` to `Screen::password_display`
+  with the next world number (`world + 1`). The shell does not load the next world's
+  resources until the player presses fire; only then does `pending_world` request the
+  next world and return to the map.
+- **Content.** The renderer matches the recovered `0d9d` layout: black page using
+  `SCORE.VEC` only as the palette source, `YOUR PASSWORD` at y=80, columns 4-16, and
+  the next world's 6-letter code at y=112, columns 7-12. Codes reuse the confirmed
+  password table: `ACCESS BUTTON ISLAND PRETTY WINNER ZOMBIE LOVELY SYSTEM`.
+- **Coverage.** `app_test` covers the deferred world-load handshake and
+  `password_renderer_test` covers the black background plus prompt/code bands.
 
 ## Next step
 
@@ -802,9 +817,8 @@ Remaining Stage 3 milestones and optional polish:
 - **Compressed sprite frames** (flags `0x40`/`0x20`, `1cec:2ded`): fully recovered
   from disassembly but unused by the supplied assets — `BUMSPJEU` is all
   uncompressed. Deferred until needed.
-- **Menu sub-screens — all done.** HIGH-SCORE, LEVEL (difficulty), and PASSWORD are
-  implemented. Optional leftover: the between-worlds password **display** screen
-  (`FUN_1000_0d9d`) shown after clearing a world — a separate feature, not the menu item.
+- **Menu/password screens — all done.** HIGH-SCORE, LEVEL (difficulty), PASSWORD, and
+  the between-worlds password display (`FUN_1000_0d9d`) are implemented.
 
 ## Placeholders / remaining work
 
@@ -814,8 +828,8 @@ Remaining Stage 3 milestones and optional polish:
   decoder is documented (`analysis/specs/menu-resource-formats.md`) but not
   transcribed into the port (nothing to decode/validate).
 - The **HIGH-SCORE** and **PASSWORD** menu sub-screens are both **implemented** (see
-  "Stage 3 high-score screen" and "Stage 3 password screen"). All menu items are done.
-  Only the between-worlds password *display* (`FUN_1000_0d9d`) is unported.
+  "Stage 3 high-score screen" and "Stage 3 password screen"). All menu items are done,
+  and the between-worlds password display (`FUN_1000_0d9d`) is implemented.
 - The in-window level screen is **live** (ball state machine + collect/score/win +
   the tile bump/spring animations + the **moving entity / enemy AI + death** — see the
   in-level-loop and "moving entity" sections above). Still missing in-level: the
@@ -825,5 +839,5 @@ Remaining Stage 3 milestones and optional polish:
 
 The menu is complete: **PLAY**, **HIGH-SCORE** (see "Stage 3 high-score screen"),
 **LEVEL** difficulty (see "Stage 3 difficulty selection"), and **PASSWORD** (see
-"Stage 3 password screen") are all implemented. Optional leftover: the between-worlds
-password **display** screen (`FUN_1000_0d9d`), a separate feature.
+"Stage 3 password screen") are all implemented. The between-worlds password display
+(`FUN_1000_0d9d`) is implemented too.

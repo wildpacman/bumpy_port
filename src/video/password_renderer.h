@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <span>
+#include <array>
 
 namespace bumpy {
 
@@ -17,5 +18,11 @@ namespace bumpy {
 void render_password(std::span<const std::uint8_t> score_vec,
                      std::span<const std::uint8_t> sprite_bank,
                      const PasswordScreenView& view, IndexedFramebuffer& target);
+
+// The between-world password display (FUN_1000_0d9d): black page, "YOUR PASSWORD" at y=80,
+// and the supplied 6-character password at y=112. SCORE.VEC supplies only the palette.
+void render_password_display(std::span<const std::uint8_t> score_vec,
+                             std::span<const std::uint8_t> sprite_bank,
+                             const std::array<char, 6>& code, IndexedFramebuffer& target);
 
 }  // namespace bumpy

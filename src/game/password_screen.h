@@ -52,4 +52,7 @@ private:
 // Match a 6-character code against the 8 baked passwords; returns the world (2..9) or 0.
 [[nodiscard]] int password_world(const std::array<char, 6>& code) noexcept;
 
+// Return the baked 6-character password for a world (2..9), or AAAAAA outside that range.
+[[nodiscard]] std::array<char, 6> password_code_for_world(int world) noexcept;
+
 }  // namespace bumpy

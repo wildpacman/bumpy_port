@@ -61,6 +61,18 @@ int password_world(const std::array<char, 6>& code) noexcept {
     return 0;
 }
 
+std::array<char, 6> password_code_for_world(int world) noexcept {
+    std::array<char, 6> code{{'A', 'A', 'A', 'A', 'A', 'A'}};
+    if (world < 2 || world > 9) {
+        return code;
+    }
+    const std::string_view password = kPasswords[world - 2];
+    for (std::size_t i = 0; i < code.size(); ++i) {
+        code[i] = password[i];
+    }
+    return code;
+}
+
 void PasswordScreen::enter() noexcept {
     view_ = {};
     matched_world_ = 0;
