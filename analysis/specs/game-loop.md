@@ -68,7 +68,7 @@ Runs once when a node is entered, before the frame loop:
 | `FUN_1000_4bc6(DAT_8562)` | load the moving-entity movement script for behavior id `8562` |
 | `FUN_1000_5181(1,0)` | init the player avatar object (state 1, dir 0; bounds 20×25) |
 | `FUN_1000_0604` | **apply the per-board 16-colour DEC palette** (see level-formats / screen-flow) |
-| `FUN_1000_328f` | wait for the screen-reveal "curtain" to finish |
+| `FUN_1000_328f` | **wait-for-keypress start pause**: `8244=0`, then spin `1dde` until any input arrives. The ball hangs at its entry position (12px above its cell, armed by `31de` but not yet stepped — `13df` runs only in the frame loop) and the whole board is frozen until the player presses a key/button; then the loop plays the drop in. (Earlier notes here mislabeled this "wait for the screen-reveal curtain"; it is the same spin-until-key as the outro `328f`.) |
 | `FUN_1000_05e7(1)` | one page-flip |
 | the `138c/13b2 … 19a1/19e4` pairs (twice) | prime both page buffers with the initial background so the first animated frame has something to restore over |
 

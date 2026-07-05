@@ -651,6 +651,30 @@ PASSWORD-display / PASSWORD-entry / GAME-OVER screens; the high-score table is t
   (`analysis/generated/highscores*.png`, `gameover.png`). Two pacing constants
   (`kGameOverFrames`, the editor repeat/blink cadence) are tuned by eye.
 
+## Stage 3 board-start pause (2026-07-05)
+
+The original's **"ready?" start pause** is now ported: on entering a board the ball
+hangs at its entry position (12px above its start cell) and the whole playfield is
+frozen — no ball/monster/spring/PRNG advance — until the player presses any
+key/button, then the entry-drop plays in and gameplay begins. Recovered from
+**`FUN_1000_328f`** (`DAT_8244 = 0; while (8244 == 0) FUN_1000_1dde();` — clear the
+input latch, spin reading input until any bit is set; no release edge, so a held key
+starts immediately). It is called at line 1198 of `FUN_1000_0c18`'s per-board setup,
+between the first-frame draw and the frame loop — a **peer of the screen-darken
+(`3467`)**, both of which the port already handles in the SDL shell.
+
+- Implemented in **`src/platform_sdl3/sdl_app`**: a `level_awaiting_start` flag set
+  when the board is created (`game.emplace`, = `0bf9`/`5181`) and cleared by the first
+  level-input bit; while set, `game->tick()` is skipped and `render_level()` draws the
+  hanging ball. The first input clears the flag and ticks that same frame (mirroring
+  `328f`'s instant return → the loop's first iteration). `LevelGame`, its 154 tests, and
+  the `--render-play` dumper are untouched (the dumper's frame 00 is exactly the frozen
+  hang frame). Verified: 154 tests pass; the pre-tick frame renders the ball hanging
+  above its cell on the composed world-1 board.
+- Spec fix: `analysis/specs/game-loop.md` had mislabeled `328f` as "wait for the
+  screen-reveal curtain"; corrected to the wait-for-keypress start pause (same
+  spin-until-key as the outro `328f`, which `screen-flow.md` already labels correctly).
+
 ## Next step
 
 **All 9 worlds are playable end-to-end** — launch, navigate the map, clear boards,

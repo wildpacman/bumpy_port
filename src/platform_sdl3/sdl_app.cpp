@@ -119,6 +119,12 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
     // The in-level game state machine, created when the level screen is entered for a
     // board and destroyed when it is left. nullopt off the playfield.
     std::optional<LevelGame> game;
+    // FUN_1000_328f: true while a freshly-created board is frozen waiting for the player's
+    // first key/button press. The ball hangs at its entry position (12px above its start
+    // cell); nothing advances until an input arrives. Set on board creation, cleared by the
+    // first input. Peer of the screen-darken in FUN_1000_0c18's per-board setup (see
+    // analysis/specs/game-loop.md), so it lives here in the shell, not in LevelGame::tick.
+    bool level_awaiting_start = false;
     auto live_entities = [&]() {
         // Build a BumEntities view of LevelGame's live grid so collected collectibles
         // (cleared in plane C) stop being drawn.
@@ -283,13 +289,28 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                         // Carry the run's lives/score into the board.
                         game.emplace(world.level().bum_entities(app.board_index()), app.lives(),
                                      app.score());
+                        level_awaiting_start = true;  // FUN_1000_328f: hold until first input
                     } else {
                         app.leave_level();  // no entity data for this board
                     }
                 }
                 if (game) {
-                    game->tick(
-                        LevelInput{input.left, input.right, input.up, input.down, input.confirm});
+                    const LevelInput li{input.left, input.right, input.up, input.down,
+                                        input.confirm};
+                    // FUN_1000_328f: the original sets up the board (ball hanging 12px above
+                    // its start cell), draws it, then spins reading input until any key/button
+                    // is pressed -- only then does the frame loop run and play the drop in.
+                    // While waiting, the whole board is frozen (no tick: ball, monster,
+                    // springs, PRNG all held) and render_level() below draws the hanging ball.
+                    // The first input begins play and ticks this same frame (328f returns the
+                    // instant 1dde sees input, then the loop's first iteration runs) -- no
+                    // release edge, matching the original (a held key starts immediately).
+                    if (level_awaiting_start && (li.left || li.right || li.up || li.down || li.fire)) {
+                        level_awaiting_start = false;
+                    }
+                    if (!level_awaiting_start) {
+                        game->tick(li);
+                    }
                     if (game->status() != LevelStatus::playing) {
                         // Draw the resolved terminal frame (ball sunk into the pit on a win,
                         // death pose on a loss) into `frame` *before* leaving the board, so the
