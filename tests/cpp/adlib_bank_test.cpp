@@ -28,3 +28,26 @@ TEST_CASE("BUMPY.BNK decodes the AdLib instrument bank") {
     // A missing name returns nullptr.
     REQUIRE(bank.by_name("nope__") == nullptr);
 }
+
+TEST_CASE("BUMPY.BNK name index honors the per-record used flag") {
+    const auto bank = bumpy::AdLibBank::load("BUMPY.BNK");
+    REQUIRE(bank.size() == 160);
+
+    // The header's used count is 129, and every used name record maps to a
+    // distinct instrument slot, so exactly 129 instruments carry a name.
+    std::size_t named = 0;
+    for (std::size_t i = 0; i < bank.size(); ++i) {
+        if (!bank.instrument(i).name.empty()) ++named;
+    }
+    REQUIRE(named == 129);
+
+    // Records 21, 22 and 51 are deleted (used==0) but still hold mangled names
+    // in the file ("-ol015_", "-ol016_", "-ol048_"). They must stay unnamed and
+    // must not be resolvable by their mangled name.
+    REQUIRE(bank.instrument(21).name.empty());
+    REQUIRE(bank.instrument(22).name.empty());
+    REQUIRE(bank.instrument(51).name.empty());
+    REQUIRE(bank.by_name("-ol015_") == nullptr);
+    REQUIRE(bank.by_name("-ol016_") == nullptr);
+    REQUIRE(bank.by_name("-ol048_") == nullptr);
+}

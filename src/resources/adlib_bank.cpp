@@ -42,10 +42,12 @@ AdLibBank AdLibBank::from_bytes(std::vector<std::uint8_t> b) {
     for (std::size_t i = 0; i < total; ++i) {
         const std::uint8_t* n = &b[name_off + i * 12];
         const std::uint16_t idx = u16(n);
+        const std::uint8_t used = n[2];  // deleted records keep a mangled name but used==0
+        if (used == 0 || idx >= total) continue;
         const char* name = reinterpret_cast<const char*>(n + 3);
         std::size_t len = 0;
         while (len < 9 && name[len] != '\0') ++len;
-        if (idx < total) bank.instruments_[idx].name.assign(name, len);
+        bank.instruments_[idx].name.assign(name, len);
     }
     return bank;
 }
