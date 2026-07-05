@@ -240,16 +240,48 @@ TEST_CASE("App can start on a configured world") {
     REQUIRE(app.pending_world() == 0);
 }
 
-TEST_CASE("clearing the final world returns to the menu and resets the run") {
+TEST_CASE("clearing the final world shows the ending screen instead of the menu") {
     bumpy::App app(1, 9);  // a one-board world 9
     enter_level(app);
 
     app.finish_level(bumpy::LevelStatus::won, 4, 12345);
 
+    REQUIRE(app.screen() == bumpy::Screen::outro);  // DESSFIN.VEC ending (FUN_1000_3ed4)
+}
+
+TEST_CASE("the ending screen waits for release, then a key resets the run and returns to the menu") {
+    bumpy::App app(1, 9);  // a one-board world 9
+    enter_level(app);
+    app.finish_level(bumpy::LevelStatus::won, 4, 12345);
+    REQUIRE(app.screen() == bumpy::Screen::outro);
+
+    // The key that won the board is still held: it must not dismiss the ending (FUN_1000_328f
+    // clears the latch and waits for a *fresh* press).
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::outro);
+
+    // Release, then a fresh press dismisses to the menu and resets the run (DAT_79b2 = 1).
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
     REQUIRE(app.screen() == bumpy::Screen::menu);
     REQUIRE(app.pending_world() == 0);  // start world == 9 stays loaded; no reload
     REQUIRE(app.score() == 0);          // run reset
     REQUIRE(app.lives() == 5);
+}
+
+TEST_CASE("dismissing the ending screen with Escape does not also quit the menu") {
+    bumpy::App app(1, 9);  // a one-board world 9
+    enter_level(app);
+    app.finish_level(bumpy::LevelStatus::won, 5, 1);
+    REQUIRE(app.screen() == bumpy::Screen::outro);
+
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);  // release winning key
+    // A fresh Escape dismisses the ending to the menu -- and must not carry through to a quit.
+    REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::menu);
+    // Still holding Escape: guarded until release (no bounce into a menu quit).
+    REQUIRE(app.update(bumpy::MenuInput{.cancel = true}) == bumpy::AppOutcome::running);
+    REQUIRE(app.screen() == bumpy::Screen::menu);
 }
 
 TEST_CASE("a game over after advancing requests a reload of the start world") {

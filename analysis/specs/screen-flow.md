@@ -104,6 +104,40 @@ score (`a0d4/a0d6`), lives (`791a`), and per-node completion.
   `DAT_791a--`. The node is **not** marked, so a failed board is replayable from
   the map. `'#'` collectible → `DAT_791a++` (extra life). Lives init `5` (`2d14`).
 
+### Outro — `FUN_1000_3ed4` (Confirmed from disassembly)
+
+After world 9 is cleared, `DAT_79b2++` makes the world counter `10` (`'\n'`) and the
+main loop (`0c18` @ line 1254) calls `FUN_1000_3ed4` — the ending screen — before
+falling back to the menu screen (`FUN_1000_0d9d`). The routine is a single static
+credits image, not an animated cutscene:
+
+1. Loads **`DESSFIN.VEC`** (resource-table index `0x11`, `FUN_1000_736f(0x11,4)` →
+   `745e` → `7b5a` = the VEC decoder) into the screen buffer `7926:7928`. It is a
+   **screen-format** VEC (99-byte header + four 8000-byte plane-sequential planes,
+   same as `TITRE`/`MONDE?`) — the "Bumpy sits" credits page (AUTEUR JF STREIFE /
+   PROGRAMMATION M SPADA / MUSIQUE M WINOGRADOFF / GRAPHISME C PERROTIN, I MAURY,
+   P JARRY). `DESSFIN.VEC` is a supplied original (17257 bytes).
+2. `if (DAT_541d == 1)` copies **16 bytes from `DS:0x72e`** into the decoded buffer at
+   `+0x23` — a non-VGA (EGA-style) 16-register remap. The image's **own embedded VGA
+   palette** (offset 51) already renders it correctly, so the VGA path (`541d != 1`
+   for our purposes) needs none of this; the port ignores it.
+3. `FUN_1000_3467` — the edge-to-centre darken over the *outgoing* screen (the won
+   board) — then a full-screen blit of the image (descriptor at `_DAT_0574`: source =
+   buffer `+99`, `0x14`×`0x19` = 20×25 char cells = 320×200) via `FUN_1000_80bc`,
+   committed by `9864`.
+4. `FUN_1000_328f` — **waits for a keypress**: clears the input latch (`DAT_8244 = 0`)
+   then spins `FUN_1000_1dde` until any key sets it non-zero.
+5. `DAT_79b2 = 1` (world back to 1) and `DAT_928d = 1` (**quit → main loop returns to
+   the menu**). World 1's resources reload on the next `start`.
+
+Port: `App` gains `Screen::outro`. Clearing the last board of world `kWorldCount` (9)
+routes there instead of the menu; the shell draws `DESSFIN.VEC` via the shared
+`screen_image` helpers (embedded palette), and the level→outro screen change plays the
+same edge-to-centre darken (the `3467` call above) for free. The outro branch in
+`App::update` mirrors `328f`: it requires the key that won the board to be released,
+then a fresh press runs `reset_run()` (world→start, reload if advanced) and returns to
+the menu. `--render-outro DESSFIN.VEC out.bmp` dumps the screen through the shell path.
+
 ## Screen-change darken — `FUN_1000_3467` (Confirmed from disassembly)
 
 Called at the start of the menu (`35a5`), world map (`3852`), score backdrop (`2fac`)

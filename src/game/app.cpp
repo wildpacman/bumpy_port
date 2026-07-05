@@ -47,6 +47,25 @@ bool App::all_boards_cleared() const noexcept {
 }
 
 AppOutcome App::update(const MenuInput& input) noexcept {
+    // The outro (FUN_1000_3ed4 -> FUN_1000_328f) is a static ending screen that blocks on a
+    // keypress. Mirror 328f, which clears the input latch (DAT_8244 = 0) then waits for any
+    // key: require the keys held on entry to be released first, then the next fresh press
+    // resets the run (DAT_79b2 = 1) and returns to the menu (DAT_928d = 1). Handled before
+    // the cancel-edge tracking below so a held Escape that won the last board cannot bounce
+    // straight through the menu into a quit.
+    if (screen_ == Screen::outro) {
+        const bool any_key = input.up || input.down || input.left || input.right ||
+                             input.confirm || input.cancel;
+        if (!any_key) {
+            waiting_for_release_ = false;  // latch cleared; a fresh press now dismisses
+        } else if (!waiting_for_release_) {
+            reset_run();                  // DAT_79b2 = 1 (reload the start world if advanced)
+            screen_ = Screen::menu;       // DAT_928d = 1 -> main loop returns to the menu
+            waiting_for_release_ = true;  // guard the menu's cancel until the key releases
+        }
+        return AppOutcome::running;
+    }
+
     // App owns the cancel key on every screen so a cancel that causes a transition
     // (e.g. map -> menu) cannot bounce into the next screen's cancel. confirm is owned
     // per-screen: Menu debounces it on the menu, WorldMap on the map.
@@ -121,10 +140,11 @@ void App::finish_level(LevelStatus status, std::uint8_t lives, std::uint32_t sco
                 screen_ = Screen::map;
                 waiting_for_release_ = true;
             } else {
-                // World 9 cleared: game complete. The outro (FUN_1000_3ed4) is deferred;
-                // reset the run and return to the menu.
-                reset_run();
-                screen_ = Screen::menu;
+                // World 9 cleared: the game is complete. Show the DESSFIN.VEC ending screen
+                // (FUN_1000_3ed4); the run is reset and the menu restored only once the
+                // player dismisses it with a keypress (see the outro branch in update()).
+                screen_ = Screen::outro;
+                waiting_for_release_ = true;  // ignore the key that won the board until released
             }
         } else {
             screen_ = Screen::map;        // pick the next node

@@ -17,6 +17,7 @@
 #include "video/hud.h"
 #include "video/map_renderer.h"
 #include "video/menu_renderer.h"
+#include "video/screen_image.h"
 #include "video/screen_transition.h"
 
 #include <algorithm>
@@ -296,6 +297,23 @@ int render_pav(const std::filesystem::path& pav_path, const std::string& pal_pat
     return 0;
 }
 
+// Render the post-world-9 ending screen (DESSFIN.VEC, drawn by FUN_1000_3ed4) to a BMP,
+// through the exact shared screen_image helpers the SDL shell uses for Screen::outro, for
+// by-eye confirmation of the outro render path.
+int render_outro_to_bmp(const std::filesystem::path& in_path, const std::filesystem::path& out_path) {
+    const auto resource = bumpy::decode_vec_resource(in_path);
+    const auto screen = resource.decoded_bytes();
+    if (!bumpy::is_screen_image(screen)) {
+        throw std::runtime_error("decoded VEC is not a 320x200 screen: " + in_path.string());
+    }
+    bumpy::IndexedFramebuffer frame(320, 200);
+    bumpy::apply_screen_image_palette(screen, frame);
+    bumpy::draw_screen_image(screen, frame);
+    write_24bit_bmp(out_path, frame);
+    std::cout << "wrote " << out_path.string() << '\n';
+    return 0;
+}
+
 // Compose a static playfield board (MONDE backdrop + D?.PAV objects on the 16x16
 // grid) and dump it to a BMP for by-eye comparison with the original.
 int render_board_to_bmp(const std::filesystem::path& asset_root, int level_number,
@@ -519,13 +537,17 @@ int run_sdl_menu(const std::filesystem::path& asset_root, int start_world) {
     auto world = bumpy::WorldResources::load(asset_root, start_world);
     const auto sprite_bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
     const auto font = bumpy::Font::load(asset_root / "DDFNT2.CAR");
+    // The post-world-9 ending screen (FUN_1000_3ed4). World-independent, so decode it once;
+    // decoded_bytes() is a view into this resource, which must outlive run().
+    const auto outro = bumpy::decode_vec_resource(asset_root / "DESSFIN.VEC");
 
     bumpy::App app(world.board_count(), start_world);
     bumpy::IndexedFramebuffer frame(320, 200);
     renderer.render(app.menu().view(), frame);
 
     bumpy::SdlApp sdl;
-    return sdl.run(app, renderer, asset_root, std::move(world), sprite_bank.bytes(), font, frame);
+    return sdl.run(app, renderer, asset_root, std::move(world), sprite_bank.bytes(), font,
+                   outro.decoded_bytes(), frame);
 }
 
 }  // namespace
@@ -547,6 +569,10 @@ int main(int argc, char* argv[]) {
         }
         if (argc == 4 && std::string_view(argv[1]) == "--render-screen") {
             return render_screen_vec(argv[2], argv[3]);
+        }
+        if (argc == 4 && std::string_view(argv[1]) == "--render-outro") {
+            // --render-outro <DESSFIN.VEC> <out.bmp>: the ending screen via the shell's path.
+            return render_outro_to_bmp(argv[2], argv[3]);
         }
         if ((argc == 5 || argc == 6) && std::string_view(argv[1]) == "--render-map") {
             // --render-map <world> <MONDE.VEC> <out.bmp> [cleared_node_count]

@@ -1,7 +1,7 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-07-03 (worlds 2–9 element
-parity: nests, block-top riding, picture puzzle, entry drop).
+Source of truth for new sessions. Last updated: 2026-07-05 (world-9 outro / ending
+screen `DESSFIN.VEC`, `FUN_1000_3ed4`).
 
 ## Goal
 
@@ -440,6 +440,7 @@ cmake --build --preset windows-debug
 & build/windows-debug/Debug/bumpy_port.exe --render-play 1 MONDE1.VEC 0 leftfire play     # drive board 0 with an input (none/up/down/left/right/fire/leftfire), dump playNN.bmp + ball/spring log
 & build/windows-debug/Debug/bumpy_port.exe --render-jump 6 MONDE1.VEC jump_              # fire-to-enter cloud-jump animation on a node, dump jump_NN.bmp
 & build/windows-debug/Debug/bumpy_port.exe --render-transition MONDE1.VEC trans_         # edge-to-centre screen-change darken, dump trans_NN.bmp (00 = un-darkened)
+& build/windows-debug/Debug/bumpy_port.exe --render-outro DESSFIN.VEC outro.bmp          # post-world-9 ending screen (DESSFIN.VEC) via the shell render path
 ```
 
 In the window: confirm "start" on the menu → world map; arrows move Bumpy between
@@ -528,8 +529,8 @@ All 9 worlds are now playable in sequence. The work spanned five tasks:
   Cross-check `board_count() == world_node_count(w)` PASSES for all 9 worlds
   (132 tests, 72725 assertions).
 
-**World 10 (`FUN_1000_3ed4` outro) is still stubbed → menu.** The outro sequence
-is deferred to a future task.
+**World 10 (`FUN_1000_3ed4` outro) is now implemented** — see "Stage 3 world-9
+outro" below.
 
 ## Stage 3 worlds 2–9 element parity (2026-07-03)
 
@@ -585,10 +586,35 @@ Two follow-up fixes from user testing on world 2 (the cloud board 11):
   (`--render-play` pixel check); the map-cross/marker path is unaffected
   (symmetric (15,15)).
 
+## Stage 3 world-9 outro / ending screen (2026-07-05)
+
+Clearing world 9 now plays the original's **ending screen** instead of dropping
+straight to the menu. Recovered from **`FUN_1000_3ed4`** (the `DAT_79b2 == 10` branch of
+the main loop): it loads **`DESSFIN.VEC`** (resource index `0x11`, a screen-format VEC —
+the "Bumpy sits" credits page: AUTEUR JF STREIFE / PROGRAMMATION M SPADA / MUSIQUE
+M WINOGRADOFF / GRAPHISME C PERROTIN, I MAURY, P JARRY), plays the edge-to-centre darken
+over the won board, blits the full-screen image, **waits for a keypress** (`FUN_1000_328f`
+= clear latch + spin until any key), then `DAT_79b2 = 1` + `DAT_928d = 1` returns to the
+menu. The image renders from its **own embedded VGA palette** (offset 51); the `DAT_541d`
+`DS:0x72e` 16-byte patch is a non-VGA remap the port ignores. Full recovery:
+`analysis/specs/screen-flow.md` ("Outro — FUN_1000_3ed4").
+
+- **`src/game/app`** gains `Screen::outro`. `finish_level` routes the last cleared board
+  of world `kWorldCount` (9) there instead of the menu; the outro branch in `update()`
+  mirrors `328f` (release-then-fresh-press), then `reset_run()` + menu.
+- **`src/platform_sdl3/sdl_app`** draws the outro via the shared `screen_image` helpers
+  (`apply_screen_image_palette` + `draw_screen_image`); the level→outro screen change plays
+  the existing edge-to-centre darken (the `3467` call inside `3ed4`) for free. `main.cpp`
+  decodes `DESSFIN.VEC` once (world-independent) and passes it into `run()`.
+- **`--render-outro DESSFIN.VEC out.bmp`** dumps the ending screen through the exact shell
+  render path. **138 C++ tests pass** (3 outro cases: entry, release-then-dismiss, the
+  Escape-no-bounce guard); originals verify clean; verified by eye.
+
 ## Next step
 
-**All 9 worlds are playable** in sequence — launch, navigate the map, clear boards,
-advance worlds 1→2→…→9→menu. Use `--start-world N` to jump to any world for testing.
+**All 9 worlds are playable end-to-end** — launch, navigate the map, clear boards,
+advance worlds 1→2→…→9, then the **ending screen** and back to the menu. Use
+`--start-world N` to jump to any world for testing.
 
 Remaining Stage 3 milestones and optional polish:
 
@@ -601,8 +627,6 @@ Remaining Stage 3 milestones and optional polish:
 - **In-level score/lives HUD**: the in-level HUD is intentionally absent (the
   original's `0816` call is gated on an event flag; normal play shows no
   persistent in-level score). Low priority.
-- **World 10 outro** (`FUN_1000_3ed4`): the post-world-9 cutscene is currently
-  stubbed to menu. Deferred.
 - **Compressed sprite frames** (flags `0x40`/`0x20`, `1cec:2ded`): fully recovered
   from disassembly but unused by the supplied assets — `BUMSPJEU` is all
   uncompressed. Deferred until needed.
@@ -622,7 +646,8 @@ Remaining Stage 3 milestones and optional polish:
   the tile bump/spring animations + the **moving entity / enemy AI + death** — see the
   in-level-loop and "moving entity" sections above). Still missing in-level: the
   in-level score/lives HUD (low priority, see above).
-- World 10 (`FUN_1000_3ed4`) outro is stubbed → menu.
+- World-9 outro (`FUN_1000_3ed4`, `DESSFIN.VEC` ending screen) is **implemented** —
+  see "Stage 3 world-9 outro" above.
 
 Optional menu polish: implement compressed sprites + per-glyph text to bring up
 the HIGH-SCORE / PASSWORD sub-screens (`FUN_1000_0d9d` / `0f7a` / `11eb`).

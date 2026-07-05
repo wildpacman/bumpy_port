@@ -18,6 +18,7 @@ enum class Screen {
     menu,
     map,
     level,
+    outro,  // DESSFIN.VEC ending screen after world 9 (FUN_1000_3ed4); any key -> menu
 };
 
 // What the platform shell should do after an App update.
@@ -38,6 +39,7 @@ enum class AppOutcome {
 //   map   --fire (confirm)----> level (board = selected node - 1)
 //   map   --cancel-----------> menu
 //   level --cancel-----------> menu
+//   level --win last world 9 board--> outro (DESSFIN.VEC ending); any key --> menu
 //
 // The App is the persistent run: score, lives, and per-board completion carry across
 // boards (the world map is the hub). Starting a game from the menu reloads the world

@@ -5,6 +5,7 @@
 #include "video/board_renderer.h"
 #include "video/hud.h"
 #include "video/map_renderer.h"
+#include "video/screen_image.h"
 #include "video/screen_transition.h"
 
 #include <algorithm>
@@ -109,7 +110,7 @@ SdlApp::~SdlApp() {
 
 int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesystem::path& asset_root,
                 WorldResources world, std::span<const std::uint8_t> sprite_bank, const Font& font,
-                IndexedFramebuffer& frame) {
+                std::span<const std::uint8_t> outro_screen, IndexedFramebuffer& frame) {
     bool running = true;
     MenuInput input{};
 
@@ -326,6 +327,14 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                        app.cleared_boards());
             draw_lives(sprite_bank, app.lives(), frame);  // lives row HUD (FUN_1000_6130)
             draw_score(font, app.score(), kMapScoreX, kMapScoreBaselineY, kScoreColor, frame);
+        } else if (app.screen() == Screen::outro) {
+            // The DESSFIN.VEC ending screen (FUN_1000_3ed4): a full-screen image drawn from
+            // its own embedded palette. The screen-change darken above already wiped in the
+            // outgoing board (the original's FUN_1000_3467 call inside 3ed4).
+            if (is_screen_image(outro_screen)) {
+                apply_screen_image_palette(outro_screen, frame);
+                draw_screen_image(outro_screen, frame);
+            }
         } else {
             render_level();
         }
