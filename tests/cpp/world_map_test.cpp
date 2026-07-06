@@ -139,6 +139,11 @@ TEST_CASE("fire plays the cloud-jump animation before selecting the board") {
     REQUIRE(map.view().avatar_frame == 0);        // pre-roll frame 0
     REQUIRE(map.view().avatar_offset_y == 0);
 
+    // FUN_1000_3cf7 also plays the launch sound (screen-flow.md), speaker id 0x03.
+    const auto launch_sfx = map.take_sfx_events();
+    REQUIRE(std::find(launch_sfx.begin(), launch_sfx.end(), std::uint8_t{0x03}) !=
+            launch_sfx.end());
+
     // The animation is purely vertical and bounces up before arcing down: the avatar
     // reaches its highest point (offset -8) and ends below the start (offset +8).
     int min_offset = 0;

@@ -3,6 +3,7 @@
 #include "game/world_graphs.h"
 
 #include <array>
+#include <utility>
 
 namespace bumpy {
 namespace {
@@ -44,6 +45,12 @@ WorldMap::WorldMap(int world) {
     view_.world = world;
     move_to(1);
     waiting_for_release_ = false;
+}
+
+std::vector<std::uint8_t> WorldMap::take_sfx_events() {
+    std::vector<std::uint8_t> events = std::move(pending_sfx_);
+    pending_sfx_.clear();  // guarantee the moved-from queue is empty regardless of stdlib
+    return events;
 }
 
 void WorldMap::enter() noexcept {
@@ -92,7 +99,9 @@ void WorldMap::start_slide(int node) noexcept {
 void WorldMap::start_jump() noexcept {
     // FUN_1000_3cf7: fire on an open node plays the cloud-jump before the board loads.
     // Apply the first step on the fire tick (the original pre-draws the cloud and the
-    // first pose immediately) so there is no frame of stale resting pose.
+    // first pose immediately) so there is no frame of stale resting pose. 3cf7 also
+    // plays the launch sound (screen-flow.md: "plays a launch sound (FUN_1000_6e11)").
+    emit_sfx(0x03);
     jumping_ = true;
     view_.cloud_visible = true;
     view_.avatar_frame = kJump[0].frame;

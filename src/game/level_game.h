@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace bumpy {
 
@@ -36,9 +37,12 @@ enum class LevelStatus {
 // state machine (analysis/specs/game-loop.md) over a mutable 3-plane grid, plus
 // collect/score/lives/win. One tick() == one 70 Hz frame. Faithfully transcribed
 // from FUN_1000_0c18's playfield body and the FUN_1000_1d26 player tick; method
-// names keep the original FUN_1000_* address. Sound and pure-cosmetic sprite work
-// are no-ops. Entity collision/AI is out of scope (board 0 / world-1 node 1 has no
-// entity).
+// names keep the original FUN_1000_* address. Every recovered FUN_1000_6e11(id)
+// sound-trigger site pushes the speaker-profile SFX id to a queue (emit_sfx /
+// take_sfx_events) instead of calling SDL directly, keeping this class SDL-free;
+// the platform shell drains the queue into AudioEngine::play_sfx after each
+// tick(). Pure-cosmetic sprite work is still a no-op. Entity collision/AI is out
+// of scope (board 0 / world-1 node 1 has no entity).
 class LevelGame {
 public:
     // Start a board from its decoded 194-byte BUM record, carrying lives/score.
@@ -83,6 +87,11 @@ public:
     // once. Fills `out` and returns the count. A frame_index of kAnimHiddenFrame is
     // a blink-off step (draw nothing). See object_anim.h / FUN_1000_14e4/15a1.
     std::size_t object_anims(std::array<ObjectAnimSprite, 7>& out) const;
+
+    // Drain the sound events queued since the last call (each recovered FUN_1000_6e11
+    // site's speaker-profile SFX id). Moves + clears the internal queue: call once per
+    // tick() from the platform shell and feed each id to AudioEngine::play_sfx.
+    std::vector<std::uint8_t> take_sfx_events();
 
 private:
     // --- mirrored DS:0x* globals (kept named for 1:1 auditability) ---
@@ -168,6 +177,14 @@ private:
     std::uint8_t d_856d{};   // win
     std::uint8_t d_9d30{};   // death
     LevelStatus status_{LevelStatus::playing};
+
+    // Sound events queued this tick (each recovered FUN_1000_6e11(id) site), drained by
+    // take_sfx_events(). emit_sfx(0) is a no-op -- the tile/table lookups at the variable
+    // sites (e.g. kSfxIdleRest[tile]) use 0 to mean "silent".
+    std::vector<std::uint8_t> pending_sfx_;
+    void emit_sfx(std::uint8_t id) {
+        if (id) pending_sfx_.push_back(id);
+    }
 
     // --- core loop ---
     std::uint16_t prng_next();                  // FUN_1000_93b1

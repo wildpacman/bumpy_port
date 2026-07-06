@@ -293,6 +293,11 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
         if (app.update(input) == AppOutcome::quit) {
             running = false;
         }
+        // Drain the world-map's queued sound events (currently just the cloud-jump
+        // launch, FUN_1000_3cf7) every frame -- cheap no-op when nothing was queued.
+        for (std::uint8_t id : app.world_map().take_sfx_events()) {
+            audio.play_sfx(id);
+        }
         if (!running) {
             break;
         }
@@ -344,6 +349,12 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                     if (!level_awaiting_start) {
                         game->tick(li);
                         level_ticked = true;
+                        // Drain this tick's queued sound events (every recovered FUN_1000_6e11
+                        // site) into the audible engine. Never fires while level_awaiting_start
+                        // holds -- the board-start pause already gates tick() above.
+                        for (std::uint8_t id : game->take_sfx_events()) {
+                            audio.play_sfx(id);
+                        }
                         // FUN_1000_1349: this frame waits 1 or 2 retraces per the difficulty
                         // mask, so the board runs slower on EASY (2) and faster on HARD (1).
                         level_period = static_cast<Uint64>(level_pacer.step()) * period_full;

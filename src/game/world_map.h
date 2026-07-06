@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace bumpy {
 
@@ -93,6 +94,11 @@ public:
     // True while the fire-to-enter cloud-jump animation is playing (input ignored too).
     [[nodiscard]] bool is_jumping() const noexcept { return jumping_; }
 
+    // Drain the sound events queued since the last call (the recovered FUN_1000_6e11
+    // launch trigger in FUN_1000_3cf7). Moves + clears the internal queue: call once
+    // per update() from the platform shell and feed each id to AudioEngine::play_sfx.
+    std::vector<std::uint8_t> take_sfx_events();
+
 private:
     void move_to(int node) noexcept;     // snap current node + avatar position
     void start_slide(int node) noexcept; // set target node; begin the glide
@@ -107,6 +113,13 @@ private:
     int slide_to_y_{};
     bool jumping_{false};
     std::size_t jump_step_{0};  // index into the baked jump animation table
+
+    // Sound events queued this update (the cloud-jump launch trigger), drained by
+    // take_sfx_events(). emit_sfx(0) is a no-op.
+    std::vector<std::uint8_t> pending_sfx_;
+    void emit_sfx(std::uint8_t id) {
+        if (id) pending_sfx_.push_back(id);
+    }
 };
 
 // The baked world-1 node table (index 0 is an unused sentinel; nodes 1..15).

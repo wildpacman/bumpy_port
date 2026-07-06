@@ -93,6 +93,31 @@ TEST_CASE("collecting the last gem opens the exit portal but does not win") {
     CHECK(g.status() == LevelStatus::playing);  // ... but the exit is not reached yet
 }
 
+TEST_CASE("collecting items emits the pickup SFX ids: ordinary then portal-open") {
+    // FUN_1000_6c14 has two collect outcomes with distinct speaker SFX ids: an ordinary
+    // pickup (id 0x0e) when required collectibles remain, and opening the exit portal
+    // (id 0x0b) on the LAST one. Two gems in a row (both rolled over holding LEFT) hit
+    // both branches in one deterministic run: cell 0x13 first (a0cf 2->1, ordinary),
+    // then cell 0x12 (a0cf 1->0, portal-open).
+    BumEntities board = lane_board(0x14, /*required=*/2);
+    board.bytes[0x60 + 0x13] = 0x1a;  // first gem
+    board.bytes[0x60 + 0x12] = 0x1a;  // second (last required) gem
+    LevelGame g(board);
+
+    bool saw_ordinary = false;
+    bool saw_portal_open = false;
+    for (int i = 0; i < 60 && !(saw_ordinary && saw_portal_open); ++i) {
+        g.tick(left);
+        for (std::uint8_t id : g.take_sfx_events()) {
+            if (id == 0x0e) saw_ordinary = true;
+            if (id == 0x0b) saw_portal_open = true;
+        }
+    }
+    CHECK(g.collectibles_left() == 0);  // both gems taken (sanity: the scenario actually ran)
+    CHECK(saw_ordinary);                // the first (non-last) collect emitted 0x0e
+    CHECK(saw_portal_open);             // the last-required collect emitted 0x0b
+}
+
 TEST_CASE("rolling into the opened portal clears the board") {
     // The full exit: collect the last gem (the pit opens one cell further left), keep
     // rolling into the pit, fall in (tile 0x20 -> reaction 0x30 -> state 0x30 descent
@@ -379,12 +404,17 @@ TEST_CASE("touching the monster kills the ball and costs a life") {
     REQUIRE(g.lives() == 5);
 
     bool died = false;
+    bool saw_death_sfx = false;
     for (int i = 0; i < 400 && !died; ++i) {
         g.tick(none);
+        for (std::uint8_t id : g.take_sfx_events()) {
+            if (id == 0x03) saw_death_sfx = true;  // FUN_1000_50fb's monster-death sfx
+        }
         died = (g.status() == LevelStatus::dead);
     }
     CHECK(died);
     CHECK(g.lives() == 4);
+    CHECK(saw_death_sfx);
 }
 
 TEST_CASE("a monster in another row never reaches an idle ball") {
@@ -485,11 +515,16 @@ TEST_CASE("hopping onto a cushion block (plane-B 0x0d) sits and bobs; DOWN rolls
         g.tick(left);  // LEFT (action bit 0x04) = hop up-left (2634)
     }
     bool sat = false;
+    bool saw_land_sfx = false;
     for (int i = 0; i < 40 && !sat; ++i) {
         g.tick(none);
+        for (std::uint8_t id : g.take_sfx_events()) {
+            if (id == 0x0f) saw_land_sfx = true;  // FUN_1000_1e5e's block-top landing sfx
+        }
         sat = g.player_state() == 0x24;
     }
     REQUIRE(sat);
+    CHECK(saw_land_sfx);
 
     LevelInput down_in{};
     down_in.down = true;  // DOWN (action bit 0x02) rolls off (FUN_1000_1f7f)

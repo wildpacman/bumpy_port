@@ -64,6 +64,9 @@ public:
     [[nodiscard]] Screen screen() const noexcept { return screen_; }
     [[nodiscard]] const Menu& menu() const noexcept { return menu_; }
     [[nodiscard]] const WorldMap& world_map() const noexcept { return world_map_; }
+    // Non-const overload so the shell can drain the cloud-jump launch SFX queue
+    // (WorldMap::take_sfx_events) after each app.update().
+    [[nodiscard]] WorldMap& world_map() noexcept { return world_map_; }
     [[nodiscard]] std::size_t board_index() const noexcept { return board_index_; }
     [[nodiscard]] std::size_t board_count() const noexcept { return board_count_; }
     [[nodiscard]] int world() const noexcept { return world_; }
