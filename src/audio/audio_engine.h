@@ -15,8 +15,9 @@ namespace bumpy {
 // into one mono output stream at the shared engine sample rate. `start_music`/
 // `stop_music`/`play_sfx` are expected to be called from the game thread while
 // `render` runs on the audio thread; a mutex guards the shared music-enabled
-// flag + voice pool, held only briefly on either side (construct/destroy the
-// (heavier) MidiOplPlayer itself happens outside the lock where possible).
+// flag + voice pool, held only briefly on either side (the (heavier)
+// MidiOplPlayer itself is constructed under the lock, in `start_music`, since
+// that is what keeps it from racing a concurrent `render`).
 class AudioEngine {
 public:
     static constexpr std::uint32_t kSampleRate = 49715;
@@ -55,5 +56,8 @@ private:
     std::array<std::uint64_t, kVoiceCount> voice_age_{};
     std::uint64_t age_counter_ = 0;
 };
+
+static_assert(AudioEngine::kSampleRate == SpeakerVoice::kSampleRate,
+              "SFX and engine sample rates must match");
 
 }  // namespace bumpy

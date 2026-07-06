@@ -1,6 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
 #include "audio/opl2.h"
-#include <cmath>
 
 TEST_CASE("Opl2 produces a tone after a minimal key-on") {
     bumpy::Opl2 opl;

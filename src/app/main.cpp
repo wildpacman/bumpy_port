@@ -42,6 +42,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -228,7 +229,9 @@ int dump_sfx_to_wav(int preset_id, const std::filesystem::path& out_path) {
     bumpy::SpeakerVoice voice;
     voice.start(preset);
     const std::uint32_t rate = bumpy::SpeakerVoice::kSampleRate;
-    // 1 second is far more than any recovered sweep preset lasts (see speaker_sfx.h).
+    // 1 second covers most recovered sweep presets, but the long ones (steps=400:
+    // 0x03/0x0f) run ~10s at the current placeholder kSfxIsrBaseHz (see speaker_sfx.h)
+    // and are truncated by this dump.
     const auto frames = static_cast<std::size_t>(rate);
 
     std::vector<float> buf(frames, 0.0f);
@@ -727,8 +730,18 @@ int run_sdl_menu(const std::filesystem::path& asset_root, int start_world) {
     bumpy::SdlApp sdl;
     // Opens the default playback device and starts pulling from audio_engine.render() on
     // SDL's audio thread. Constructed around the whole run loop so the stream lives exactly
-    // as long as the window does.
-    bumpy::SdlAudio sdl_audio(audio_engine);
+    // as long as the window does. The original game supports a "no sound" mode, so a
+    // missing/locked/headless audio device must degrade to muted, not abort the game: if
+    // construction throws, log a warning and keep `sdl_audio` empty. AudioEngine's
+    // start_music()/stop_music()/play_sfx() calls remain safe to call with no SdlAudio
+    // pulling from them -- they just accumulate state nobody renders -- so the run loop
+    // below needs no changes for the muted path.
+    std::optional<bumpy::SdlAudio> sdl_audio;
+    try {
+        sdl_audio.emplace(audio_engine);
+    } catch (const std::exception& error) {
+        std::cerr << "warning: could not open audio device, running muted: " << error.what() << '\n';
+    }
 
     return sdl.run(app, renderer, asset_root, std::move(world), sprite_bank.bytes(), font,
                    resources.splash.decoded_bytes(), outro.decoded_bytes(), score_screen, frame,

@@ -176,9 +176,10 @@ files.
 
 ### `platform_sdl3`
 
-- **`sdl_audio`** — opens an SDL3 audio stream (44.1 kHz stereo) and pulls
-  `audio_engine.render` in the stream callback. Bridges game sound-events →
-  `play_sfx` and `Screen::splash` enter/leave → `start_music`/`stop_music`.
+- **`sdl_audio`** — opens an SDL3 audio stream (mono float32 at 49715 Hz; SDL
+  resamples to the device) and pulls `audio_engine.render` in the stream
+  callback. Bridges game sound-events → `play_sfx` and `Screen::splash`
+  enter/leave → `start_music`/`stop_music`.
 
 ### Game integration (the boundary that keeps logic pure)
 

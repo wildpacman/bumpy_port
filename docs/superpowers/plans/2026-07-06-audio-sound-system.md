@@ -16,7 +16,7 @@
 - Decoder factory pattern (match `src/resources/font.h`): `static X load(const std::filesystem::path&)` + `static X from_bytes(std::vector<std::uint8_t>)`.
 - Tests are Catch2 (`#include <catch2/catch_test_macros.hpp>`, `TEST_CASE`/`REQUIRE`), run from the project root, and load originals by bare filename. New test files must be added to `bumpy_tests` in `CMakeLists.txt`.
 - Originals are read-only: never modify `BUMPY.MID`/`BUMPY.BNK`/etc.; after any reference run verify with `python tools/assets/manifest.py verify`. Do not commit generated audio; generated `*.gen.cpp` tables ARE committed (matches the project's other `dump_*` outputs).
-- Audio engine internal sample rate = **49716 Hz** (the OPL2 native rate, clock 3'579'545 / 72); SDL3's `SDL_AudioStream` resamples to the device. Output is mono `float` in `[-1, 1]`.
+- Audio engine internal sample rate = **49715 Hz** (the OPL2 native rate, clock 3'579'545 / 72); SDL3's `SDL_AudioStream` resamples to the device. Output is mono `float` in `[-1, 1]`.
 - Build/test commands (Windows):
   - Configure/build: `cmake --build --preset windows-debug`
   - Run tests: `& build/windows-debug/Debug/bumpy_tests.exe`
@@ -495,7 +495,7 @@ git commit -m "feat(audio): dump SFX presets + tile trigger tables"
 - Modify: `CMakeLists.txt` (FetchContent ymfm; compile ymfm sources into `bumpy_core`; add sources + test)
 
 **Interfaces:**
-- Produces: `class Opl2 { public: Opl2(); void write(std::uint8_t reg, std::uint8_t value); float sample(); std::uint32_t sample_rate() const; void reset(); };` — `sample()` returns one mono sample in ~[-1,1]; `sample_rate()` returns the OPL2 native rate (49716).
+- Produces: `class Opl2 { public: Opl2(); void write(std::uint8_t reg, std::uint8_t value); float sample(); std::uint32_t sample_rate() const; void reset(); };` — `sample()` returns one mono sample in ~[-1,1]; `sample_rate()` returns the OPL2 native rate (49715).
 
 - [ ] **Step 1: Wire ymfm into CMake.** In `CMakeLists.txt`, after the SDL/Catch2 `FetchContent_Declare`s add:
 
@@ -526,7 +526,7 @@ target_include_directories(bumpy_core PRIVATE ${ymfm_SOURCE_DIR}/src)
 
 TEST_CASE("Opl2 produces a tone after a minimal key-on") {
     bumpy::Opl2 opl;
-    REQUIRE(opl.sample_rate() == 49716u);
+    REQUIRE(opl.sample_rate() == 49715u);
     // Minimal OPL2 single-voice key-on (channel 0): operator regs then note-on.
     opl.write(0x20, 0x01); opl.write(0x23, 0x01);  // mult=1 mod+car
     opl.write(0x40, 0x10); opl.write(0x43, 0x00);  // levels (carrier loud)
@@ -551,7 +551,7 @@ TEST_CASE("Opl2 produces a tone after a minimal key-on") {
 namespace bumpy {
 
 // Thin wrapper over the ymfm YM3812 (OPL2) core. Register-level interface: write() sets a
-// register, sample() advances the chip one output sample. Native rate = clock/72 = 49716 Hz.
+// register, sample() advances the chip one output sample. Native rate = clock/72 = 49715 Hz.
 class Opl2 {
 public:
     Opl2();
@@ -609,7 +609,7 @@ std::uint32_t Opl2::sample_rate() const { return impl_->chip.sample_rate(Impl::k
 }  // namespace bumpy
 ```
 
-- [ ] **Step 6: Wire the test** — add `tests/cpp/opl2_test.cpp` to `bumpy_tests`. Build and run → PASS. (If `sample_rate()` returns a value other than 49716, update the test/constant to the actual `chip.sample_rate(3579545)` result and the Global Constraint accordingly — ymfm computes it from the clock.)
+- [ ] **Step 6: Wire the test** — add `tests/cpp/opl2_test.cpp` to `bumpy_tests`. Build and run → PASS. (If `sample_rate()` returns a value other than 49715, update the test/constant to the actual `chip.sample_rate(3579545)` result and the Global Constraint accordingly — ymfm computes it from the clock.)
 
 - [ ] **Step 7: Commit**
 
@@ -656,7 +656,7 @@ TEST_CASE("MidiOplPlayer renders audible output from BUMPY.MID") {
     const auto bank = bumpy::AdLibBank::load("BUMPY.BNK");
     bumpy::MidiOplPlayer player(song, bank, /*loop=*/true);
 
-    std::vector<float> buf(49716 * 3);  // ~3 seconds
+    std::vector<float> buf(49715 * 3);  // ~3 seconds
     player.render(buf.data(), buf.size());
     double energy = 0.0;
     for (float s : buf) energy += double(s) * s;
@@ -673,7 +673,7 @@ TEST_CASE("MidiOplPlayer renders audible output from BUMPY.MID") {
 
 - [ ] **Step 5: Wire the test** — add sources + `tests/cpp/midi_opl_player_test.cpp` to CMake. Build and run → PASS.
 
-- [ ] **Step 6: Add a WAV-dump dev tool for by-ear checking.** In `src/app/main.cpp` add a `--dump-music <BUMPY.MID> <BUMPY.BNK> <out.wav> [seconds]` flag that constructs the player, renders N seconds to a mono 49716 Hz WAV (write a minimal WAV header + int16 samples), and exits. (No SDL needed — this is offline render.)
+- [ ] **Step 6: Add a WAV-dump dev tool for by-ear checking.** In `src/app/main.cpp` add a `--dump-music <BUMPY.MID> <BUMPY.BNK> <out.wav> [seconds]` flag that constructs the player, renders N seconds to a mono 49715 Hz WAV (write a minimal WAV header + int16 samples), and exits. (No SDL needed — this is offline render.)
 
 - [ ] **Step 7: By-ear verification (fidelity gate).** Run `& build/windows-debug/Debug/bumpy_port.exe --dump-music BUMPY.MID BUMPY.BNK music.wav 20` and listen. It should play the intro tune with FM timbres (xylophone-like lead). Compare against a DOSBox-X capture of the intro. Note any wrong instruments as follow-ups (Program Change mapping refinement) — acceptable for the playable bar if the melody + tempo are right.
 
@@ -716,7 +716,7 @@ TEST_CASE("a tone preset renders a finite, non-silent, terminating voice") {
     bumpy::SpeakerVoice v;
     v.start(bumpy::kSfxPresets[1]);   // rising chirp
     REQUIRE(v.active());
-    std::vector<float> buf(49716);    // 1 second is far more than the sweep lasts
+    std::vector<float> buf(49715);    // 1 second is far more than the sweep lasts
     for (float& s : buf) s = 0.0f;
     v.render_add(buf.data(), buf.size());
     double energy = 0.0;
@@ -728,7 +728,7 @@ TEST_CASE("a tone preset renders a finite, non-silent, terminating voice") {
 
 - [ ] **Step 2: Run to verify it fails** — build fails (header missing).
 
-- [ ] **Step 3: Write `src/audio/speaker_sfx.h`** — the `SpeakerVoice` class (voice state above) + `sfx_tone_hz`. Add `static constexpr std::uint32_t kSampleRate = 49716;` and `static constexpr double kSfxIsrBaseHz = 1193182.0 / 256.0;` with a comment marking it a tuning constant (the audio design spec "open item 1").
+- [ ] **Step 3: Write `src/audio/speaker_sfx.h`** — the `SpeakerVoice` class (voice state above) + `sfx_tone_hz`. Add `static constexpr std::uint32_t kSampleRate = 49715;` and `static constexpr double kSfxIsrBaseHz = 1193182.0 / 256.0;` with a comment marking it a tuning constant (the audio design spec "open item 1").
 
 - [ ] **Step 4: Write `src/audio/speaker_sfx.cpp`** — implement `start`/`render_add`/`active` per the design (square-wave phase generator; LFSR reseed for `SweepKind::noise` using the `0x2345/0x4567/0xdb6d` constants from handler `0x95b5`; per-tick divisor/step/rate updates from handler `0x9631`).
 
@@ -754,7 +754,7 @@ git commit -m "feat(audio): PC-speaker sweep-engine SFX synth"
 
 **Interfaces:**
 - Consumes: `MidiSong`, `AdLibBank`, `MidiOplPlayer`, `SpeakerVoice`, `kSfxPresets`.
-- Produces: `class AudioEngine { public: AudioEngine(const MidiSong& song, const AdLibBank& bank); void start_music(); void stop_music(); void play_sfx(std::uint8_t id); void render(float* out, std::size_t frames); static constexpr std::uint32_t kSampleRate = 49716; };`
+- Produces: `class AudioEngine { public: AudioEngine(const MidiSong& song, const AdLibBank& bank); void start_music(); void stop_music(); void play_sfx(std::uint8_t id); void render(float* out, std::size_t frames); static constexpr std::uint32_t kSampleRate = 49715; };`
 
 Design: owns an optional music player (created on `start_music`, looping; destroyed/paused on `stop_music`) and a fixed pool (e.g. 6) of `SpeakerVoice`. `play_sfx(id)` looks up `kSfxPresets[id]`; if `used`, starts the preset on the oldest inactive voice (or steals). `render` zeroes `out`, adds the music (if playing) into it, then `render_add`s every active voice. Thread-safety: `play_sfx`/`start_music`/`stop_music` may be called from the game thread while `render` runs on the audio thread — guard the pool + music-active flag with a small lock or a lock-free command queue (use a `std::mutex` for the playable bar; the audio callback holds it only briefly).
 
@@ -803,7 +803,7 @@ git commit -m "feat(audio): mixing audio engine (music + SFX pool)"
 
 **Interfaces:**
 - Consumes: `AudioEngine`, SDL3 audio.
-- Produces: `class SdlAudio { public: explicit SdlAudio(AudioEngine& engine); ~SdlAudio(); };` — opens an `SDL_AudioStream` (source spec: `SDL_AUDIO_F32`, 1 channel, 49716 Hz) with a `SDL_SetAudioStreamGetCallback` that pulls `engine.render` and feeds float samples; closes on destruction. No public methods beyond RAII.
+- Produces: `class SdlAudio { public: explicit SdlAudio(AudioEngine& engine); ~SdlAudio(); };` — opens an `SDL_AudioStream` (source spec: `SDL_AUDIO_F32`, 1 channel, 49715 Hz) with a `SDL_SetAudioStreamGetCallback` that pulls `engine.render` and feeds float samples; closes on destruction. No public methods beyond RAII.
 
 - [ ] **Step 1: Write `src/platform_sdl3/sdl_audio.{h,cpp}`.** In the callback (`SDL_AudioStreamCallback`), compute `frames = additional_amount / sizeof(float)`, render into a scratch buffer via `engine.render`, and `SDL_PutAudioStreamData`. Open with `SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, callback, this)` and `SDL_ResumeAudioStreamDevice`.
 

@@ -1,6 +1,7 @@
 #include "audio/audio_engine.h"
 
 #include <algorithm>
+#include <cassert>
 
 namespace bumpy {
 
@@ -10,6 +11,9 @@ void AudioEngine::start_music() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!music_) {
         music_.emplace(song_, bank_, /*loop=*/true);
+        // MidiOplPlayer renders at the Opl2 native rate; catch a drift here rather
+        // than as a subtle pitch/speed bug downstream.
+        assert(music_->sample_rate() == kSampleRate);
     }
     music_playing_ = true;
 }
