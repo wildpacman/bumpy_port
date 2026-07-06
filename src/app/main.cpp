@@ -1,5 +1,6 @@
 #include <SDL3/SDL_main.h>
 
+#include "audio/midi_opl_player.h"
 #include "core/asset_manifest.h"
 #include "core/indexed_framebuffer.h"
 #include "game/app.h"
@@ -9,8 +10,10 @@
 #include "game/menu.h"
 #include "game/password_screen.h"
 #include "platform_sdl3/sdl_app.h"
+#include "resources/adlib_bank.h"
 #include "resources/binary_reader.h"
 #include "resources/font.h"
+#include "resources/midi_song.h"
 #include "resources/level_resources.h"
 #include "resources/menu_resources.h"
 #include "resources/vec.h"
@@ -28,6 +31,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -149,6 +153,58 @@ void write_24bit_bmp(const std::filesystem::path& path, const bumpy::IndexedFram
         }
         output.write(reinterpret_cast<const char*>(row.data()), static_cast<std::streamsize>(row.size()));
     }
+}
+
+// Minimal mono 16-bit PCM WAV writer for headless audio inspection.
+void write_wav_mono16(const std::filesystem::path& path, std::uint32_t sample_rate,
+                      const std::vector<std::int16_t>& samples) {
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    if (!output) {
+        throw std::runtime_error("cannot create WAV: " + path.string());
+    }
+    const auto data_bytes = static_cast<std::uint32_t>(samples.size() * sizeof(std::int16_t));
+    const std::uint32_t byte_rate = sample_rate * 2U;  // mono, 16-bit
+    output.write("RIFF", 4);
+    write_u32(output, 36U + data_bytes);
+    output.write("WAVE", 4);
+    output.write("fmt ", 4);
+    write_u32(output, 16);  // fmt chunk size (PCM)
+    write_u16(output, 1);   // format tag: PCM
+    write_u16(output, 1);   // channels: mono
+    write_u32(output, sample_rate);
+    write_u32(output, byte_rate);
+    write_u16(output, 2);   // block align (1 channel * 16 bits / 8)
+    write_u16(output, 16);  // bits per sample
+    output.write("data", 4);
+    write_u32(output, data_bytes);
+    output.write(reinterpret_cast<const char*>(samples.data()), static_cast<std::streamsize>(data_bytes));
+}
+
+// Offline-renders BUMPY.MID (via BUMPY.BNK on the MidiOplPlayer) to a WAV for by-ear
+// fidelity checking, with no SDL/audio device involved.
+int dump_music_to_wav(const std::filesystem::path& mid_path, const std::filesystem::path& bnk_path,
+                      const std::filesystem::path& out_path, double seconds) {
+    const auto song = bumpy::MidiSong::load(mid_path);
+    const auto bank = bumpy::AdLibBank::load(bnk_path);
+    bumpy::MidiOplPlayer player(song, bank, /*loop=*/false);
+    const std::uint32_t rate = player.sample_rate();
+    const auto frames = static_cast<std::size_t>(seconds * rate);
+
+    std::vector<float> buf(frames);
+    player.render(buf.data(), buf.size());
+
+    std::vector<std::int16_t> pcm(frames);
+    double energy = 0.0;
+    for (std::size_t i = 0; i < frames; ++i) {
+        const float s = std::clamp(buf[i], -1.0f, 1.0f);
+        pcm[i] = static_cast<std::int16_t>(std::lround(s * 32767.0f));
+        energy += double(buf[i]) * buf[i];
+    }
+    write_wav_mono16(out_path, rate, pcm);
+    const double rms = frames > 0 ? std::sqrt(energy / static_cast<double>(frames)) : 0.0;
+    std::cout << "wrote " << out_path.string() << " (" << frames << " frames @ " << rate
+              << " Hz, rms=" << rms << ")\n";
+    return 0;
 }
 
 bumpy::IndexedFramebuffer render_menu_frame(const std::filesystem::path& asset_root, int level_value) {
@@ -705,6 +761,11 @@ int main(int argc, char* argv[]) {
             // --render-pav <pav> <pal|DEBUG> <out.bmp> <layout> <w> <h> <hdr>
             return render_pav(argv[2], argv[3], argv[4], argv[5], std::stoi(argv[6]),
                               std::stoi(argv[7]), std::stoi(argv[8]));
+        }
+        if ((argc == 5 || argc == 6) && std::string_view(argv[1]) == "--dump-music") {
+            // --dump-music <BUMPY.MID> <BUMPY.BNK> <out.wav> [seconds]
+            const double seconds = argc == 6 ? std::stod(argv[5]) : 20.0;
+            return dump_music_to_wav(argv[2], argv[3], argv[4], seconds);
         }
         int start_world = 1;
         if (argc == 3 && std::string_view(argv[1]) == "--start-world") {
