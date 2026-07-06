@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "audio/audio_engine.h"
 #include "core/indexed_framebuffer.h"
 #include "game/app.h"
 #include "resources/font.h"
@@ -26,12 +27,14 @@ public:
     // sprite_bank is the whole BUMSPJEU.BIN; font is DDFNT2.CAR; splash_screen is the decoded
     // BUMPRESE.VEC startup image; outro_screen is the decoded DESSFIN.VEC ending image;
     // score_screen is the raw SCORE.VEC high-score/GAME-OVER backdrop (all world-independent,
-    // must outlive run()).
+    // must outlive run()). `audio` drives the looping intro-music player (FUN_1000_30dd):
+    // started when Screen::splash is entered (including the initial frame), stopped when it
+    // is left; menu/gameplay stay silent, matching the original. Must outlive run().
     int run(App& app, const MenuRenderer& menu_renderer, const std::filesystem::path& asset_root,
             WorldResources world, std::span<const std::uint8_t> sprite_bank, const Font& font,
             std::span<const std::uint8_t> splash_screen, std::span<const std::uint8_t> outro_screen,
             std::span<const std::uint8_t> score_screen,
-            IndexedFramebuffer& frame);
+            IndexedFramebuffer& frame, AudioEngine& audio);
 
 private:
     SDL_Window* window_{};

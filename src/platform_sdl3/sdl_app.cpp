@@ -81,7 +81,10 @@ constexpr int kDarkenFramesPerRing = 2;
 namespace bumpy {
 
 SdlApp::SdlApp() {
-    require(SDL_Init(SDL_INIT_VIDEO));
+    // SDL_INIT_AUDIO is needed here (not just implicitly by SdlAudio's
+    // SDL_OpenAudioDeviceStream) because SDL_OpenAudioDeviceStream fails with
+    // "Audio subsystem is not initialized" if the subsystem was never brought up.
+    require(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO));
     window_ = SDL_CreateWindow("Bumpy accurate port", 960, 600, 0);
     if (!window_) {
         SDL_Quit();
@@ -115,9 +118,18 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                 WorldResources world, std::span<const std::uint8_t> sprite_bank, const Font& font,
                 std::span<const std::uint8_t> splash_screen,
                 std::span<const std::uint8_t> outro_screen,
-                std::span<const std::uint8_t> score_screen, IndexedFramebuffer& frame) {
+                std::span<const std::uint8_t> score_screen, IndexedFramebuffer& frame,
+                AudioEngine& audio) {
     bool running = true;
     MenuInput input{};
+
+    // FUN_1000_30dd: the intro tune loops for as long as the startup splash is showing.
+    // Splash is the initial screen, so arm it before the loop's first iteration; the
+    // screen-change tracking below (via `before`) stops it the moment the player leaves
+    // for the menu.
+    if (app.screen() == Screen::splash) {
+        audio.start_music();
+    }
 
     // The in-level game state machine, created when the level screen is entered for a
     // board and destroyed when it is left. nullopt off the playfield.
@@ -285,6 +297,15 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             break;
         }
         bool screen_changed = app.screen() != before;
+        if (screen_changed) {
+            // Splash -> menu is the only transition into/out of the splash screen (it is
+            // startup-only), so this is exactly FUN_1000_30dd's loop-until-keypress.
+            if (before == Screen::splash) {
+                audio.stop_music();
+            } else if (app.screen() == Screen::splash) {
+                audio.start_music();
+            }
+        }
         bool level_ticked = false;  // did an in-level game tick advance this frame?
         Uint64 level_period = 0;    // its FUN_1000_1349 pace (retrace count * period_full)
 

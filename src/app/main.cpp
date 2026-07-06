@@ -1,5 +1,6 @@
 #include <SDL3/SDL_main.h>
 
+#include "audio/audio_engine.h"
 #include "audio/midi_opl_player.h"
 #include "audio/speaker_sfx.h"
 #include "core/asset_manifest.h"
@@ -11,6 +12,7 @@
 #include "game/menu.h"
 #include "game/password_screen.h"
 #include "platform_sdl3/sdl_app.h"
+#include "platform_sdl3/sdl_audio.h"
 #include "resources/adlib_bank.h"
 #include "resources/binary_reader.h"
 #include "resources/font.h"
@@ -706,6 +708,11 @@ int run_sdl_menu(const std::filesystem::path& asset_root, int start_world) {
     // The HIGH-SCORE / GAME-OVER backdrop (SCORE.VEC, MENU index 3). Ships as a raw 320x200
     // screen image (not a compressed VEC), so read it directly. World-independent; outlives run().
     const auto score_screen = bumpy::read_binary_file(asset_root / "SCORE.VEC");
+    // The intro-music song + AdLib instrument bank (FUN_1000_30dd): world-independent, loaded
+    // once and outliving run(); AudioEngine only ever reads them to (re)construct the player.
+    const auto midi_song = bumpy::MidiSong::load(asset_root / "BUMPY.MID");
+    const auto adlib_bank = bumpy::AdLibBank::load(asset_root / "BUMPY.BNK");
+    bumpy::AudioEngine audio_engine(midi_song, adlib_bank);
 
     bumpy::App app(world.board_count(), start_world);
     bumpy::IndexedFramebuffer frame(320, 200);
@@ -714,9 +721,18 @@ int run_sdl_menu(const std::filesystem::path& asset_root, int start_world) {
         bumpy::draw_screen_image(resources.splash.decoded_bytes(), frame);
     }
 
+    // SdlApp owns the SDL library lifetime (SDL_Init/SDL_Quit); construct it before SdlAudio
+    // so SDL is already up when the audio device opens, and so SdlAudio (destroyed first,
+    // LIFO) tears down its stream before SdlApp's destructor calls SDL_Quit().
     bumpy::SdlApp sdl;
+    // Opens the default playback device and starts pulling from audio_engine.render() on
+    // SDL's audio thread. Constructed around the whole run loop so the stream lives exactly
+    // as long as the window does.
+    bumpy::SdlAudio sdl_audio(audio_engine);
+
     return sdl.run(app, renderer, asset_root, std::move(world), sprite_bank.bytes(), font,
-                   resources.splash.decoded_bytes(), outro.decoded_bytes(), score_screen, frame);
+                   resources.splash.decoded_bytes(), outro.decoded_bytes(), score_screen, frame,
+                   audio_engine);
 }
 
 }  // namespace

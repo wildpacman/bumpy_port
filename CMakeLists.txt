@@ -68,7 +68,8 @@ target_sources(bumpy_core PRIVATE
 target_include_directories(bumpy_core PRIVATE ${ymfm_SOURCE_DIR}/src)
 
 add_library(bumpy_platform_sdl3
-  src/platform_sdl3/sdl_app.cpp)
+  src/platform_sdl3/sdl_app.cpp
+  src/platform_sdl3/sdl_audio.cpp)
 target_include_directories(bumpy_platform_sdl3 PUBLIC src)
 target_link_libraries(bumpy_platform_sdl3 PUBLIC bumpy_core SDL3::SDL3)
 
