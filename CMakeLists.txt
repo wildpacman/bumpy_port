@@ -12,7 +12,10 @@ FetchContent_Declare(SDL
 FetchContent_Declare(Catch2
   GIT_REPOSITORY https://github.com/catchorg/Catch2.git
   GIT_TAG b8acae26b0453dad6250447ad32f6b0015b162ae)
-FetchContent_MakeAvailable(SDL Catch2)
+FetchContent_Declare(ymfm
+  GIT_REPOSITORY https://github.com/aaronsgiles/ymfm.git
+  GIT_TAG 17decfae857b92ab55fbb30ade2287ace095a381)
+FetchContent_MakeAvailable(SDL Catch2 ymfm)
 
 add_library(bumpy_core
   src/core/indexed_framebuffer.cpp
@@ -49,9 +52,17 @@ add_library(bumpy_core
   src/video/high_score_renderer.cpp
   src/video/password_renderer.cpp
   src/game/world_map.cpp
-  src/game/world_graphs.gen.cpp)
+  src/game/world_graphs.gen.cpp
+  src/audio/opl2.cpp)
 target_include_directories(bumpy_core PUBLIC src)
 target_link_libraries(bumpy_core PUBLIC bcrypt)
+
+target_sources(bumpy_core PRIVATE
+  ${ymfm_SOURCE_DIR}/src/ymfm_opl.cpp
+  ${ymfm_SOURCE_DIR}/src/ymfm_adpcm.cpp
+  ${ymfm_SOURCE_DIR}/src/ymfm_pcm.cpp
+  ${ymfm_SOURCE_DIR}/src/ymfm_ssg.cpp)
+target_include_directories(bumpy_core PRIVATE ${ymfm_SOURCE_DIR}/src)
 
 add_library(bumpy_platform_sdl3
   src/platform_sdl3/sdl_app.cpp)
@@ -98,7 +109,8 @@ add_executable(bumpy_tests
   tests/cpp/move_scripts_test.cpp
   tests/cpp/tile_reactions_test.cpp
   tests/cpp/ball_motion_test.cpp
-  tests/cpp/level_game_test.cpp)
+  tests/cpp/level_game_test.cpp
+  tests/cpp/opl2_test.cpp)
 target_link_libraries(bumpy_tests PRIVATE bumpy_core Catch2::Catch2WithMain)
 add_test(NAME bumpy_tests COMMAND bumpy_tests)
 set_tests_properties(bumpy_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
