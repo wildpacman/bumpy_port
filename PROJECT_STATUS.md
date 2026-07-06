@@ -1,8 +1,9 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-07-05 (Escape / exit flow now
-matches `FUN_1000_0c18`: in-level Escape = lose a life → world map; map Escape = GAME
-OVER → menu; see "Stage 3 Escape / exit flow" below).
+Source of truth for new sessions. Last updated: 2026-07-07 (**audio / sound system
+implemented** — intro OPL2 music from `BUMPY.MID` + `BUMPY.BNK`, PC-speaker SFX at all
+27 recovered trigger sites, mixed through SDL3; see "Stage 3 audio / sound system" below.
+Prior: Escape / exit flow matches `FUN_1000_0c18`).
 
 ## Goal
 
@@ -444,7 +445,13 @@ cmake --build --preset windows-debug
 & build/windows-debug/Debug/bumpy_port.exe --render-transition MONDE1.VEC trans_         # edge-to-centre screen-change darken, dump trans_NN.bmp (00 = un-darkened)
 & build/windows-debug/Debug/bumpy_port.exe --render-outro DESSFIN.VEC outro.bmp          # post-world-9 ending screen (DESSFIN.VEC) via the shell render path
 & build/windows-debug/Debug/bumpy_port.exe --render-password SCORE.VEC pw.bmp [CODE]     # PASSWORD entry screen; [CODE] shows its OK/ERROR flash
+& build/windows-debug/Debug/bumpy_port.exe --dump-music BUMPY.MID BUMPY.BNK music.wav 20 # offline-render N s of the intro music (OPL2+BNK) to a mono 49715 Hz WAV
+& build/windows-debug/Debug/bumpy_port.exe --dump-sfx 1 sfx.wav                          # render one SFX preset (id 1..0x15) via the speaker sweep engine to a WAV
 ```
+
+In the window: the startup splash now **plays the intro FM music** (looped until a key
+is pressed), and gameplay/menu emit the **PC-speaker SFX** (collect, bumps, deaths,
+cloud-jump, …). A missing/locked audio device degrades to **muted**, never fatal.
 
 In the window: confirm "start" on the menu → world map; arrows move Bumpy between
 linked nodes (**hold a direction to walk node to node continuously**); Enter/Space
@@ -796,6 +803,57 @@ world, the port now shows `FUN_1000_0d9d` before loading the next world.
   password table: `ACCESS BUTTON ISLAND PRETTY WINNER ZOMBIE LOVELY SYSTEM`.
 - **Coverage.** `app_test` covers the deferred world-load handshake and
   `password_renderer_test` covers the black background plus prompt/code bands.
+
+## Stage 3 audio / sound system (2026-07-07)
+
+The port had **no sound** at all; the whole audio subsystem is now built, targeting the
+original's **AdLib profile** (the definitive 1993 experience = OPL2 FM music + PC-speaker
+beeper SFX). Design + plan: `docs/superpowers/specs/2026-07-06-audio-sound-system-design.md`,
+`docs/superpowers/plans/2026-07-06-audio-sound-system.md`. Built on branch
+`feat/audio-opl2`; game logic stays SDL-free (emits sound-event ids; the shell drains them).
+
+- **Sound-device model recovered** (capstone; Ghidra fails on the timer ISR + sweep
+  handlers). The DOS setup writes `DAT_203b_689c`: `0x8000`=off, `0`=PC speaker, `1`=AdLib,
+  `4`=**MT-32/MPU-401**. **Correction to earlier notes:** `689c==4` is MT-32, *not* AdLib
+  (AdLib=1); the `0x27ae` table is MT-32 percussion notes, not AdLib registers. The SFX
+  sweep engine writes **only PIT ch2 + the 0x61 gate — never OPL** → **SFX are always
+  PC-speaker** (except under MT-32). (`game-loop.md`'s old "689c==4 = AdLib" note is
+  superseded by the audio design spec.)
+- **Music = `BUMPY.MID` on OPL2** (intro/credits screen only, `FUN_1000_30dd` =
+  `Screen::splash`, looped until keypress). `BUMPY.MID` is a real SMF (format 1, 7 tracks,
+  192 tpqn, 75 BPM); `BUMPY.BNK` is the AdLib `.BNK` instrument bank ("ADLIB-", 160
+  patches `rol000…`). Decoders: **`src/resources/midi_song`** (SMF parse → tick-sorted
+  events + tempo map) and **`src/resources/adlib_bank`** (header + 12-byte name index +
+  30-byte instrument records). Rendered by **`src/audio/midi_opl_player`** — a MIDI→OPL2
+  driver (9-voice allocation with oldest-steal, per-operator register load from the BNK
+  patch, note→block/F-number, tempo clock, loop) over **`src/audio/opl2`**, a pimpl wrapper
+  around the vendored **ymfm** YM3812 core (FetchContent, pinned commit). Native rate =
+  **49715 Hz** (clock/72).
+- **SFX = the PC-speaker sweep engine** (`FUN_1000_6e30` presets `1..0x15` → ISR handlers
+  `0x9631` swept-tone / `0x96c4` noise+glide / `0x95b5` noise), transcribed as an
+  audio-rate simulation in **`src/audio/speaker_sfx`** (`SpeakerVoice`: signed divisor
+  sweep, ISR-rate glide, square/noise gen, termination). Presets + the six per-tile map
+  tables are baked by **`tools/re/dump_sfx.py`** → `src/resources/sfx_tables.gen.cpp`.
+- **Mixer + platform.** **`src/audio/audio_engine`** owns the looping music player + a
+  6-voice SFX pool, mixes to mono float, and is thread-safe (one mutex over all shared
+  state). **`src/platform_sdl3/sdl_audio`** opens an SDL3 stream (F32/mono/49715) whose
+  callback pulls `AudioEngine::render`. A missing/locked device degrades to **muted**
+  (never fatal). `SdlApp` starts/stops music on the `splash`↔`menu` transition.
+- **In-game triggers.** All **27 recovered `6e11` sites** re-inserted in `LevelGame`
+  (+ `WorldMap` cloud-jump) as `emit_sfx(id)` using the recovered speaker ids: collect (2
+  variants), monster/spike death, block-top land/hop/smash, warp/chute/fall routing (tile
+  maps), hop entries, cloud-jump launch, etc. Placement was verified against the decompiled
+  source (a first pass had 4 mis-placements — `f_63be`/`f_2810`/`f_6c14`/`f_1e5e`+`f_1e90` —
+  all corrected).
+- **188 C++ tests pass** (decoders on the real files, synth non-silence/termination,
+  engine mixing, in-game SFX emission); originals verify clean. Built via subagent-driven
+  execution with per-task spec+quality review and a final whole-branch review (ready to
+  merge).
+- **Open (by-ear tuning, human step):** the absolute sweep-ISR rate `kSfxIsrBaseHz`
+  (placeholder `1193182/64`) and the exact `0x95b5` noise LFSR are tuning items — refine
+  against a DOSBox-X capture (the real LFSR recurrence is recovered; feed it if noise SFX
+  sound off, and check the long presets `0x03`/`0x0f`). Deferred code minors: `adlib_bank`
+  version-byte check, decoder negative-path tests, a MIDI same-pitch-retrigger voice.
 
 ## Next step
 
