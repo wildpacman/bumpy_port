@@ -210,6 +210,47 @@ exactly. `App`/`sdl_app` start/stop the music on the `splash`↔`menu` transitio
    `FUN_1000_905d`/`8bc8` (verify against raw bytes; Ghidra garbles them).
 3. ymfm vendoring mechanism (submodule vs copied source) and the CMake wiring.
 
+## Post-implementation recovery (2026-07-07) — items 1 & 2 resolved (Confirmed, capstone)
+
+The first playable audio pass shipped placeholders for the two RE unknowns above;
+both were then recovered exactly from `BUMPY.UNPACKED.EXE` and the port corrected.
+
+**SFX tick rate (item 1).** Timer-0 is programmed ONCE (`FUN_1000_7db1` loads
+reload `0x951 = 2385`), so the base ISR tick is a FIXED `1193182/2385 = 500.286 Hz`
+— not a per-sound PIT reprogram. The active sound is advanced by a Bresenham/DDS
+divider in the ISR (`FUN_1000_7c02`): each tick `acc += rate_seed`; when
+`acc >= 500` it fires the step handler and subtracts 500. So `rate_seed` is a DDS
+*increment* (bigger ⇒ faster), the inverse of a divisor; and re-installing the slot
+on a glide zeroes `acc` (`FUN_1000_7e61`), which ~doubles the length of
+`rate_count==1` presets. Real durations: preset `0x01`≈120 ms, `0x02`≈160 ms,
+`0x03`≈999 ms (the placeholder `kSfxIsrBaseHz=1193182/64` made these 6–10× too
+long — the never-ending pit whoosh). The 6e30 switch pushes **7** payload fields;
+the 7th (inner tone-step divider `E`) is `1` for every preset, so the 6-field
+`SfxPreset` stays valid. Noise (`0x96c4`) is NOT a swept square: ch2 is held at a
+constant divisor and the audible signal is a 16-bit shift register (`L1 = rotl(L1,1)`
+each fire; reseed `L1=(L1+0x2345)^L3; L3=L1+0x4567` every 16 fires) clocked one bit
+per fire to the speaker-data line. The `&0xdb6d` mask belongs only to the unused
+`0x95b5` reseed-only handler.
+
+**Music patch selection & FM (item 2).** The driver (`FUN_1000_8b81`) maps MIDI
+program → the `.BNK` **name index** (a program-ordered 12-byte table whose record N,
+"rolNNN", holds the storage slot of program N's patch) → the 30-byte patch. Indexing
+the raw instrument array by program number is wrong (storage is scrambled). Channels
+0–5 default to program `channel+1` (`FUN_1000_8b45`) before the song plays. The
+per-patch register packing (`FUN_1000_8bc8`) writes reg `0xC0` with the connection
+bit **INVERTED** (`(patch&1)^1`); the bank stores `1` for its FM patches, so writing
+it straight leaves every voice additive (two summed sines) = the thin "calculator"
+timbre. It also computes KSL as `(byte>>2)&0xC0` (≈0 for the small BNK values, i.e.
+key-scaling-of-level effectively off). **WSE is a trap:** reg `0x01` is written `0`
+and never enabled, so a real YM3812/DOSBox ignores the per-operator waveform selects
+and plays pure sine — enabling WSE in the port would DIVERGE from DOSBox. The
+richness is 2-op FM + feedback + the inverted connection bit, not waveforms.
+
+Deferred (not needed for faithful-by-ear): the exact velocity→carrier-TL curve in
+`905d`, the real note→fnum/block tables (`DS:0x559c/55b4/5614`; the synthesized
+equal-tempered table is within ±1 fnum), and the original's fixed 1-voice-per-channel
+(mono) allocation vs the port's 9-voice polyphony.
+
 ## Key addresses (reference)
 
 - Device model: setup `202c:0000`; var `DAT_203b_689c`; validate `1000:6de3` →

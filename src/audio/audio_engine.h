@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <vector>
 
 namespace bumpy {
 
@@ -22,6 +23,10 @@ class AudioEngine {
 public:
     static constexpr std::uint32_t kSampleRate = 49715;
     static constexpr std::size_t kVoiceCount = 6;
+    // One-pole low-pass cutoff modelling the PC-speaker cone. The 1-bit sweep output is
+    // otherwise a hard square whose high harmonics (and >Nyquist aliasing on the fast
+    // sweeps) sound harsh/"частотный"; the real beeper rolls them off. Tunable by ear.
+    static constexpr double kSpeakerLowpassHz = 5000.0;
 
     // `song`/`bank` must outlive the engine (the caller -- typically `main` --
     // owns them for the program's lifetime); the engine only ever reads them
@@ -55,6 +60,10 @@ private:
     std::array<SpeakerVoice, kVoiceCount> voices_{};
     std::array<std::uint64_t, kVoiceCount> voice_age_{};
     std::uint64_t age_counter_ = 0;
+
+    // SFX bus: voices mix here, get low-pass filtered as one, then add to the output.
+    std::vector<float> sfx_scratch_;
+    float sfx_lowpass_ = 0.0f;  // persistent one-pole filter state
 };
 
 static_assert(AudioEngine::kSampleRate == SpeakerVoice::kSampleRate,

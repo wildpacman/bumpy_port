@@ -51,3 +51,17 @@ TEST_CASE("BUMPY.BNK name index honors the per-record used flag") {
     REQUIRE(bank.by_name("-ol016_") == nullptr);
     REQUIRE(bank.by_name("-ol048_") == nullptr);
 }
+
+TEST_CASE("AdLibBank resolves a MIDI program through the name index, not the raw slot") {
+    const auto bank = bumpy::AdLibBank::load("BUMPY.BNK");
+    // The driver (FUN_1000_8b81) treats the name index as a program table: program N is
+    // record N ("rolNNN"), whose stored slot holds the patch. The storage order is
+    // scrambled, so program N is NOT instrument slot N.
+    REQUIRE(bank.patch_for_program(0).name == "rol000");
+    REQUIRE(bank.patch_for_program(1).name == "rol001");
+    REQUIRE(bank.patch_for_program(98).name == "rol098");
+    REQUIRE(bank.patch_for_program(110).name == "rol110");
+    // Program 98 really is a remap: its patch lives at slot 92, not slot 98.
+    REQUIRE(&bank.patch_for_program(98) == &bank.instrument(92));
+    REQUIRE(&bank.patch_for_program(98) != &bank.instrument(98));
+}

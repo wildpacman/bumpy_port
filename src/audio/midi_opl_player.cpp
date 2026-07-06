@@ -25,6 +25,12 @@ MidiOplPlayer::MidiOplPlayer(const MidiSong& song, const AdLibBank& bank, bool l
       loop_(loop),
       sample_rate_(opl_.sample_rate()) {
     program_.fill(0);
+    // FUN_1000_8b45 pre-assigns program = channel+1 to channels 0..5 before the song
+    // plays, so a channel that never sends its own Program Change (e.g. channel 0, the
+    // main melody) still gets a real patch instead of program 0.
+    for (int c = 0; c < 6; ++c) {
+        program_[static_cast<std::size_t>(c)] = c + 1;
+    }
     start_from_tick_zero();
 }
 
@@ -45,6 +51,12 @@ void MidiOplPlayer::reset() {
     opl_.reset();
     voices_.fill(Voice{});
     program_.fill(0);
+    // FUN_1000_8b45 pre-assigns program = channel+1 to channels 0..5 before the song
+    // plays, so a channel that never sends its own Program Change (e.g. channel 0, the
+    // main melody) still gets a real patch instead of program 0.
+    for (int c = 0; c < 6; ++c) {
+        program_[static_cast<std::size_t>(c)] = c + 1;
+    }
     age_counter_ = 0;
     finished_ = false;
     start_from_tick_zero();
@@ -129,9 +141,9 @@ void MidiOplPlayer::note_on(int channel, int note) {
         }
     }
 
-    const std::size_t program =
-        static_cast<std::size_t>(program_[static_cast<std::size_t>(channel)]) % bank_.size();
-    load_instrument(slot, bank_.instrument(program));
+    // Resolve the patch through the bank's program table (name index), NOT by raw
+    // storage slot -- the .BNK stores patches in a scrambled order.
+    load_instrument(slot, bank_.patch_for_program(program_[static_cast<std::size_t>(channel)]));
 
     int fnum = 0;
     int block = 0;
@@ -168,8 +180,11 @@ void MidiOplPlayer::load_instrument(int opl_channel, const AdLibInstrument& inst
         opl_.write(static_cast<std::uint8_t>(0x20 + op),
                    static_cast<std::uint8_t>((o.am << 7) | (o.vib << 6) | (o.eg << 5) | (o.ksr << 4) |
                                               (o.mult & 0x0F)));
+        // KSL: the original driver (FUN_1000_8bc8) packs it as (byte >> 2) & 0xC0, which
+        // is 0 for the small BNK key-scale values -- i.e. it effectively disables
+        // key-scaling-of-level. Packing (ksl & 3) << 6 instead over-attenuates high notes.
         opl_.write(static_cast<std::uint8_t>(0x40 + op),
-                   static_cast<std::uint8_t>((o.ksl << 6) | (o.level & 0x3F)));
+                   static_cast<std::uint8_t>(((o.ksl >> 2) & 0xC0) | (o.level & 0x3F)));
         opl_.write(static_cast<std::uint8_t>(0x60 + op),
                    static_cast<std::uint8_t>((o.attack << 4) | (o.decay & 0x0F)));
         opl_.write(static_cast<std::uint8_t>(0x80 + op),
@@ -180,8 +195,13 @@ void MidiOplPlayer::load_instrument(int opl_channel, const AdLibInstrument& inst
     const int op_car = op_mod + 3;
     write_operator(op_mod, instrument.mod, instrument.wave_mod);
     write_operator(op_car, instrument.car, instrument.wave_car);
+    // reg 0xC0: feedback (bits 1-3) + connection (bit 0). The original INVERTS the
+    // connection bit ((patch & 1) ^ 1): the .BNK stores 1 for its FM patches, so writing
+    // it straight puts every voice in additive mode (two bare summed sines) -- the thin
+    // "calculator" timbre. Inverting restores real 2-op FM.
     opl_.write(static_cast<std::uint8_t>(0xC0 + opl_channel),
-               static_cast<std::uint8_t>((instrument.mod.feedback << 1) | (instrument.mod.connection & 1)));
+               static_cast<std::uint8_t>(((instrument.mod.feedback & 0x07) << 1) |
+                                          ((instrument.mod.connection & 1) ^ 1)));
 }
 
 }  // namespace bumpy

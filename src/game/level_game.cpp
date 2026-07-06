@@ -396,6 +396,13 @@ void LevelGame::anim_dispatch(std::uint8_t state, std::uint8_t step) {
 void LevelGame::f_28f9() {
     d_824c = 8;
     if (d_79b4 == 0 && d_7924 != 0) {
+        // FUN_1000_28f8 @ 0x292d: dropping onto the opened exit pit (tile 0x20) plays the
+        // launch whoosh -- the SAME SFX 0x03 as the world-map cloud-jump -- before the
+        // tile dispatch falls through (0x20 is neither 0x16 nor 0x03, so it lands on the
+        // f_2965 default that arms the state-0x30 descent).
+        if (d_7924 == 0x20) {
+            emit_sfx(0x03);  // exit-pit fall
+        }
         if (d_7924 == 0x16) {
             f_4305();  // nest tile: park the ball in it (state 0x1c) and spin
         } else if (d_7924 == 0x03) {

@@ -80,6 +80,9 @@ add_custom_command(TARGET bumpy_port POST_BUILD
     $<TARGET_FILE:SDL3::SDL3>
     $<TARGET_FILE_DIR:bumpy_port>)
 
+add_executable(audio_render tools/audio_render/main.cpp)
+target_link_libraries(audio_render PRIVATE bumpy_core)
+
 enable_testing()
 add_executable(bumpy_tests
   tests/cpp/indexed_framebuffer_test.cpp

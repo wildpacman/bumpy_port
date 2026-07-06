@@ -31,8 +31,15 @@ public:
     [[nodiscard]] const AdLibInstrument& instrument(std::size_t index) const { return instruments_.at(index); }
     [[nodiscard]] const AdLibInstrument* by_name(std::string_view name) const;
 
+    // Resolve a MIDI program number to its patch the way the original driver does
+    // (FUN_1000_8b81): the .BNK name index is a program-ordered table whose record N
+    // (name "rolNNN") holds the storage slot of program N's patch. Indexing the raw
+    // instrument array by program number is WRONG -- the storage order is scrambled.
+    [[nodiscard]] const AdLibInstrument& patch_for_program(int program) const;
+
 private:
     std::vector<AdLibInstrument> instruments_;
+    std::vector<std::uint16_t> program_index_;  // name-index record N -> instrument slot
 };
 
 }  // namespace bumpy

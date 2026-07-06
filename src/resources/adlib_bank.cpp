@@ -39,9 +39,14 @@ AdLibBank AdLibBank::from_bytes(std::vector<std::uint8_t> b) {
         in.wave_mod = r[28];
         in.wave_car = r[29];
     }
+    // The name index doubles as the program table: record N (in file order) holds the
+    // storage slot of program N (its name is "rolNNN"). Keep the slot per record so a
+    // MIDI program number can be resolved to its patch (patch_for_program).
+    bank.program_index_.resize(total);
     for (std::size_t i = 0; i < total; ++i) {
         const std::uint8_t* n = &b[name_off + i * 12];
         const std::uint16_t idx = u16(n);
+        bank.program_index_[i] = idx;
         const std::uint8_t used = n[2];  // deleted records keep a mangled name but used==0
         if (used == 0 || idx >= total) continue;
         const char* name = reinterpret_cast<const char*>(n + 3);
@@ -50,6 +55,15 @@ AdLibBank AdLibBank::from_bytes(std::vector<std::uint8_t> b) {
         bank.instruments_[idx].name.assign(name, len);
     }
     return bank;
+}
+
+const AdLibInstrument& AdLibBank::patch_for_program(int program) const {
+    if (program < 0 || program_index_.empty() || instruments_.empty()) {
+        return instruments_.at(0);
+    }
+    const std::uint16_t slot =
+        program_index_[static_cast<std::size_t>(program) % program_index_.size()];
+    return instruments_.at(slot % instruments_.size());
 }
 
 const AdLibInstrument* AdLibBank::by_name(std::string_view name) const {

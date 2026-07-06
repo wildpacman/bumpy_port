@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 
 namespace bumpy {
 
@@ -54,10 +55,24 @@ void AudioEngine::render(float* out, std::size_t frames) {
         // right here since `out` is freshly zeroed.
         music_->render(out, frames);
     }
+
+    // Mix the PC-speaker SFX voices into their own bus so the whole bus can be
+    // low-pass filtered together (one physical speaker) before adding to the OPL
+    // music, which is line-level and must NOT be filtered.
+    if (sfx_scratch_.size() < frames) {
+        sfx_scratch_.resize(frames);
+    }
+    std::fill(sfx_scratch_.begin(), sfx_scratch_.begin() + static_cast<std::ptrdiff_t>(frames), 0.0f);
     for (auto& voice : voices_) {
         if (voice.active()) {
-            voice.render_add(out, frames);
+            voice.render_add(sfx_scratch_.data(), frames);
         }
+    }
+    const float alpha = static_cast<float>(
+        1.0 - std::exp(-2.0 * 3.14159265358979323846 * kSpeakerLowpassHz / kSampleRate));
+    for (std::size_t i = 0; i < frames; ++i) {
+        sfx_lowpass_ += alpha * (sfx_scratch_[i] - sfx_lowpass_);
+        out[i] += sfx_lowpass_;
     }
 }
 
