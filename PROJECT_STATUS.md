@@ -845,15 +845,26 @@ beeper SFX). Design + plan: `docs/superpowers/specs/2026-07-06-audio-sound-syste
   maps), hop entries, cloud-jump launch, etc. Placement was verified against the decompiled
   source (a first pass had 4 mis-placements — `f_63be`/`f_2810`/`f_6c14`/`f_1e5e`+`f_1e90` —
   all corrected).
-- **188 C++ tests pass** (decoders on the real files, synth non-silence/termination,
-  engine mixing, in-game SFX emission); originals verify clean. Built via subagent-driven
-  execution with per-task spec+quality review and a final whole-branch review (ready to
-  merge).
-- **Open (by-ear tuning, human step):** the absolute sweep-ISR rate `kSfxIsrBaseHz`
-  (placeholder `1193182/64`) and the exact `0x95b5` noise LFSR are tuning items — refine
-  against a DOSBox-X capture (the real LFSR recurrence is recovered; feed it if noise SFX
-  sound off, and check the long presets `0x03`/`0x0f`). Deferred code minors: `adlib_bank`
-  version-byte check, decoder negative-path tests, a MIDI same-pitch-retrigger voice.
+- **189 C++ tests pass** (decoders on the real files, synth non-silence/termination,
+  engine mixing, in-game SFX emission, program→patch mapping); originals verify clean.
+- **Fidelity pass (2026-07-07, commit `4a93e20`):** the first pass's placeholders were
+  replaced with values recovered exactly from the binary (capstone), verified by ear vs
+  DOSBox and by WAV render (`tools/audio_render`):
+  - SFX timing is the real fixed `1193182/2385 = 500.286 Hz` base tick driving a
+    Bresenham/DDS divider (not `kSfxIsrBaseHz=1193182/64`, which ran every SFX 6–10× too
+    long and made the world→level whoosh never stop). Presets now 0x03≈999 ms / 0x02≈160 ms.
+  - Noise (`0x96c4`) is the authentic 16-bit shift register clocked one bit/fire to the
+    speaker line, not a square at an invented LFSR divisor.
+  - OPL2 patches resolve through the BNK **name index** (program→record→slot) with the
+    reg-0xC0 **connection bit inverted** — the fix for the thin "calculator" timbre — plus
+    KSL packing and `program=channel+1` defaults; WSE stays off (matches the chip/DOSBox).
+  - Wired the missing exit-pit fall SFX (`0x03`, `FUN_1000_28f8 @ 0x292d`).
+  - Added a one-pole speaker low-pass (`kSpeakerLowpassHz`, 5 kHz) modelling the beeper cone.
+- **Known residual (may revisit):** the audio still does **not exactly match DOSBox** — the
+  remaining gap is the PC-speaker filter shape / high-sweep aliasing, not the recovered
+  logic. Judged **acceptable for now**; a future pass could model DOSBox's speaker filter
+  precisely instead of the single low-pass. Deferred code minors: `adlib_bank` version-byte
+  check, decoder negative-path tests, a MIDI same-pitch-retrigger voice.
 
 ## Next step
 

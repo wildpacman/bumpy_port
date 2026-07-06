@@ -251,6 +251,15 @@ Deferred (not needed for faithful-by-ear): the exact velocity→carrier-TL curve
 equal-tempered table is within ±1 fnum), and the original's fixed 1-voice-per-channel
 (mono) allocation vs the port's 9-voice polyphony.
 
+**Known residual (may revisit).** After this pass the audio is much closer but still
+does **not exactly match DOSBox**. The recovered logic (timing, sweep math, noise,
+patch mapping) is faithful; the remaining audible gap is the **PC-speaker filter
+shape / high-frequency sweep aliasing** — we model the beeper as a hard 1-bit square
+plus a single one-pole low-pass (`kSpeakerLowpassHz`, 5 kHz by ear), whereas DOSBox
+uses its own speaker model. Judged **acceptable for now**; a future pass could
+replicate DOSBox's speaker filter (and/or band-limit the square) for a principled
+match rather than a by-ear cutoff.
+
 ## Key addresses (reference)
 
 - Device model: setup `202c:0000`; var `DAT_203b_689c`; validate `1000:6de3` →
