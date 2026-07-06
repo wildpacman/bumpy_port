@@ -15,6 +15,11 @@
       "name": "windows-debug",
       "configurePreset": "windows-debug",
       "configuration": "Debug"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-debug",
+      "configuration": "Release"
     }
   ],
   "testPresets": [

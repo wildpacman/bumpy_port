@@ -75,6 +75,13 @@ target_link_libraries(bumpy_platform_sdl3 PUBLIC bumpy_core SDL3::SDL3)
 
 add_executable(bumpy_port src/app/main.cpp)
 target_link_libraries(bumpy_port PRIVATE bumpy_platform_sdl3)
+# Release is a GUI app: no console window (Windows GUI subsystem). SDL's SDL_main.h
+# emits both main() and WinMain(), so the WINDOWS subsystem links WinMain -> SDL_main
+# with no source change. Debug stays on the default CONSOLE subsystem so the dev CLI
+# flags (--dump-music, --render-*, usage) keep a console for their stdout.
+if(MSVC)
+  target_link_options(bumpy_port PRIVATE $<$<CONFIG:Release>:/SUBSYSTEM:WINDOWS>)
+endif()
 add_custom_command(TARGET bumpy_port POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
     $<TARGET_FILE:SDL3::SDL3>
