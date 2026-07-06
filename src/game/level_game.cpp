@@ -525,6 +525,13 @@ void LevelGame::f_4802() {
 
 void LevelGame::f_2634() {  // hop up-left
     d_8551 = 0;
+    // FUN_1000_2634 opens with an unconditional FUN_1000_63be() call: the roll/hop-bump
+    // sfx, kSfxRollBump keyed by the tile under the ball (DAT_7924), gated on the prev
+    // state not already rolling (DAT_8552 != 0x03/0x0f). (all_functions.c:3230-3231,
+    // 7342-7363.)
+    if (d_8552 != 0x03 && d_8552 != 0x0f) {
+        emit_sfx(kSfxRollBump[d_7924 & 0x2f]);
+    }
     std::uint8_t code;
     if (ball_.cell_col == 0) {
         d_8551 = 0x1f;
@@ -544,6 +551,11 @@ void LevelGame::f_2634() {  // hop up-left
 
 void LevelGame::f_26a1() {  // hop up-right
     d_8551 = 0;
+    // FUN_1000_26a1 opens with the same unconditional FUN_1000_63be() call as 2634.
+    // (all_functions.c:3272-3273, 7342-7363.)
+    if (d_8552 != 0x03 && d_8552 != 0x0f) {
+        emit_sfx(kSfxRollBump[d_7924 & 0x2f]);
+    }
     std::uint8_t code;
     if (ball_.cell_col == 7) {
         d_8551 = 0x1f;
@@ -612,14 +624,25 @@ void LevelGame::f_27de() {
 }
 
 void LevelGame::f_2810() {
+    // FUN_1000_2810's fall-routing sfx: kSfxFallRoute keyed by the held-bump latched tile
+    // (DAT_7922, NOT the fall lane), fired BEFORE the cell<8 split and gated on the prev
+    // state not already falling/rolling (DAT_8552 != 0x03/0x0d/0x10). (all_functions.c:
+    // 3433-3443.)
+    if (d_8552 != 0x03 && d_8552 != 0x0d && d_8552 != 0x10) {
+        emit_sfx(kSfxFallRoute[d_7922 & 0x2f]);
+    }
     if (ball_.cell < 8) {
-        emit_sfx(0x14);  // fall-begin, constant path: no tile above to route by
         f_4263(6);
     } else {
         d_856f = static_cast<std::uint8_t>(ball_.cell - 8);
         d_79b9 = grid_[d_856f];
-        emit_sfx(kSfxFallRoute[d_79b9 & 0x2f]);  // fall routing, keyed by the fall lane
         f_4263(d_79b9 < 0x30 ? kFallRoute[d_79b9 * 2] : 6);
+        // The constant 0x14 fires only when the fall routed into state 0x0a (a picture-
+        // block climb: kFallRoute[0x0e*2] == 0x0a). f_4263 set ball_.state, so this reads
+        // the just-armed state -- DAT_792c == 0x0a after 4263. (all_functions.c:3455-3462.)
+        if (ball_.state == 0x0a) {
+            emit_sfx(0x14);
+        }
         if (d_79b9 < 0x30 && kFallRoute[d_79b9 * 2 + 1] != 0) {
             f_69aa(kFallRoute[d_79b9 * 2 + 1]);  // spring the tile fallen onto
         }
@@ -887,10 +910,10 @@ void LevelGame::f_4305() {
 void LevelGame::f_1e5e() {
     // State 0x21: just landed from a hop up-left onto a block (d_8551 still holds
     // the target's plane-B value from FUN_1000_2634). A slab (0x08) chains straight
-    // into the block-top walk; anything else (the cushion 0x0d) sits on it. 6e11(0xf)
-    // is the landing thump (game-loop.md: "the 6e11(...) calls these make are sounds").
-    emit_sfx(0x0f);
+    // into the block-top walk (and thumps: 6e11(0xf)); the cushion (else) arm sits on
+    // it silently. The 6e11 fires ONLY in the slab arm. (all_functions.c:2302-2314.)
     if (d_8551 == 0x08) {
+        emit_sfx(0x0f);
         f_21e7();
     } else {
         ball_.state = 0x24;
@@ -898,8 +921,10 @@ void LevelGame::f_1e5e() {
 }
 
 void LevelGame::f_1e90() {
-    emit_sfx(0x0f);
+    // Mirror of f_1e5e: the 6e11(0xf) fires only in the slab arm; the cushion (else)
+    // arm (state 0x23) is silent. (all_functions.c:2337-2349.)
     if (d_8551 == 0x08) {
+        emit_sfx(0x0f);
         f_2138();
     } else {
         ball_.state = 0x23;
@@ -1405,7 +1430,9 @@ void LevelGame::f_6627() {
 void LevelGame::f_6c14() {
     f_6c95();
     grid_[ball_.cell + 0x60] = 0;  // remove the collectible
-    bool opened_portal = false;
+    // Both 6e11 emits live INSIDE this exclusion guard, so the free bonus tiles ('#'
+    // extra-life 0x23 and the 0x01 lane) collect silently -- only tiles that count toward
+    // the exit make a sound. (all_functions.c:8285-8309.)
     if (d_79b8 != 0x01 && d_79b8 != 0x23) {
         --d_a0cf;
         if (d_a0cf == 0) {
@@ -1414,17 +1441,15 @@ void LevelGame::f_6c14() {
             // plays the one-shot opening animation. The board is NOT cleared yet -- the
             // ball must roll to the pit and fall in (tile 0x20 -> state 0x30 -> 1e3d).
             // a1b1/8550 then drive the recurring pulse (FUN_1000_233a).
+            emit_sfx(0x0b);  // portal-open jingle
             d_856f = d_8572;
             f_69aa(0x59);
             d_a1b1 = 1;
             d_8550 = 0xf2;
-            opened_portal = true;
+        } else {
+            emit_sfx(0x0e);  // ordinary required-collectible pickup
         }
     }
-    // FUN_1000_6c14's own 6e11 call: 0x0b when this collect just opened the portal,
-    // 0x0e for every ordinary pickup (including the '#'/'/'/'0' bonus tiles excluded
-    // from the a0cf countdown above).
-    emit_sfx(opened_portal ? 0x0b : 0x0e);
 }
 
 void LevelGame::f_6c95() {
@@ -1545,12 +1570,7 @@ void LevelGame::f_6d94(std::uint8_t id) {
 void LevelGame::f_6d6a(const std::uint8_t* tile_map) {
     // FUN_1000_6d6a: while not sub-step-locked, spring the lane under the ball,
     // keyed by the tile there. This is the platform recoil when a roll begins.
-    // FUN_1000_63be (the roll/hop-bump sfx site, kSfxRollBump keyed by the same tile
-    // DAT_7924) has no separate port method -- it is the sound sibling of this exact
-    // call (same guard, same index), so its emit is folded in here. Not a literal
-    // f_63be; see the task report for this inferred placement.
     if (ball_.substep_lock == 0) {
-        emit_sfx(kSfxRollBump[d_7924 & 0x2f]);
         f_6987(d_7924 < 0x30 ? tile_map[d_7924] : 0);
     }
 }

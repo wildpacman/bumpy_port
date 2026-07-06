@@ -524,7 +524,9 @@ TEST_CASE("hopping onto a cushion block (plane-B 0x0d) sits and bobs; DOWN rolls
         sat = g.player_state() == 0x24;
     }
     REQUIRE(sat);
-    CHECK(saw_land_sfx);
+    // FUN_1000_1e5e emits 0x0f ONLY on the slab (0x08) arm; landing on a cushion (0x0d)
+    // takes the silent else arm (all_functions.c:2302-2314), so no 0x0f fires here.
+    CHECK_FALSE(saw_land_sfx);
 
     LevelInput down_in{};
     down_in.down = true;  // DOWN (action bit 0x02) rolls off (FUN_1000_1f7f)
@@ -534,6 +536,29 @@ TEST_CASE("hopping onto a cushion block (plane-B 0x0d) sits and bobs; DOWN rolls
         rolled = g.player_state() == 0x02;
     }
     CHECK(rolled);
+}
+
+TEST_CASE("landing on a slab block (plane-B 0x08) emits the block-top landing SFX") {
+    // The positive counterpart to the cushion case: hop up-left onto a cell whose plane-B
+    // is 0x08 (a slab). kNeigh4256[0x08] = state 0x21, whose decide FUN_1000_1e5e takes
+    // the slab arm -- emitting 0x0f and chaining into the block-top walk (FUN_1000_21e7).
+    BumEntities board = lane_board(0x14);
+    board.bytes[0x30 + 0x13] = 0x08;  // slab on the up-left target
+    LevelGame g(board);
+    for (int i = 0; i < 11; ++i) {
+        g.tick(none);
+    }
+    for (int i = 0; i < 4; ++i) {
+        g.tick(left);  // hop up-left (2634) onto the slab
+    }
+    bool saw_land_sfx = false;
+    for (int i = 0; i < 40 && !saw_land_sfx; ++i) {
+        g.tick(none);
+        for (std::uint8_t id : g.take_sfx_events()) {
+            if (id == 0x0f) saw_land_sfx = true;  // FUN_1000_1e5e's slab-arm landing sfx
+        }
+    }
+    CHECK(saw_land_sfx);
 }
 
 TEST_CASE("matching the picture blocks pops every 0x05 block open") {
