@@ -1,6 +1,7 @@
 #include <SDL3/SDL_main.h>
 
 #include "audio/midi_opl_player.h"
+#include "audio/speaker_sfx.h"
 #include "core/asset_manifest.h"
 #include "core/indexed_framebuffer.h"
 #include "game/app.h"
@@ -15,6 +16,7 @@
 #include "resources/font.h"
 #include "resources/midi_song.h"
 #include "resources/level_resources.h"
+#include "resources/sfx_tables.h"
 #include "resources/menu_resources.h"
 #include "resources/vec.h"
 #include "resources/world_resources.h"
@@ -204,6 +206,44 @@ int dump_music_to_wav(const std::filesystem::path& mid_path, const std::filesyst
     const double rms = frames > 0 ? std::sqrt(energy / static_cast<double>(frames)) : 0.0;
     std::cout << "wrote " << out_path.string() << " (" << frames << " frames @ " << rate
               << " Hz, rms=" << rms << ")\n";
+    return 0;
+}
+
+// Offline-renders a single PC-speaker sweep-engine SFX preset (bumpy::kSfxPresets)
+// via SpeakerVoice to WAV, with no SDL/audio device involved -- for by-ear fidelity
+// checking of the sweep engine's pitch-contour/duration against a DOSBox-X capture
+// (audio design spec Task 6, Step 6: kSfxIsrBaseHz is a tuning constant).
+int dump_sfx_to_wav(int preset_id, const std::filesystem::path& out_path) {
+    constexpr int kPresetCount = sizeof(bumpy::kSfxPresets) / sizeof(bumpy::kSfxPresets[0]);
+    if (preset_id < 0 || preset_id >= kPresetCount) {
+        throw std::runtime_error("preset id out of range 0.." + std::to_string(kPresetCount - 1));
+    }
+    const bumpy::SfxPreset& preset = bumpy::kSfxPresets[preset_id];
+    if (!preset.used) {
+        std::cout << "warning: preset " << preset_id << " is marked unused\n";
+    }
+
+    bumpy::SpeakerVoice voice;
+    voice.start(preset);
+    const std::uint32_t rate = bumpy::SpeakerVoice::kSampleRate;
+    // 1 second is far more than any recovered sweep preset lasts (see speaker_sfx.h).
+    const auto frames = static_cast<std::size_t>(rate);
+
+    std::vector<float> buf(frames, 0.0f);
+    voice.render_add(buf.data(), buf.size());
+
+    std::vector<std::int16_t> pcm(frames);
+    double energy = 0.0;
+    for (std::size_t i = 0; i < frames; ++i) {
+        const float s = std::clamp(buf[i], -1.0f, 1.0f);
+        pcm[i] = static_cast<std::int16_t>(std::lround(s * 32767.0f));
+        energy += double(buf[i]) * buf[i];
+    }
+    write_wav_mono16(out_path, rate, pcm);
+    const double rms = frames > 0 ? std::sqrt(energy / static_cast<double>(frames)) : 0.0;
+    std::cout << "wrote " << out_path.string() << " (preset 0x" << std::hex << preset_id
+              << std::dec << ", " << frames << " frames @ " << rate << " Hz, rms=" << rms
+              << ", finished=" << (!voice.active()) << ")\n";
     return 0;
 }
 
@@ -766,6 +806,11 @@ int main(int argc, char* argv[]) {
             // --dump-music <BUMPY.MID> <BUMPY.BNK> <out.wav> [seconds]
             const double seconds = argc == 6 ? std::stod(argv[5]) : 20.0;
             return dump_music_to_wav(argv[2], argv[3], argv[4], seconds);
+        }
+        if (argc == 4 && std::string_view(argv[1]) == "--dump-sfx") {
+            // --dump-sfx <preset_id> <out.wav>  (preset_id: decimal or 0x-prefixed hex)
+            const int preset_id = static_cast<int>(std::stol(argv[2], nullptr, 0));
+            return dump_sfx_to_wav(preset_id, argv[3]);
         }
         int start_world = 1;
         if (argc == 3 && std::string_view(argv[1]) == "--start-world") {
