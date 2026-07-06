@@ -54,7 +54,8 @@ add_library(bumpy_core
   src/game/world_map.cpp
   src/game/world_graphs.gen.cpp
   src/audio/opl2.cpp
-  src/audio/midi_opl_player.cpp)
+  src/audio/midi_opl_player.cpp
+  src/audio/speaker_sfx.cpp)
 target_include_directories(bumpy_core PUBLIC src)
 target_link_libraries(bumpy_core PUBLIC bcrypt)
 
@@ -112,7 +113,8 @@ add_executable(bumpy_tests
   tests/cpp/ball_motion_test.cpp
   tests/cpp/level_game_test.cpp
   tests/cpp/opl2_test.cpp
-  tests/cpp/midi_opl_player_test.cpp)
+  tests/cpp/midi_opl_player_test.cpp
+  tests/cpp/speaker_sfx_test.cpp)
 target_link_libraries(bumpy_tests PRIVATE bumpy_core Catch2::Catch2WithMain)
 add_test(NAME bumpy_tests COMMAND bumpy_tests)
 set_tests_properties(bumpy_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
