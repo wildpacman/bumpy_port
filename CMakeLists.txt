@@ -20,6 +20,7 @@ FetchContent_MakeAvailable(SDL Catch2 ymfm)
 add_library(bumpy_core
   src/core/indexed_framebuffer.cpp
   src/core/asset_manifest.cpp
+  src/core/port_config.cpp
   src/game/menu.cpp
   src/game/high_scores.cpp
   src/game/high_score_screen.cpp
@@ -95,6 +96,7 @@ enable_testing()
 add_executable(bumpy_tests
   tests/cpp/indexed_framebuffer_test.cpp
   tests/cpp/asset_manifest_test.cpp
+  tests/cpp/port_config_test.cpp
   tests/cpp/binary_reader_test.cpp
   tests/cpp/vec_test.cpp
   tests/cpp/sprite_frame_test.cpp
