@@ -73,6 +73,13 @@ TEST_CASE("build_live_quads mirrors the flat composition") {
     REQUIRE(img != nullptr);
     REQUIRE(quads[0].w == img->width);
     REQUIRE(quads[0].h == img->height);
+
+    // Frame 0x40 (the peg bar) — pin its end-to-end classification through
+    // build_live_quads: whatever classify_sprite says must be what the quad got.
+    const auto expected_kind = sprites.kind(0x40);
+    REQUIRE(quads[0].kind == expected_kind);
+    REQUIRE(quads[0].z == (expected_kind == bumpy::QuadKind::slab ? bumpy::kSlabDepth
+                                                                  : bumpy::kBillboardAbZ));
 }
 
 TEST_CASE("ball and monster quads subtract the frame origin like draw_ball/draw_monster") {
@@ -91,6 +98,26 @@ TEST_CASE("ball and monster quads subtract the frame origin like draw_ball/draw_
     REQUIRE(quads.size() == 1);
     REQUIRE(quads[0].x == static_cast<float>(87 - img->origin_x));
     REQUIRE(quads[0].y == static_cast<float>(111 - img->origin_y));
+    REQUIRE(quads[0].kind == bumpy::QuadKind::billboard);
+    REQUIRE(quads[0].z == bumpy::kActorZ);
+}
+
+TEST_CASE("monster quad subtracts the frame origin and sits on the actor plane") {
+    const auto bank = bumpy::decode_sprite_archive(root / "BUMSPJEU.BIN");
+    bumpy::SpriteCache sprites(bank.bytes());
+    const bumpy::BumEntities entities{};
+
+    const int monster_frame = 0x40;  // any decodable bank frame works here
+    const auto* img = sprites.frame(monster_frame);
+    REQUIRE(img != nullptr);
+
+    const auto quads = bumpy::build_live_quads(
+        entities, {}, bumpy::MonsterPose{monster_frame, 120, 88},
+        bumpy::BallPose{100, 0, 0},  // hidden ball: monster is the only quad
+        sprites);
+    REQUIRE(quads.size() == 1);
+    REQUIRE(quads[0].x == static_cast<float>(120 - img->origin_x));
+    REQUIRE(quads[0].y == static_cast<float>(88 - img->origin_y));
     REQUIRE(quads[0].kind == bumpy::QuadKind::billboard);
     REQUIRE(quads[0].z == bumpy::kActorZ);
 }
