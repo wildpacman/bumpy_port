@@ -71,9 +71,11 @@ target_include_directories(bumpy_core PRIVATE ${ymfm_SOURCE_DIR}/src)
 
 add_library(bumpy_platform_sdl3
   src/platform_sdl3/sdl_app.cpp
-  src/platform_sdl3/sdl_audio.cpp)
+  src/platform_sdl3/sdl_audio.cpp
+  src/platform_gl3/gl33.cpp
+  src/platform_gl3/gl_util.cpp)
 target_include_directories(bumpy_platform_sdl3 PUBLIC src)
-target_link_libraries(bumpy_platform_sdl3 PUBLIC bumpy_core SDL3::SDL3)
+target_link_libraries(bumpy_platform_sdl3 PUBLIC bumpy_core SDL3::SDL3 opengl32)
 
 add_executable(bumpy_port src/app/main.cpp)
 target_link_libraries(bumpy_port PRIVATE bumpy_platform_sdl3)
