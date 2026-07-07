@@ -77,9 +77,11 @@ One presenter, two paths:
 per frame only live positions are updated from the same `LevelGame` state that
 feeds `render_level()` today. Game logic is not touched.
 
-**Dependencies:** vendor a GL loader (glad, MIT) only. GLSL shaders ship as
-files in an assets subdirectory next to the exe for fast look iteration
-(hot-reload hotkey in Debug builds); no shader build toolchain.
+**Dependencies:** none. SDL3 ships the GL headers (`SDL_opengl.h` +
+`SDL_opengl_glext.h`), so the loader is a ~60-line function-pointer table over
+`SDL_GL_GetProcAddress` — no vendored glad. GLSL shaders ship as files in a
+`shaders3d/` directory next to the exe for fast look iteration (hot-reload
+hotkey in Debug builds); no shader build toolchain.
 
 ## Mode switching and persistence
 
@@ -106,8 +108,9 @@ flat path, disable Alt+3. The game never dies because of the 3D mode.
   at an integer scale compared against a CPU nearest-neighbour reference upscale
   of the same 320x200 frame (board / menu / map) — must match 1:1; non-integer
   window fits are checked by eye against the old presenter.
-- **3D look:** `--render-3d <level> <board> <out.png>` offline dump (peer of the
-  existing `--render-*` tools) for by-eye review.
+- **3D look:** `--render-3d <level> <MONDE.VEC> <board> <out.bmp>` offline dump
+  (peer of the existing `--render-*` tools, which all write BMP) for by-eye
+  review.
 
 ## Phasing
 
