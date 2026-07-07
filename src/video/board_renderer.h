@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <span>
 
 namespace bumpy {
@@ -70,6 +71,18 @@ struct EntitySpriteStats {
     int layer_c{};
     int skipped{};  // cells whose frame index did not decode
 };
+
+enum class EntityLayer { a, b, c };
+
+// Enumerate the BUM grid's entity sprites in the faithful draw order of
+// FUN_1000_2a78 (row-major; per cell layer A, then B -- never col 7 --, then C),
+// yielding each sprite's bank frame index and exact blit top-left. The single
+// source of entity placement, shared by draw_bum_entities (flat path) and the
+// 3D scene builder, so both compose identically by construction.
+void for_each_entity_sprite(
+    const BumEntities& bum,
+    const std::function<void(EntityLayer layer, int frame_index, int x, int y)>& fn);
+
 EntitySpriteStats draw_bum_entities(const BumEntities& bum,
                                     std::span<const std::uint8_t> sprite_bank,
                                     IndexedFramebuffer& target);
