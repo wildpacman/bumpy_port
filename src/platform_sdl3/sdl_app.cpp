@@ -85,47 +85,79 @@ SdlApp::SdlApp() {
     // SDL_OpenAudioDeviceStream) because SDL_OpenAudioDeviceStream fails with
     // "Audio subsystem is not initialized" if the subsystem was never brought up.
     require(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO));
-    window_ = SDL_CreateWindow("Bumpy's Arcade Fantasy", 960, 600, SDL_WINDOW_RESIZABLE);
-    if (!window_) {
-        SDL_Quit();
-        throw std::runtime_error(SDL_GetError());
+    // Preferred path: a GL 3.3 core context (the GlPresenter carries both the flat
+    // and the 3D presentation). Attributes must be set before window creation.
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    window_ = SDL_CreateWindow("Bumpy's Arcade Fantasy", 960, 600,
+                               SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
+    if (window_) {
+        try {
+            gl_ = std::make_unique<GlPresenter>(window_);
+        } catch (const std::exception& error) {
+            std::cerr << "warning: OpenGL 3.3 unavailable, falling back to SDL_Renderer"
+                         " (3D mode disabled): " << error.what() << '\n';
+            SDL_DestroyWindow(window_);
+            window_ = nullptr;
+        }
     }
-    renderer_ = SDL_CreateRenderer(window_, nullptr);
-    if (!renderer_) {
-        SDL_DestroyWindow(window_);
-        SDL_Quit();
-        throw std::runtime_error(SDL_GetError());
+    if (!gl_) {
+        // Fallback: the original SDL_Renderer presentation, flat only.
+        window_ = SDL_CreateWindow("Bumpy's Arcade Fantasy", 960, 600, SDL_WINDOW_RESIZABLE);
+        if (!window_) {
+            SDL_Quit();
+            throw std::runtime_error(SDL_GetError());
+        }
+        renderer_ = SDL_CreateRenderer(window_, nullptr);
+        if (!renderer_) {
+            SDL_DestroyWindow(window_);
+            SDL_Quit();
+            throw std::runtime_error(SDL_GetError());
+        }
+        texture_ = SDL_CreateTexture(
+            renderer_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, 320, 200);
+        if (!texture_) {
+            SDL_DestroyRenderer(renderer_);
+            SDL_DestroyWindow(window_);
+            SDL_Quit();
+            throw std::runtime_error(SDL_GetError());
+        }
+        // Sharp integer-style upscale that stays uniform at non-integer sizes. Pure NEAREST
+        // multiplies each source pixel into an NxN block, but at fractional scales (e.g. 320 -> 1728
+        // for a letterboxed 1080p fullscreen = 5.4x) some source pixels land 5 device-px wide and
+        // their neighbours 6, which shimmers on motion. SDL 3.4's PIXELART mode prescales by the
+        // integer factor and applies a <=1px linear ramp only at pixel boundaries, so the interior
+        // stays crisp (no blur) while every pixel reads the same size. It does NOT invent detail --
+        // the assets are fixed low-res bitmaps -- it just scales the existing pixels cleanly.
+        // (SDL_SCALEMODE_NEAREST is the bit-exact-to-DOSBox alternative if the edge ramp is ever
+        // unwanted.)
+        require(SDL_SetTextureScaleMode(texture_, SDL_SCALEMODE_PIXELART));
+        // Scale the 320x200 framebuffer up to the window (or fullscreen), letterboxing to
+        // preserve aspect so Alt+Enter fullscreen on a 16:9 monitor never stretches the picture
+        // (and a manually resized window stays undistorted). The default logical size 320x200
+        // gives *square* pixels (16:10) -- matching the DOSBox-X reference the port is validated
+        // against (aspect=false). Alt+A switches to the authentic CRT 4:3 (320x240, the 200 VGA
+        // lines stretched to 240) at runtime; see run(). RenderTexture with a null dst then fills
+        // whichever logical size is active 1:1.
+        require(SDL_SetRenderLogicalPresentation(
+            renderer_, 320, 200, SDL_LOGICAL_PRESENTATION_LETTERBOX));
     }
-    texture_ = SDL_CreateTexture(
-        renderer_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, 320, 200);
-    if (!texture_) {
-        SDL_DestroyRenderer(renderer_);
-        SDL_DestroyWindow(window_);
-        SDL_Quit();
-        throw std::runtime_error(SDL_GetError());
-    }
-    // Sharp integer-style upscale that stays uniform at non-integer sizes. Pure NEAREST
-    // multiplies each source pixel into an NxN block, but at fractional scales (e.g. 320 -> 1728
-    // for a letterboxed 1080p fullscreen = 5.4x) some source pixels land 5 device-px wide and
-    // their neighbours 6, which shimmers on motion. SDL 3.4's PIXELART mode prescales by the
-    // integer factor and applies a <=1px linear ramp only at pixel boundaries, so the interior
-    // stays crisp (no blur) while every pixel reads the same size. It does NOT invent detail --
-    // the assets are fixed low-res bitmaps -- it just scales the existing pixels cleanly.
-    // (SDL_SCALEMODE_NEAREST is the bit-exact-to-DOSBox alternative if the edge ramp is ever
-    // unwanted.)
-    require(SDL_SetTextureScaleMode(texture_, SDL_SCALEMODE_PIXELART));
-    // Scale the 320x200 framebuffer up to the window (or fullscreen), letterboxing to
-    // preserve aspect so Alt+Enter fullscreen on a 16:9 monitor never stretches the picture
-    // (and a manually resized window stays undistorted). The default logical size 320x200
-    // gives *square* pixels (16:10) -- matching the DOSBox-X reference the port is validated
-    // against (aspect=false). Alt+A switches to the authentic CRT 4:3 (320x240, the 200 VGA
-    // lines stretched to 240) at runtime; see run(). RenderTexture with a null dst then fills
-    // whichever logical size is active 1:1.
-    require(SDL_SetRenderLogicalPresentation(
-        renderer_, 320, 200, SDL_LOGICAL_PRESENTATION_LETTERBOX));
 }
 
 SdlApp::~SdlApp() {
+    // gl_ must be torn down explicitly, here, before window_: GlPresenter's destructor
+    // calls SDL_GL_MakeCurrent/SDL_GL_DestroyContext against window_, and SDL_DestroyWindow
+    // additionally unloads the GL library once an OpenGL-flagged window is gone. A
+    // destructor's own body always runs before its members' (here: gl_, texture_,
+    // renderer_, window_ in reverse declaration order) are automatically destroyed, so
+    // relying on gl_ being declared after window_ alone would tear down window_ (in the
+    // explicit SDL_DestroyWindow call below) first and leave gl_'s later automatic
+    // destruction touching an already-destroyed window -- hence the explicit reset here.
+    // (The declaration order -- gl_ last -- still matters for the theoretical partial-
+    // construction unwind path, where no destructor body runs at all.)
+    gl_.reset();
     SDL_DestroyTexture(texture_);
     SDL_DestroyRenderer(renderer_);
     SDL_DestroyWindow(window_);
@@ -237,11 +269,18 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
     // constructor's logical presentation.
     bool square_pixels = true;
     auto apply_aspect = [&]() {
+        if (!renderer_) {
+            return;  // GL path: present_flat picks 200/240 from square_pixels directly
+        }
         require(SDL_SetRenderLogicalPresentation(
             renderer_, 320, square_pixels ? 200 : 240, SDL_LOGICAL_PRESENTATION_LETTERBOX));
     };
 
     auto present_frame = [&]() {
+        if (gl_) {
+            gl_->present_flat(frame, square_pixels ? 200 : 240);
+            return;
+        }
         const auto rgba = frame.to_rgba();
         require(SDL_UpdateTexture(
             texture_, nullptr, rgba.data(), frame.width() * sizeof(std::uint32_t)));

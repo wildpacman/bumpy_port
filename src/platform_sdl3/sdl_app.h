@@ -5,12 +5,14 @@
 #include "audio/audio_engine.h"
 #include "core/indexed_framebuffer.h"
 #include "game/app.h"
+#include "platform_gl3/gl_presenter.h"
 #include "resources/font.h"
 #include "resources/world_resources.h"
 #include "video/menu_renderer.h"
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <span>
 
 namespace bumpy {
@@ -21,6 +23,11 @@ public:
     ~SdlApp();
     SdlApp(const SdlApp&) = delete;
     SdlApp& operator=(const SdlApp&) = delete;
+
+    // True when the GL 3.3 presenter is live (constructor succeeded); false means the
+    // SDL_Renderer fallback is in use (flat presentation only, no 3D mode). Consumed by
+    // later tasks that gate 3D-mode input/UI on GL availability.
+    [[nodiscard]] bool gl_available() const noexcept { return gl_ != nullptr; }
 
     // Drive the top-level App. Owns the current world's resources (`world`, by value) and
     // reloads them from `asset_root` whenever App requests a new world (pending_world).
@@ -40,6 +47,10 @@ private:
     SDL_Window* window_{};
     SDL_Renderer* renderer_{};
     SDL_Texture* texture_{};
+    // Declared AFTER window_ so member-destruction order (reverse of declaration) tears
+    // gl_ down BEFORE window_ is destroyed -- the GL context it owns must go while the
+    // window that hosts it still exists.
+    std::unique_ptr<GlPresenter> gl_;
 };
 
 }  // namespace bumpy
