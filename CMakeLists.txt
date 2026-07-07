@@ -49,6 +49,7 @@ add_library(bumpy_core
   src/video/map_renderer.cpp
   src/video/screen_transition.cpp
   src/video/hud.cpp
+  src/video/viewport.cpp
   src/video/high_score_renderer.cpp
   src/video/password_renderer.cpp
   src/game/world_map.cpp
@@ -120,6 +121,7 @@ add_executable(bumpy_tests
   tests/cpp/screen_transition_test.cpp
   tests/cpp/map_renderer_test.cpp
   tests/cpp/hud_test.cpp
+  tests/cpp/viewport_test.cpp
   tests/cpp/move_scripts_test.cpp
   tests/cpp/tile_reactions_test.cpp
   tests/cpp/ball_motion_test.cpp
