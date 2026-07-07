@@ -85,7 +85,7 @@ SdlApp::SdlApp() {
     // SDL_OpenAudioDeviceStream) because SDL_OpenAudioDeviceStream fails with
     // "Audio subsystem is not initialized" if the subsystem was never brought up.
     require(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO));
-    window_ = SDL_CreateWindow("Bumpy accurate port", 960, 600, 0);
+    window_ = SDL_CreateWindow("Bumpy's Arcade Fantasy", 960, 600, SDL_WINDOW_RESIZABLE);
     if (!window_) {
         SDL_Quit();
         throw std::runtime_error(SDL_GetError());
@@ -104,7 +104,25 @@ SdlApp::SdlApp() {
         SDL_Quit();
         throw std::runtime_error(SDL_GetError());
     }
-    require(SDL_SetTextureScaleMode(texture_, SDL_SCALEMODE_NEAREST));
+    // Sharp integer-style upscale that stays uniform at non-integer sizes. Pure NEAREST
+    // multiplies each source pixel into an NxN block, but at fractional scales (e.g. 320 -> 1728
+    // for a letterboxed 1080p fullscreen = 5.4x) some source pixels land 5 device-px wide and
+    // their neighbours 6, which shimmers on motion. SDL 3.4's PIXELART mode prescales by the
+    // integer factor and applies a <=1px linear ramp only at pixel boundaries, so the interior
+    // stays crisp (no blur) while every pixel reads the same size. It does NOT invent detail --
+    // the assets are fixed low-res bitmaps -- it just scales the existing pixels cleanly.
+    // (SDL_SCALEMODE_NEAREST is the bit-exact-to-DOSBox alternative if the edge ramp is ever
+    // unwanted.)
+    require(SDL_SetTextureScaleMode(texture_, SDL_SCALEMODE_PIXELART));
+    // Scale the 320x200 framebuffer up to the window (or fullscreen), letterboxing to
+    // preserve aspect so Alt+Enter fullscreen on a 16:9 monitor never stretches the picture
+    // (and a manually resized window stays undistorted). The default logical size 320x200
+    // gives *square* pixels (16:10) -- matching the DOSBox-X reference the port is validated
+    // against (aspect=false). Alt+A switches to the authentic CRT 4:3 (320x240, the 200 VGA
+    // lines stretched to 240) at runtime; see run(). RenderTexture with a null dst then fills
+    // whichever logical size is active 1:1.
+    require(SDL_SetRenderLogicalPresentation(
+        renderer_, 320, 200, SDL_LOGICAL_PRESENTATION_LETTERBOX));
 }
 
 SdlApp::~SdlApp() {
@@ -206,6 +224,23 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
     ScreenTransition transition;
     int darken_hold = 0;  // retraces the current ring has been shown
 
+    // Display aspect, toggled live with Alt+A. The 320x200 framebuffer is presented either
+    // at 16:10 (square pixels, logical 320x200) or at 4:3 (logical 320x240, the 200 VGA lines
+    // stretched to 240 -- what a real VGA CRT physically showed, since mode 13h pixels are
+    // ~1.2x taller than wide). The two aren't wrong-vs-right, they answer different questions:
+    // 16:10 shows the art exactly as authored on the pixel grid (and matches the DOSBox-X
+    // reference, aspect=false), while 4:3 is hardware-accurate. This game's art was drawn round
+    // on the *square* grid -- the map nodes are true circles at 16:10 -- so 16:10 (the default)
+    // keeps them round, whereas 4:3 stretches them ~1.2x taller. The artist did not pre-squash
+    // to compensate for the CRT, so on real hardware those nodes were in fact slightly egg-
+    // shaped. Letterboxed to the window/fullscreen either way. Starts on 16:10, matching the
+    // constructor's logical presentation.
+    bool square_pixels = true;
+    auto apply_aspect = [&]() {
+        require(SDL_SetRenderLogicalPresentation(
+            renderer_, 320, square_pixels ? 200 : 240, SDL_LOGICAL_PRESENTATION_LETTERBOX));
+    };
+
     auto present_frame = [&]() {
         const auto rgba = frame.to_rgba();
         require(SDL_UpdateTexture(
@@ -261,7 +296,20 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             if (event.type == SDL_EVENT_QUIT) {
                 running = false;
             } else if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
-                update_key_state(input, event.key.key, true);
+                // Alt+Enter toggles fullscreen (the DOS-era convention). Swallow this Enter
+                // so it does not also register as a menu/fire confirm on the same frame.
+                if ((event.key.key == SDLK_RETURN || event.key.key == SDLK_KP_ENTER) &&
+                    (event.key.mod & SDL_KMOD_ALT)) {
+                    const bool fullscreen =
+                        (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0;
+                    SDL_SetWindowFullscreen(window_, !fullscreen);
+                } else if (event.key.key == SDLK_A && (event.key.mod & SDL_KMOD_ALT)) {
+                    // Alt+A: flip display aspect between 16:10 (square pixels) and 4:3 (CRT).
+                    square_pixels = !square_pixels;
+                    apply_aspect();
+                } else {
+                    update_key_state(input, event.key.key, true);
+                }
             } else if (event.type == SDL_EVENT_KEY_UP) {
                 update_key_state(input, event.key.key, false);
             }
