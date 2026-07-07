@@ -58,7 +58,9 @@ add_library(bumpy_core
   src/audio/opl2.cpp
   src/audio/midi_opl_player.cpp
   src/audio/speaker_sfx.cpp
-  src/audio/audio_engine.cpp)
+  src/audio/audio_engine.cpp
+  src/video3d/mat4.cpp
+  src/video3d/blur.cpp)
 target_include_directories(bumpy_core PUBLIC src)
 target_link_libraries(bumpy_core PUBLIC bcrypt)
 
@@ -134,7 +136,9 @@ add_executable(bumpy_tests
   tests/cpp/opl2_test.cpp
   tests/cpp/midi_opl_player_test.cpp
   tests/cpp/speaker_sfx_test.cpp
-  tests/cpp/audio_engine_test.cpp)
+  tests/cpp/audio_engine_test.cpp
+  tests/cpp/mat4_test.cpp
+  tests/cpp/blur_test.cpp)
 target_link_libraries(bumpy_tests PRIVATE bumpy_core Catch2::Catch2WithMain)
 add_test(NAME bumpy_tests COMMAND bumpy_tests)
 set_tests_properties(bumpy_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
