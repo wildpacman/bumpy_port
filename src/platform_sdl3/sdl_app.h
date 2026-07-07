@@ -4,6 +4,7 @@
 
 #include "audio/audio_engine.h"
 #include "core/indexed_framebuffer.h"
+#include "core/port_config.h"
 #include "game/app.h"
 #include "platform_gl3/gl_presenter.h"
 #include "resources/font.h"
@@ -37,11 +38,15 @@ public:
     // must outlive run()). `audio` drives the looping intro-music player (FUN_1000_30dd):
     // started when Screen::splash is entered (including the initial frame), stopped when it
     // is left; menu/gameplay stay silent, matching the original. Must outlive run().
+    // config/config_path seed the persisted presentation state (square pixels, fullscreen,
+    // 3D mode) and are best-effort re-saved to config_path whenever Alt+Enter/Alt+A/Alt+3
+    // change it, so the choice survives to the next launch.
     int run(App& app, const MenuRenderer& menu_renderer, const std::filesystem::path& asset_root,
             WorldResources world, std::span<const std::uint8_t> sprite_bank, const Font& font,
             std::span<const std::uint8_t> splash_screen, std::span<const std::uint8_t> outro_screen,
             std::span<const std::uint8_t> score_screen,
-            IndexedFramebuffer& frame, AudioEngine& audio);
+            IndexedFramebuffer& frame, AudioEngine& audio, PortConfig config,
+            std::filesystem::path config_path);
 
 private:
     SDL_Window* window_{};

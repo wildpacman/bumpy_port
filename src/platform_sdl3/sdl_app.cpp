@@ -169,7 +169,7 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                 std::span<const std::uint8_t> splash_screen,
                 std::span<const std::uint8_t> outro_screen,
                 std::span<const std::uint8_t> score_screen, IndexedFramebuffer& frame,
-                AudioEngine& audio) {
+                AudioEngine& audio, PortConfig config, std::filesystem::path config_path) {
     bool running = true;
     MenuInput input{};
 
@@ -267,13 +267,26 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
     // to compensate for the CRT, so on real hardware those nodes were in fact slightly egg-
     // shaped. Letterboxed to the window/fullscreen either way. Starts on 16:10, matching the
     // constructor's logical presentation.
-    bool square_pixels = true;
+    // Presentation state, seeded from the persisted config. render3d only arms when
+    // the GL presenter is live (Alt+3 needs shaders); the flag itself is kept so a
+    // machine upgrade re-enables it.
+    bool square_pixels = config.square_pixels;
+    bool render3d = config.render3d && gl_ != nullptr;
     auto apply_aspect = [&]() {
         if (!renderer_) {
             return;  // GL path: present_flat picks 200/240 from square_pixels directly
         }
         require(SDL_SetRenderLogicalPresentation(
             renderer_, 320, square_pixels ? 200 : 240, SDL_LOGICAL_PRESENTATION_LETTERBOX));
+    };
+    apply_aspect();
+    if (config.fullscreen) {
+        SDL_SetWindowFullscreen(window_, true);
+    }
+    auto persist = [&]() {
+        if (!save_port_config(config_path, config)) {
+            std::cerr << "warning: could not write " << config_path.string() << '\n';
+        }
     };
 
     auto present_frame = [&]() {
@@ -342,10 +355,23 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                     const bool fullscreen =
                         (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0;
                     SDL_SetWindowFullscreen(window_, !fullscreen);
+                    config.fullscreen = !fullscreen;
+                    persist();
                 } else if (event.key.key == SDLK_A && (event.key.mod & SDL_KMOD_ALT)) {
                     // Alt+A: flip display aspect between 16:10 (square pixels) and 4:3 (CRT).
                     square_pixels = !square_pixels;
                     apply_aspect();
+                    config.square_pixels = square_pixels;
+                    persist();
+                } else if (event.key.key == SDLK_3 && (event.key.mod & SDL_KMOD_ALT)) {
+                    // Alt+3: original <-> 3D diorama (hard cut, per the design spec).
+                    if (gl_) {
+                        render3d = !render3d;
+                        config.render3d = render3d;
+                        persist();
+                    } else {
+                        std::cerr << "3D mode unavailable: no OpenGL 3.3\n";
+                    }
                 } else {
                     update_key_state(input, event.key.key, true);
                 }

@@ -5,6 +5,7 @@
 #include "audio/speaker_sfx.h"
 #include "core/asset_manifest.h"
 #include "core/indexed_framebuffer.h"
+#include "core/port_config.h"
 #include "game/app.h"
 #include "game/high_score_screen.h"
 #include "game/high_scores.h"
@@ -91,6 +92,17 @@ std::filesystem::path find_asset_root(std::string_view executable_path) {
     }
     throw std::runtime_error(
         "cannot find original Bumpy assets; run from the project root or keep the executable below it");
+}
+
+// The config sits next to the exe ("the port's first on-disk persistence"); if the
+// exe path is unusable, fall back to the current directory.
+std::filesystem::path config_file_path(std::string_view executable_path) {
+    std::error_code error;
+    auto p = std::filesystem::weakly_canonical(std::filesystem::path(executable_path), error);
+    if (!error && p.has_parent_path()) {
+        return p.parent_path() / "bumpy_port.cfg";
+    }
+    return std::filesystem::current_path() / "bumpy_port.cfg";
 }
 
 // A faithful port reads the original files, so it is worth warning when they are
@@ -769,7 +781,8 @@ int render_transition_to_bmps(const std::filesystem::path& asset_root,
     return 0;
 }
 
-int run_sdl_menu(const std::filesystem::path& asset_root, int start_world) {
+int run_sdl_menu(const std::filesystem::path& asset_root, int start_world, bumpy::PortConfig config,
+                 const std::filesystem::path& cfg_path) {
     warn_if_assets_changed(asset_root);
     const auto resources = bumpy::MenuResources::load_from(asset_root);
     const bumpy::MenuRenderer renderer(resources);
@@ -820,7 +833,7 @@ int run_sdl_menu(const std::filesystem::path& asset_root, int start_world) {
 
     return sdl.run(app, renderer, asset_root, std::move(world), sprite_bank.bytes(), font,
                    resources.splash.decoded_bytes(), outro.decoded_bytes(), score_screen, frame,
-                   audio_engine);
+                   audio_engine, config, cfg_path);
 }
 
 }  // namespace
@@ -829,6 +842,19 @@ int main(int argc, char* argv[]) {
     try {
         const auto asset_root =
             find_asset_root(argc > 0 ? std::string_view(argv[0]) : std::string_view{});
+        const auto cfg_path =
+            config_file_path(argc > 0 ? std::string_view(argv[0]) : std::string_view{});
+        bumpy::PortConfig config = bumpy::load_port_config(cfg_path);
+        // --render3d anywhere on the command line: start in 3D (overrides the config).
+        bool render3d_flag = false;
+        for (int i = 1; i < argc; ++i) {
+            if (std::string_view(argv[i]) == "--render3d") {
+                render3d_flag = true;
+            }
+        }
+        if (render3d_flag) {
+            config.render3d = true;
+        }
         if (argc >= 2 && argc <= 4 && std::string_view(argv[1]) == "--render-title") {
             const auto out_path = argc >= 3 ? std::filesystem::path(argv[2])
                                             : asset_root / "analysis/generated/menu_with_marker.bmp";
@@ -919,20 +945,30 @@ int main(int argc, char* argv[]) {
         if (argc == 2 && std::string_view(argv[1]) == "--present-parity") {
             return present_parity(asset_root);
         }
+        // The tool branches above always parse raw argc/argv (unaffected by --render3d).
+        // Everything below instead consults `args` -- argv[1..] with any "--render3d"
+        // filtered out -- so that flag can be combined with --start-world or the default
+        // launch without perturbing the argument counts/positions those branches check.
+        std::vector<std::string_view> args;
+        for (int i = 1; i < argc; ++i) {
+            if (std::string_view(argv[i]) != "--render3d") {
+                args.emplace_back(argv[i]);
+            }
+        }
         int start_world = 1;
-        if (argc == 3 && std::string_view(argv[1]) == "--start-world") {
-            start_world = std::stoi(argv[2]);
+        if (args.size() == 2 && args[0] == "--start-world") {
+            start_world = std::stoi(std::string(args[1]));
             if (start_world < 1 || start_world > bumpy::kWorldCount) {
                 std::cerr << "--start-world must be 1.." << bumpy::kWorldCount << '\n';
                 return 2;
             }
-            return run_sdl_menu(asset_root, start_world);
+            return run_sdl_menu(asset_root, start_world, config, cfg_path);
         }
-        if (argc != 1) {
+        if (!args.empty()) {
             std::cerr << "usage: bumpy_port.exe [--render-title [out.bmp] | --start-world N | ...]\n";
             return 2;
         }
-        return run_sdl_menu(asset_root, start_world);
+        return run_sdl_menu(asset_root, start_world, config, cfg_path);
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;
