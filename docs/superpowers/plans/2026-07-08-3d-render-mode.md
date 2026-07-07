@@ -2615,7 +2615,31 @@ add_custom_command(TARGET bumpy_port POST_BUILD
 
 - [ ] **Step 5: `--render-3d` in main.cpp.** Add includes `"platform_gl3/scene_renderer.h"`, `"video3d/scene3d.h"` and:
 
+First, extract the BMP header block that `write_24bit_bmp` already emits into a shared helper (replace the header-writing lines inside `write_24bit_bmp` with a call to it — byte-identical output):
+
 ```cpp
+// The 54-byte BMP file+info header for a 24-bit image (shared by the indexed and
+// RGBA dump writers so the two never drift).
+void write_bmp_header(std::ostream& output, std::uint32_t width, std::uint32_t height,
+                      std::uint32_t pixel_bytes) {
+    output.write("BM", 2);
+    write_u32(output, 14U + 40U + pixel_bytes);
+    write_u16(output, 0);
+    write_u16(output, 0);
+    write_u32(output, 54);
+    write_u32(output, 40);
+    write_u32(output, width);
+    write_u32(output, height);
+    write_u16(output, 1);
+    write_u16(output, 24);
+    write_u32(output, 0);
+    write_u32(output, pixel_bytes);
+    write_u32(output, 0);
+    write_u32(output, 0);
+    write_u32(output, 0);
+    write_u32(output, 0);
+}
+
 // RGBA (rows top-to-bottom) -> 24-bit BMP, for GL readback dumps.
 void write_24bit_bmp_rgba(const std::filesystem::path& path,
                           const std::vector<std::uint8_t>& rgba, int w, int h) {
@@ -2625,22 +2649,8 @@ void write_24bit_bmp_rgba(const std::filesystem::path& path,
     if (!output) {
         throw std::runtime_error("cannot create BMP: " + path.string());
     }
-    output.write("BM", 2);
-    write_u32(output, 14U + 40U + pixel_bytes);
-    write_u16(output, 0);
-    write_u16(output, 0);
-    write_u32(output, 54);
-    write_u32(output, 40);
-    write_u32(output, static_cast<std::uint32_t>(w));
-    write_u32(output, static_cast<std::uint32_t>(h));
-    write_u16(output, 1);
-    write_u16(output, 24);
-    write_u32(output, 0);
-    write_u32(output, pixel_bytes);
-    write_u32(output, 0);
-    write_u32(output, 0);
-    write_u32(output, 0);
-    write_u32(output, 0);
+    write_bmp_header(output, static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h),
+                     pixel_bytes);
     std::vector<std::uint8_t> row(row_stride);
     for (int y = h - 1; y >= 0; --y) {
         std::fill(row.begin(), row.end(), 0);
