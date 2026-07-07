@@ -52,43 +52,49 @@ GlPresenter::GlPresenter(SDL_Window* window) : window_(window) {
         SDL_GL_DestroyContext(context_);
         throw std::runtime_error("OpenGL 3.3 functions unavailable");
     }
-    program_ = link_program(gl_, kFlatVert, kFlatFrag);
-    u_tex_ = gl_.GetUniformLocation(program_, "u_tex");
-    u_tex_size_ = gl_.GetUniformLocation(program_, "u_tex_size");
+    try {
+        program_ = link_program(gl_, kFlatVert, kFlatFrag);
+        u_tex_ = gl_.GetUniformLocation(program_, "u_tex");
+        u_tex_size_ = gl_.GetUniformLocation(program_, "u_tex_size");
 
-    // Fullscreen quad: pos.xy in NDC, uv with v=0 at the TOP (texture row 0 = frame
-    // row 0), as two triangles.
-    const float quad[] = {
-        // x      y     u     v
-        -1.0f,  1.0f, 0.0f, 0.0f,
-         1.0f,  1.0f, 1.0f, 0.0f,
-         1.0f, -1.0f, 1.0f, 1.0f,
-        -1.0f,  1.0f, 0.0f, 0.0f,
-         1.0f, -1.0f, 1.0f, 1.0f,
-        -1.0f, -1.0f, 0.0f, 1.0f,
-    };
-    gl_.GenVertexArrays(1, &vao_);
-    gl_.BindVertexArray(vao_);
-    gl_.GenBuffers(1, &vbo_);
-    gl_.BindBuffer(GL_ARRAY_BUFFER, vbo_);
-    gl_.BufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
-    gl_.EnableVertexAttribArray(0);
-    gl_.VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
-    gl_.EnableVertexAttribArray(1);
-    gl_.VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
-                            reinterpret_cast<const void*>(2 * sizeof(float)));
+        // Fullscreen quad: pos.xy in NDC, uv with v=0 at the TOP (texture row 0 = frame
+        // row 0), as two triangles.
+        const float quad[] = {
+            // x      y     u     v
+            -1.0f,  1.0f, 0.0f, 0.0f,
+             1.0f,  1.0f, 1.0f, 0.0f,
+             1.0f, -1.0f, 1.0f, 1.0f,
+            -1.0f,  1.0f, 0.0f, 0.0f,
+             1.0f, -1.0f, 1.0f, 1.0f,
+            -1.0f, -1.0f, 0.0f, 1.0f,
+        };
+        gl_.GenVertexArrays(1, &vao_);
+        gl_.BindVertexArray(vao_);
+        gl_.GenBuffers(1, &vbo_);
+        gl_.BindBuffer(GL_ARRAY_BUFFER, vbo_);
+        gl_.BufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+        gl_.EnableVertexAttribArray(0);
+        gl_.VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
+        gl_.EnableVertexAttribArray(1);
+        gl_.VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                                reinterpret_cast<const void*>(2 * sizeof(float)));
 
-    glGenTextures(1, &frame_tex_);
-    glBindTexture(GL_TEXTURE_2D, frame_tex_);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 320, 200, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                 nullptr);
-    // LINEAR is what makes the pixel-art shader's edge ramp work; the shader's UV
-    // snapping keeps interiors exact.
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glGenTextures(1, &frame_tex_);
+        glBindTexture(GL_TEXTURE_2D, frame_tex_);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 320, 200, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                     nullptr);
+        // LINEAR is what makes the pixel-art shader's edge ramp work; the shader's UV
+        // snapping keeps interiors exact.
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    } catch (...) {
+        SDL_GL_DestroyContext(context_);
+        context_ = nullptr;
+        throw;
+    }
 }
 
 GlPresenter::~GlPresenter() {
