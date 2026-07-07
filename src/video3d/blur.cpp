@@ -8,7 +8,9 @@ namespace bumpy {
 namespace {
 
 std::vector<float> gaussian_kernel(float sigma) {
-    const int radius = std::min(static_cast<int>(std::ceil(3.0f * sigma)), 256);
+    // Cap at 256 taps (far beyond any sane art-blur sigma) BEFORE the int cast so
+    // +inf / huge sigmas stay defined; the guard in blur() already rejects NaN/<=0.
+    const int radius = static_cast<int>(std::min(std::ceil(3.0f * sigma), 256.0f));
     std::vector<float> k(static_cast<std::size_t>(2 * radius + 1));
     float sum = 0.0f;
     for (int i = -radius; i <= radius; ++i) {

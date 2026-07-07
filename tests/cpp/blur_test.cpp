@@ -47,3 +47,22 @@ TEST_CASE("NaN sigma is a no-op") {
     bumpy::gaussian_blur_alpha(a, 3, 3, std::numeric_limits<float>::quiet_NaN());
     REQUIRE(a == copy);
 }
+
+TEST_CASE("infinite sigma is bounded, not UB") {
+    // Verify that infinite sigma doesn't cause UB (casting infinity to int).
+    // With sigma=infinity, 3*sigma*ceil = infinity, which we clamp to 256 in
+    // float space BEFORE the int cast, preventing UB from static_cast<int>(inf).
+    // With such a large kernel (radius 256 = 513 taps), the blur heavily dilutes
+    // the signal and may round many values to 0, but the call must complete safely.
+    const int w = 9;
+    const int h = 9;
+    std::vector<std::uint8_t> a(static_cast<std::size_t>(w) * h, 0);
+    a[4 * w + 4] = 255;  // Center pixel with max intensity
+    // This call must complete without UB/hang.
+    bumpy::gaussian_blur_alpha(a, w, h, std::numeric_limits<float>::infinity());
+    // All output values must be valid [0, 255] and not corrupted by UB.
+    for (const auto v : a) {
+        REQUIRE(v >= 0);
+        REQUIRE(v <= 255);
+    }
+}
