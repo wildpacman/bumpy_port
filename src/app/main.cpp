@@ -24,6 +24,7 @@
 #include "resources/world_resources.h"
 #include "game/world_graphs.h"
 #include "game/world_map.h"
+#include "platform_gl3/gl_presenter.h"
 #include "video/board_renderer.h"
 #include "video/high_score_renderer.h"
 #include "video/hud.h"
@@ -261,6 +262,80 @@ bumpy::IndexedFramebuffer render_menu_frame(const std::filesystem::path& asset_r
     bumpy::IndexedFramebuffer frame(320, 200);
     renderer.render(view, frame);
     return frame;
+}
+
+// CPU nearest-neighbour reference upscale: each frame pixel becomes a k x k block.
+std::vector<std::uint8_t> nearest_upscale_rgba(const bumpy::IndexedFramebuffer& frame, int k) {
+    const auto src = frame.to_rgba();
+    const int w = frame.width();
+    const int h = frame.height();
+    std::vector<std::uint8_t> out(static_cast<std::size_t>(w) * k * h * k * 4);
+    for (int y = 0; y < h * k; ++y) {
+        for (int x = 0; x < w * k; ++x) {
+            const std::uint32_t p = src[static_cast<std::size_t>(y / k) * w + (x / k)];
+            const std::size_t o = (static_cast<std::size_t>(y) * w * k + x) * 4;
+            out[o] = static_cast<std::uint8_t>(p & 0xff);
+            out[o + 1] = static_cast<std::uint8_t>((p >> 8) & 0xff);
+            out[o + 2] = static_cast<std::uint8_t>((p >> 16) & 0xff);
+            out[o + 3] = static_cast<std::uint8_t>((p >> 24) & 0xff);
+        }
+    }
+    return out;
+}
+
+// Renders three representative composed screens through the GL flat path at
+// integer scales and compares them byte-for-byte with the CPU nearest reference.
+// This is the spec's flat-path parity gate: interior pixels must be 1:1.
+int present_parity(const std::filesystem::path& asset_root) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        std::cerr << SDL_GetError() << '\n';
+        return 1;
+    }
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_Window* window =
+        SDL_CreateWindow("parity", 64, 64, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    if (!window) {
+        std::cerr << SDL_GetError() << '\n';
+        SDL_Quit();
+        return 1;
+    }
+    int failures = 0;
+    {
+        bumpy::GlPresenter presenter(window);
+
+        std::vector<std::pair<std::string, bumpy::IndexedFramebuffer>> cases;
+        cases.emplace_back("menu", render_menu_frame(asset_root, 0));
+
+        const auto level = bumpy::LevelResources::load(asset_root, 1);
+        const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+        bumpy::IndexedFramebuffer board(320, 200);
+        bumpy::render_board(level, 0, {}, board);
+        bumpy::draw_bum_entities(level.bum_entities(0), bank.bytes(), board);
+        cases.emplace_back("board", std::move(board));
+
+        auto world = bumpy::WorldResources::load(asset_root, 1);
+        bumpy::WorldMap map(1);
+        bumpy::IndexedFramebuffer mapframe(320, 200);
+        bumpy::render_map(world.backdrop(), map.view(), bank.bytes(), mapframe);
+        cases.emplace_back("map", std::move(mapframe));
+
+        for (const auto& [name, frame] : cases) {
+            for (const int k : {2, 4}) {
+                const auto got = presenter.render_flat_offscreen(frame, 320 * k, 200 * k, 200);
+                const auto want = nearest_upscale_rgba(frame, k);
+                const bool pass = got == want;
+                std::cout << name << " x" << k << ": " << (pass ? "PASS" : "FAIL") << '\n';
+                if (!pass) {
+                    ++failures;
+                }
+            }
+        }
+    }
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return failures == 0 ? 0 : 1;
 }
 
 int render_title_to_bmp(const std::filesystem::path& asset_root, const std::filesystem::path& out_path,
@@ -840,6 +915,9 @@ int main(int argc, char* argv[]) {
             // --dump-sfx <preset_id> <out.wav>  (preset_id: decimal or 0x-prefixed hex)
             const int preset_id = static_cast<int>(std::stol(argv[2], nullptr, 0));
             return dump_sfx_to_wav(preset_id, argv[3]);
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--present-parity") {
+            return present_parity(asset_root);
         }
         int start_world = 1;
         if (argc == 3 && std::string_view(argv[1]) == "--start-world") {
