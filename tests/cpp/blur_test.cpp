@@ -3,6 +3,7 @@
 #include "video3d/blur.h"
 
 #include <cstdint>
+#include <limits>
 #include <numeric>
 #include <vector>
 
@@ -37,4 +38,12 @@ TEST_CASE("rgba blur touches colour channels independently and clamps edges") {
     bumpy::gaussian_blur_rgba(img, w, h, 1.0f);
     REQUIRE(img[0 * 4 + 0] > img[1 * 4 + 0]);  // red spreads right
     REQUIRE(img[1 * 4 + 1] == 0);              // green untouched
+}
+
+TEST_CASE("NaN sigma is a no-op") {
+    std::vector<std::uint8_t> a(9, 0);
+    a[4] = 200;
+    auto copy = a;
+    bumpy::gaussian_blur_alpha(a, 3, 3, std::numeric_limits<float>::quiet_NaN());
+    REQUIRE(a == copy);
 }

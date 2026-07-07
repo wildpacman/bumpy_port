@@ -8,7 +8,7 @@ namespace bumpy {
 namespace {
 
 std::vector<float> gaussian_kernel(float sigma) {
-    const int radius = static_cast<int>(std::ceil(3.0f * sigma));
+    const int radius = std::min(static_cast<int>(std::ceil(3.0f * sigma)), 256);
     std::vector<float> k(static_cast<std::size_t>(2 * radius + 1));
     float sum = 0.0f;
     for (int i = -radius; i <= radius; ++i) {
@@ -42,7 +42,7 @@ void blur_axis(const std::vector<std::uint8_t>& src, std::vector<std::uint8_t>& 
 }
 
 void blur(std::vector<std::uint8_t>& pixels, int w, int h, int channels, float sigma) {
-    if (sigma <= 0.0f || w <= 0 || h <= 0) {
+    if (!(sigma > 0.0f) || w <= 0 || h <= 0) {  // !(>0) also catches NaN -> no-op
         return;
     }
     const auto kernel = gaussian_kernel(sigma);

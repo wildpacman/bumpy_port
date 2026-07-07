@@ -44,3 +44,11 @@ TEST_CASE("perspective projects the frustum edge to NDC +-1") {
     REQUIRE(near(centre.x / centre.w, 0.0f));
     REQUIRE(near(centre.y / centre.w, 0.0f));
 }
+
+TEST_CASE("perspective maps znear to NDC z=-1 and zfar to z=+1") {
+    const Mat4 p = bumpy::mat4_perspective(3.14159265f / 2.0f, 1.0f, 1.0f, 100.0f);
+    const Vec4 near_pt = bumpy::mat4_transform(p, {0.0f, 0.0f, -1.0f, 1.0f});
+    REQUIRE(near(near_pt.z / near_pt.w, -1.0f));
+    const Vec4 far_pt = bumpy::mat4_transform(p, {0.0f, 0.0f, -100.0f, 1.0f});
+    REQUIRE(std::fabs((far_pt.z / far_pt.w) - 1.0f) < 1e-3f);
+}
