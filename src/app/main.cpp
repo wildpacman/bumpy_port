@@ -26,6 +26,8 @@
 #include "game/world_graphs.h"
 #include "game/world_map.h"
 #include "platform_gl3/gl_presenter.h"
+#include "platform_gl3/gl_util.h"
+#include "platform_gl3/scene_renderer.h"
 #include "video/board_renderer.h"
 #include "video/high_score_renderer.h"
 #include "video/hud.h"
@@ -34,6 +36,7 @@
 #include "video/password_renderer.h"
 #include "video/screen_image.h"
 #include "video/screen_transition.h"
+#include "video3d/scene3d.h"
 
 #include <algorithm>
 #include <array>
@@ -129,17 +132,10 @@ void write_u32(std::ostream& output, std::uint32_t value) {
     write_u16(output, static_cast<std::uint16_t>((value >> 16U) & 0xffffU));
 }
 
-// Minimal 24-bit BMP writer for headless inspection of a rendered frame.
-void write_24bit_bmp(const std::filesystem::path& path, const bumpy::IndexedFramebuffer& frame) {
-    const auto width = static_cast<std::uint32_t>(frame.width());
-    const auto height = static_cast<std::uint32_t>(frame.height());
-    const auto row_stride = ((width * 3U) + 3U) & ~3U;
-    const auto pixel_bytes = row_stride * height;
-
-    std::ofstream output(path, std::ios::binary | std::ios::trunc);
-    if (!output) {
-        throw std::runtime_error("cannot create BMP: " + path.string());
-    }
+// The 54-byte BMP file+info header for a 24-bit image (shared by the indexed and
+// RGBA dump writers so the two never drift).
+void write_bmp_header(std::ostream& output, std::uint32_t width, std::uint32_t height,
+                      std::uint32_t pixel_bytes) {
     output.write("BM", 2);
     write_u32(output, 14U + 40U + pixel_bytes);
     write_u16(output, 0);
@@ -156,6 +152,20 @@ void write_24bit_bmp(const std::filesystem::path& path, const bumpy::IndexedFram
     write_u32(output, 0);
     write_u32(output, 0);
     write_u32(output, 0);
+}
+
+// Minimal 24-bit BMP writer for headless inspection of a rendered frame.
+void write_24bit_bmp(const std::filesystem::path& path, const bumpy::IndexedFramebuffer& frame) {
+    const auto width = static_cast<std::uint32_t>(frame.width());
+    const auto height = static_cast<std::uint32_t>(frame.height());
+    const auto row_stride = ((width * 3U) + 3U) & ~3U;
+    const auto pixel_bytes = row_stride * height;
+
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    if (!output) {
+        throw std::runtime_error("cannot create BMP: " + path.string());
+    }
+    write_bmp_header(output, width, height, pixel_bytes);
 
     std::vector<std::uint8_t> row(row_stride);
     const auto pixels = frame.pixels();
@@ -598,6 +608,104 @@ int render_board_to_bmp(const std::filesystem::path& asset_root, int level_numbe
     return 0;
 }
 
+// RGBA (rows top-to-bottom) -> 24-bit BMP, for GL readback dumps.
+void write_24bit_bmp_rgba(const std::filesystem::path& path,
+                          const std::vector<std::uint8_t>& rgba, int w, int h) {
+    const auto row_stride = ((static_cast<std::uint32_t>(w) * 3U) + 3U) & ~3U;
+    const auto pixel_bytes = row_stride * static_cast<std::uint32_t>(h);
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    if (!output) {
+        throw std::runtime_error("cannot create BMP: " + path.string());
+    }
+    write_bmp_header(output, static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h),
+                     pixel_bytes);
+    std::vector<std::uint8_t> row(row_stride);
+    for (int y = h - 1; y >= 0; --y) {
+        std::fill(row.begin(), row.end(), 0);
+        for (int x = 0; x < w; ++x) {
+            const std::size_t src = (static_cast<std::size_t>(y) * w + x) * 4;
+            row[static_cast<std::size_t>(x) * 3] = rgba[src + 2];
+            row[static_cast<std::size_t>(x) * 3 + 1] = rgba[src + 1];
+            row[static_cast<std::size_t>(x) * 3 + 2] = rgba[src];
+        }
+        output.write(reinterpret_cast<const char*>(row.data()),
+                     static_cast<std::streamsize>(row.size()));
+    }
+}
+
+// Shader dir: next to the exe (installed layout) or the repo checkout.
+std::filesystem::path resolve_shader_dir(const std::filesystem::path& asset_root,
+                                         std::string_view executable_path) {
+    std::error_code error;
+    const auto exe =
+        std::filesystem::weakly_canonical(std::filesystem::path(executable_path), error);
+    if (!error && exe.has_parent_path() &&
+        std::filesystem::is_directory(exe.parent_path() / "shaders3d", error)) {
+        return exe.parent_path() / "shaders3d";
+    }
+    return asset_root / "shaders3d";
+}
+
+// Offline 3D-diorama frame: board 0-input start state (ball hanging at its entry
+// cell), rendered headless at 1280x800 -- the by-eye gate for the diorama look.
+int render_3d_to_bmp(const std::filesystem::path& asset_root, std::string_view exe_path,
+                     int level_number, const std::filesystem::path& monde_path,
+                     std::size_t board_index, const std::filesystem::path& out_path) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        std::cerr << SDL_GetError() << '\n';
+        return 1;
+    }
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    SDL_Window* window =
+        SDL_CreateWindow("render3d", 64, 64, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    int rc = 1;
+    if (window) {
+        bumpy::GlPresenter presenter(window);
+        const auto level = bumpy::LevelResources::load(asset_root, level_number);
+        const auto backdrop = bumpy::decode_vec_resource(monde_path);
+        const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+        bumpy::SpriteCache sprites(bank.bytes());
+        const auto scene = bumpy::build_scene3d(level, board_index, backdrop.decoded_bytes());
+        bumpy::SceneRenderer renderer(presenter.gl(),
+                                      resolve_shader_dir(asset_root, exe_path));
+        renderer.set_scene(scene, sprites);
+
+        bumpy::LevelGame game(level.bum_entities(board_index));
+        bumpy::BumEntities live{};
+        std::copy(game.grid().begin(), game.grid().begin() + bumpy::BumEntities::record_size,
+                  live.bytes.begin());
+        std::optional<bumpy::MonsterPose> monster;
+        if (game.monster_present()) {
+            monster = bumpy::MonsterPose{game.monster_frame(), game.monster_x(),
+                                         game.monster_y()};
+        }
+        const auto quads = bumpy::build_live_quads(
+            live, {}, monster, bumpy::BallPose{game.ball_frame(), game.ball_x(), game.ball_y()},
+            sprites);
+
+        const int w = 1280;
+        const int h = 800;
+        auto target = bumpy::make_offscreen_target(presenter.gl(), w, h);
+        presenter.gl().BindFramebuffer(GL_FRAMEBUFFER, target.fbo);
+        renderer.render(quads, static_cast<float>(game.ball_x()),
+                        static_cast<float>(game.ball_y()), {}, bumpy::Viewport{0, 0, w, h});
+        const auto rgba = bumpy::read_target_rgba(presenter.gl(), target);
+        presenter.gl().BindFramebuffer(GL_FRAMEBUFFER, 0);
+        bumpy::destroy_offscreen_target(presenter.gl(), target);
+        write_24bit_bmp_rgba(out_path, rgba, w, h);
+        std::cout << "wrote " << out_path.string() << " (" << quads.size() << " quads)\n";
+        rc = 0;
+        SDL_DestroyWindow(window);
+    } else {
+        std::cerr << SDL_GetError() << '\n';
+    }
+    SDL_Quit();
+    return rc;
+}
+
 // Drive the in-level LevelGame on a board for a number of frames with a held
 // direction, dumping <prefix>NN.bmp every few frames (board art + live entities +
 // the ball) so the playfield gameplay can be verified by eye without the window.
@@ -926,6 +1034,11 @@ int main(int argc, char* argv[]) {
             return render_board_to_bmp(asset_root, std::stoi(argv[2]), argv[3],
                                        static_cast<std::size_t>(std::stoi(argv[4])), argv[5],
                                        draw_map, draw_entities, draw_sprites);
+        }
+        if (argc == 6 && std::string_view(argv[1]) == "--render-3d") {
+            // --render-3d <level> <MONDE.VEC> <board> <out.bmp>: headless diorama dump.
+            return render_3d_to_bmp(asset_root, argv[0], std::stoi(argv[2]), argv[3],
+                                    static_cast<std::size_t>(std::stoi(argv[4])), argv[5]);
         }
         if (argc == 9 && std::string_view(argv[1]) == "--render-pav") {
             // --render-pav <pav> <pal|DEBUG> <out.bmp> <layout> <w> <h> <hdr>

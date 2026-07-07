@@ -78,7 +78,8 @@ add_library(bumpy_platform_sdl3
   src/platform_sdl3/sdl_audio.cpp
   src/platform_gl3/gl33.cpp
   src/platform_gl3/gl_util.cpp
-  src/platform_gl3/gl_presenter.cpp)
+  src/platform_gl3/gl_presenter.cpp
+  src/platform_gl3/scene_renderer.cpp)
 target_include_directories(bumpy_platform_sdl3 PUBLIC src)
 target_link_libraries(bumpy_platform_sdl3 PUBLIC bumpy_core SDL3::SDL3 opengl32)
 
@@ -95,6 +96,10 @@ add_custom_command(TARGET bumpy_port POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
     $<TARGET_FILE:SDL3::SDL3>
     $<TARGET_FILE_DIR:bumpy_port>)
+add_custom_command(TARGET bumpy_port POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/shaders3d
+    $<TARGET_FILE_DIR:bumpy_port>/shaders3d)
 
 add_executable(audio_render tools/audio_render/main.cpp)
 target_link_libraries(audio_render PRIVATE bumpy_core)
