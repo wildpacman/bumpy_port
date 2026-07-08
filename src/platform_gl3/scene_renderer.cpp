@@ -111,7 +111,7 @@ void SceneRenderer::set_scene(const Scene3d& scene, SpriteCache& sprites) {
     destroy_scene_textures();
     sprites_ = &sprites;
     palette_ = scene.palette;
-    // LINEAR: the wall is pre-blurred; linear sampling keeps the parallax smooth.
+    // LINEAR: the wall is pre-blurred; linear sampling keeps the mirrored extension soft.
     wall_tex_ = make_rgba_texture(scene.wall_rgba, 320, 200, /*linear_filter=*/true);
     // Widescreen reveals wall past the 320x200 mural; continue it as a mirrored
     // copy (pre-blurred, so the seam is soft).

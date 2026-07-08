@@ -464,8 +464,9 @@ enters that node's board. **Escape matches the original** (`FUN_1000_0c18`): in 
 it **loses a life** and returns to the world map (node replayable), or triggers GAME
 OVER on the last life; on the world map it is a **GAME OVER → menu** (drops the run, no
 high-score table); on the menu it quits. Every screen change plays the edge-to-centre
-darken. **Alt+Enter** toggles fullscreen, **Alt+A** toggles the display aspect
-(16:10 square pixels / 4:3), and **Alt+3** toggles the 3D diorama presentation
+darken. **Alt+Enter** toggles fullscreen, **Alt+A** toggles the display aspect of the flat presentation
+(16:10 square pixels / 4:3; the 3D diorama is always 4:3-corrected),
+and **Alt+3** toggles the 3D diorama presentation
 in-level (see "3D render mode" above) — all three persist to `bumpy_port.cfg` next
 to the exe. Debug builds add **Alt+R** to hot-reload the diorama shaders in place.
 
@@ -903,16 +904,18 @@ plan: `docs/superpowers/specs/2026-07-08-3d-render-mode-design.md`,
   slabs** (front face = original pixels, side/top/bottom faces = the sprite's own
   edge pixels stretched to the extrusion depth, each shaded per face), irregular
   silhouettes (spiky bumpers, deflectors, collectibles, ball, monster) stay crisp
-  **billboards**. A narrow-FOV camera on the board's central axis eases toward the
-  ball's offset from board centre for a light **parallax** read (wall shifts less
-  than the z=0 plane). Effects: a soft spotlight that follows the ball, a vignette,
+  **billboards**. A narrow-FOV camera sits fixed on the board's central axis; the stage always
+  presents **4:3-corrected** (`kCrtPixelAspect`, matching the flat path's Alt+A
+  4:3) and `scene_frustum` widens the frustum to fill any window shape — the
+  field stays whole and centred while spare width/height reveals the wall,
+  continued past its 320x200 edges as a **mirrored** copy (`GL_MIRRORED_REPEAT`). Effects: a soft spotlight that follows the ball, a vignette,
   and soft blurred shadows of platform/ball silhouettes projected onto the wall
   with a small offset. All textures sample `GL_NEAREST` — no filtering of the
   source pixels themselves. Scene building lives in `src/video3d/` (CPU-side scene
   model: wall texture + blur, slab/billboard geometry, live quad list from the same
   `LevelGame` state that feeds the flat `render_level()`) and `src/platform_gl3`
   (`SceneRenderer`, the GL programs/textures/draw calls). Every look-tuning knob
-  (wall Z, extrusion depth, ambient/spot/vignette strength, parallax gain/ease,
+  (wall Z, extrusion depth, ambient/spot/vignette strength,
   shadow offset/blur/alpha) is a named constant in `src/video3d/scene3d.h` /
   `slab_mesh.h`, meant to be adjusted by eye rather than re-derived.
 - **Switching, three ways, always in sync:** **Alt+3** toggles instantly (hard cut,

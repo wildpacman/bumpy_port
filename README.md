@@ -47,7 +47,7 @@ build automatically.
 | Enter / Space | Confirm / fire |
 | Escape | Context-sensitive: quits from the menu, drops a life and returns to the world map from a level, GAME OVER from the map (matches the original's two-step exit) |
 | Alt+Enter | Toggle fullscreen |
-| Alt+A | Toggle display aspect: 16:10 square pixels (default) / 4:3 CRT-style |
+| Alt+A | Toggle display aspect of the flat (2D) presentation: 16:10 square pixels (default) / 4:3 CRT-style — the 3D mode is always 4:3-corrected |
 | Alt+3 | Toggle the **3D diorama render mode** (in-level only; see below) |
 | Alt+R | *(Debug builds only)* Hot-reload the 3D diorama's shaders from `shaders3d/` without restarting — a broken shader edit keeps the previous working programs instead of crashing |
 
@@ -57,12 +57,17 @@ restored on the next launch.
 ## 3D render mode
 
 An optional OpenGL 3.3 "diorama" presentation of the in-level playfield: the same
-original sprites and board art, arranged with real depth, a light parallax
-camera that follows the ball, and a soft spotlight/vignette/shadow pass — no
-upscaled or new art. It only dresses the in-level playfield; the menu, world map,
-and other screens still render flat even with 3D on. Toggle it with **Alt+3**, or
-start already in 3D with **`--render3d`** on the command line. See
-`PROJECT_STATUS.md` ("3D render mode") for the full design and recovery notes.
+original sprites and board art, arranged with real depth, plus a soft
+spotlight/vignette/shadow pass — no upscaled or new art. The stage always
+presents 4:3-corrected (the CRT look the art targeted; Alt+A does not apply
+inside 3D) and fills the window at any shape: wider than 4:3 reveals more of the
+blurred back wall left and right (a mirrored continuation of the board mural),
+narrower reveals it above and below — the playfield itself stays whole, centred,
+and identically proportioned everywhere. It only dresses the in-level playfield;
+the menu, world map, and other screens still render flat even with 3D on. Toggle
+it with **Alt+3**, or start already in 3D with **`--render3d`** on the command
+line. See `PROJECT_STATUS.md` ("3D render mode") for the full design and
+recovery notes.
 
 ## Configuration file
 
