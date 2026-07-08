@@ -54,6 +54,10 @@ struct OpaqueBounds {
 };
 [[nodiscard]] OpaqueBounds opaque_bounds(const MenuImage& image);
 
+// Single-channel blurred silhouette of the opaque pixels: (w+2*pad) x (h+2*pad).
+[[nodiscard]] std::vector<std::uint8_t> shadow_silhouette(const MenuImage& image, int pad,
+                                                          float sigma);
+
 // slab <=> the opaque silhouette is a completely filled rectangle (lane bars,
 // blocks). Spiky/irregular art stays a crisp billboard -- extruding it would smear.
 [[nodiscard]] QuadKind classify_sprite(const MenuImage& image);
@@ -70,6 +74,13 @@ private:
     std::unordered_map<int, std::optional<MenuImage>> frames_;
     std::unordered_map<int, QuadKind> kinds_;
 };
+
+// Shadow silhouette offset and appearance.
+inline constexpr float kShadowOffsetX = 5.0f;
+inline constexpr float kShadowOffsetY = 7.0f;
+inline constexpr float kShadowAlpha = 0.35f;
+inline constexpr float kShadowBlurSigma = 2.0f;
+inline constexpr int kShadowPad = 6;
 
 // Static per-board scene part: the wall (render_board output with the baked DOF
 // blur) and the board palette that sprite textures are built with.

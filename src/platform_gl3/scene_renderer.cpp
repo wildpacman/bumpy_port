@@ -49,6 +49,15 @@ SceneRenderer::SceneRenderer(const Gl33& gl, std::filesystem::path shader_dir)
         wall_program_ = 0;
         throw;
     }
+    try {
+        shadow_program_ = link_program(gl_, vert, read_text_file(shader_dir_ / "shadow.frag"));
+    } catch (...) {
+        gl_.DeleteProgram(wall_program_);
+        gl_.DeleteProgram(sprite_program_);
+        wall_program_ = 0;
+        sprite_program_ = 0;
+        throw;
+    }
     gl_.GenVertexArrays(1, &vao_);
     gl_.BindVertexArray(vao_);
     gl_.GenBuffers(1, &vbo_);
@@ -77,6 +86,9 @@ SceneRenderer::~SceneRenderer() {
     if (sprite_program_ != 0) {
         gl_.DeleteProgram(sprite_program_);
     }
+    if (shadow_program_ != 0) {
+        gl_.DeleteProgram(shadow_program_);
+    }
 }
 
 void SceneRenderer::destroy_scene_textures() {
@@ -88,6 +100,10 @@ void SceneRenderer::destroy_scene_textures() {
         glDeleteTextures(1, &tex);
     }
     sprite_textures_.clear();
+    for (auto& [frame, tex] : shadow_textures_) {
+        glDeleteTextures(1, &tex);
+    }
+    shadow_textures_.clear();
 }
 
 void SceneRenderer::set_scene(const Scene3d& scene, SpriteCache& sprites) {
@@ -120,6 +136,30 @@ GLuint SceneRenderer::sprite_texture(int frame_index) {
     }
     const GLuint tex = make_rgba_texture(rgba, img->width, img->height);
     sprite_textures_.emplace(frame_index, tex);
+    return tex;
+}
+
+GLuint SceneRenderer::shadow_texture(int frame_index) {
+    if (const auto it = shadow_textures_.find(frame_index); it != shadow_textures_.end()) {
+        return it->second;
+    }
+    const MenuImage* img = sprites_ ? sprites_->frame(frame_index) : nullptr;
+    if (!img) {
+        return 0;
+    }
+    const auto mask = shadow_silhouette(*img, kShadowPad, kShadowBlurSigma);
+    const int w = img->width + 2 * kShadowPad;
+    const int h = img->height + 2 * kShadowPad;
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, mask.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    shadow_textures_.emplace(frame_index, tex);
     return tex;
 }
 
@@ -181,6 +221,42 @@ void SceneRenderer::render(std::span<const SceneQuad> quads, float light_x, floa
         glDrawArrays(GL_TRIANGLES, 0, 6);
     }
 
+    // --- Shadows: each quad's blurred silhouette, offset toward down-right, flat
+    // on the wall plane. Blended, no depth -- painter order (wall already drawn).
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_DEPTH_TEST);
+    gl_.UseProgram(shadow_program_);
+    gl_.Uniform1i(gl_.GetUniformLocation(shadow_program_, "u_tex"), 0);
+    gl_.UniformMatrix4fv(gl_.GetUniformLocation(shadow_program_, "u_mvp"), 1, GL_FALSE,
+                         mvp.m.data());
+    for (const auto& quad : quads) {
+        const GLuint tex = shadow_texture(quad.frame_index);
+        if (tex == 0) {
+            continue;
+        }
+        SceneQuad shadow = quad;
+        shadow.kind = QuadKind::billboard;  // flat silhouette, never extruded
+        shadow.x = quad.x - kShadowPad + kShadowOffsetX;
+        shadow.y = quad.y - kShadowPad + kShadowOffsetY;
+        shadow.w = quad.w + 2 * kShadowPad;
+        shadow.h = quad.h + 2 * kShadowPad;
+        shadow.z = kWallZ + 0.6f;
+        const MenuImage* img = sprites_->frame(quad.frame_index);
+        auto faces = quad_faces(shadow, *img);
+        faces[0].uv = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f};  // pad-inclusive
+        faces[0].shade = kShadowAlpha;
+        std::vector<float> verts;
+        append_face(verts, faces[0]);
+        gl_.BufferData(GL_ARRAY_BUFFER,
+                       static_cast<GLsizeiptr>(verts.size() * sizeof(float)), verts.data(),
+                       GL_STREAM_DRAW);
+        gl_.ActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+    glDisable(GL_BLEND);
+
     // --- Slabs and billboards: depth-tested, alpha handled by discard, so draw
     // order does not matter. One draw per quad (a few dozen -- fine at this scale).
     // GL_CULL_FACE must stay disabled: Task 11's review verified all face normals
@@ -225,10 +301,20 @@ bool SceneRenderer::reload_shaders() {
             gl_.DeleteProgram(wall);
             throw;
         }
+        GLuint shadow = 0;
+        try {
+            shadow = link_program(gl_, vert, read_text_file(shader_dir_ / "shadow.frag"));
+        } catch (...) {
+            gl_.DeleteProgram(wall);
+            gl_.DeleteProgram(sprite);
+            throw;
+        }
         gl_.DeleteProgram(wall_program_);
         gl_.DeleteProgram(sprite_program_);
+        gl_.DeleteProgram(shadow_program_);
         wall_program_ = wall;
         sprite_program_ = sprite;
+        shadow_program_ = shadow;
         return true;
     } catch (const std::exception&) {
         return false;

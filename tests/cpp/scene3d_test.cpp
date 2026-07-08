@@ -143,3 +143,16 @@ TEST_CASE("build_scene3d bakes a blurred 320x200 wall with the board palette") {
     // Palette entry 0 is the board's own colour 0 (opaque).
     REQUIRE(scene.palette[0].a == 0xff);
 }
+
+TEST_CASE("shadow_silhouette pads and blurs the opaque mask") {
+    const auto img = make_frame(4, 4, 1, 1, 2, 2);
+    const int pad = 3;
+    const auto mask = bumpy::shadow_silhouette(img, pad, 1.0f);
+    const int w = 4 + 2 * pad;
+    REQUIRE(mask.size() == static_cast<std::size_t>(w) * (4 + 2 * pad));
+    // Centre of the opaque rect stays strong; a pixel just outside the silhouette
+    // picked up blurred energy; the far corner stays empty.
+    REQUIRE(mask[(pad + 1) * w + (pad + 1)] > 100);
+    REQUIRE(mask[(pad + 0) * w + (pad + 1)] > 0);
+    REQUIRE(mask[0] == 0);
+}

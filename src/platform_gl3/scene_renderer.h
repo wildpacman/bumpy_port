@@ -41,6 +41,7 @@ public:
 
 private:
     GLuint sprite_texture(int frame_index);
+    GLuint shadow_texture(int frame_index);
     void destroy_scene_textures();
 
     const Gl33& gl_;
@@ -49,10 +50,12 @@ private:
     std::array<Rgba, 256> palette_{};
     GLuint wall_program_{};
     GLuint sprite_program_{};
+    GLuint shadow_program_{};
     GLuint vao_{};
     GLuint vbo_{};
     GLuint wall_tex_{};
     std::unordered_map<int, GLuint> sprite_textures_;
+    std::unordered_map<int, GLuint> shadow_textures_;
 };
 
 }  // namespace bumpy

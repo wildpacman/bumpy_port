@@ -172,4 +172,20 @@ std::vector<SceneQuad> build_live_quads(const BumEntities& entities,
     return out;
 }
 
+std::vector<std::uint8_t> shadow_silhouette(const MenuImage& image, int pad, float sigma) {
+    const int w = image.width + 2 * pad;
+    const int h = image.height + 2 * pad;
+    std::vector<std::uint8_t> mask(static_cast<std::size_t>(w) * h, 0);
+    for (int y = 0; y < image.height; ++y) {
+        for (int x = 0; x < image.width; ++x) {
+            if (image.pixels[static_cast<std::size_t>(y) * image.width + x] !=
+                sprite_transparent_index) {
+                mask[static_cast<std::size_t>(y + pad) * w + (x + pad)] = 255;
+            }
+        }
+    }
+    gaussian_blur_alpha(mask, w, h, sigma);
+    return mask;
+}
+
 }  // namespace bumpy
