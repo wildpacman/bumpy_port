@@ -188,7 +188,10 @@ AppOutcome App::update(const MenuInput& input) noexcept {
     }
 
     if (screen_ == Screen::map) {
-        const auto action = world_map_.update(input);
+        // Pass per-board completion so fire on an already-cleared node is a no-op, matching
+        // the original's FUN_1000_3cf7 gate (`if (*node_record == 0)`). cleared_ is the same
+        // span that draws the completed-node markers.
+        const auto action = world_map_.update(input, cleared_);
         switch (action.result) {
         case WorldMapResult::select_board:
             board_index_ = action.board_index;  // map node N -> board N-1

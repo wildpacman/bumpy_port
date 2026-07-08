@@ -4,6 +4,8 @@
 #include "game/world_graphs.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
 
 using bumpy::MenuInput;
 using bumpy::WorldMap;
@@ -231,6 +233,41 @@ TEST_CASE("enter resets to node 1 (snap, no slide) and requires a key release fi
     map.update(MenuInput{});  // release
     // A fresh confirm plays the cloud-jump animation, then selects the board.
     REQUIRE(act(map, MenuInput{.confirm = true}).result == WorldMapResult::select_board);
+}
+
+TEST_CASE("fire on an already-cleared node is a silent no-op (the original 3cf7 gate)") {
+    WorldMap map;  // node 1 -> board 0
+    // The current node's board is already cleared: byte 0 of its graph record is 1 in
+    // the original (set by the win path FUN_1000_1e3d). FUN_1000_3cf7 only runs its jump
+    // + board-select when `*node_record == 0`, so fire here does nothing at all.
+    const std::array<std::uint8_t, 1> cleared{1};  // board 0 (node 1) cleared
+
+    const auto action = map.update(MenuInput{.confirm = true}, cleared);
+
+    REQUIRE(action.result == WorldMapResult::none);
+    REQUIRE_FALSE(map.is_jumping());          // no cloud-jump animation starts
+    REQUIRE(map.current_node() == 1);         // stays put on the node
+    REQUIRE(map.take_sfx_events().empty());   // no launch sound either (whole body skipped)
+}
+
+TEST_CASE("fire still enters an open node when a *different* node is cleared") {
+    WorldMap map;
+    act(map, MenuInput{.right = true});  // slide to node 2 -> board 1
+    REQUIRE(map.current_node() == 2);
+
+    // Board 0 (node 1) is cleared, but the current node 2 (board 1) is still open, so fire
+    // must play the jump and select board 1 exactly as it would with nothing cleared.
+    const std::array<std::uint8_t, 2> cleared{1, 0};
+    auto action = map.update(MenuInput{.confirm = true}, cleared);
+    int guard = 0;
+    while (map.is_jumping() && guard++ < 1000) {
+        const auto stepped = map.update(MenuInput{});
+        if (stepped.result != WorldMapResult::none) {
+            action = stepped;
+        }
+    }
+    REQUIRE(action.result == WorldMapResult::select_board);
+    REQUIRE(action.board_index == 1);  // node 2 -> board 1
 }
 
 TEST_CASE("WorldMap can be constructed for a later world") {

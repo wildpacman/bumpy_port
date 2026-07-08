@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace bumpy {
@@ -82,7 +83,13 @@ public:
     // App calls this from enter_world after the shell loads the new world's resources.
     void load_world(int world) noexcept;
 
-    WorldMapAction update(const MenuInput& input) noexcept;
+    // cleared_boards (optional) is the per-board completion flags (0/1) indexed by
+    // board = node-1 -- App::cleared_, the same span that draws the completed markers.
+    // Fire on a node whose board is already cleared is a no-op (the original's
+    // FUN_1000_3cf7 gate `if (*node_record == 0)`); an empty span means nothing is
+    // cleared (every node open), matching a freshly-loaded world.
+    WorldMapAction update(const MenuInput& input,
+                          std::span<const std::uint8_t> cleared_boards = {}) noexcept;
 
     [[nodiscard]] int world() const noexcept { return view_.world; }
 

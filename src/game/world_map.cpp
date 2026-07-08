@@ -134,7 +134,8 @@ void WorldMap::advance_slide() noexcept {
     }
 }
 
-WorldMapAction WorldMap::update(const MenuInput& input) noexcept {
+WorldMapAction WorldMap::update(const MenuInput& input,
+                                std::span<const std::uint8_t> cleared_boards) noexcept {
     if (jumping_) {
         // Play the cloud-jump one step per tick; input is ignored until it finishes.
         if (jump_step_ < kJump.size()) {
@@ -192,9 +193,18 @@ WorldMapAction WorldMap::update(const MenuInput& input) noexcept {
     }
     waiting_for_release_ = true;
     if (input.confirm) {
-        // All world-1 nodes are open (FUN_1000_2d14 zeroes every node's state), so fire
-        // always starts the jump; select_board is returned once the animation finishes.
-        start_jump();
+        // Fire enters only an *open* node. The original's FUN_1000_3cf7 recomputes the
+        // current node's 9-byte graph record and gates on `if (*node_record == 0)`: it
+        // runs the cloud-jump + selects the board only when byte 0 is 0. A completed node
+        // (byte 0 set to 1 by the win path FUN_1000_1e3d) makes fire a silent no-op -- no
+        // jump, no launch sound -- so an already-cleared board cannot be re-entered.
+        // cleared_boards[node-1] is that byte (App::cleared_, the same span that draws the
+        // completed markers); an empty span leaves every node open.
+        const auto board = static_cast<std::size_t>(view_.current_node - 1);
+        const bool node_cleared = board < cleared_boards.size() && cleared_boards[board] != 0;
+        if (!node_cleared) {
+            start_jump();  // select_board is returned once the animation finishes
+        }
     } else {  // input.cancel
         return {WorldMapResult::back_to_menu, 0};
     }

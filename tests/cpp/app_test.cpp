@@ -325,6 +325,28 @@ TEST_CASE("winning a board marks it cleared and carries lives/score to the map")
     REQUIRE(app.score() == 1250);
 }
 
+TEST_CASE("a cleared board cannot be re-entered from the map (fire gate wired to App::cleared_)") {
+    bumpy::App app(15);
+    enter_level(app);                                    // node 1 -> board 0
+    app.finish_level(bumpy::LevelStatus::won, 5, 1000);  // win: board 0 cleared, back on the map
+    REQUIRE(app.screen() == bumpy::Screen::map);
+    REQUIRE(app.is_board_cleared(0));
+    REQUIRE(app.world_map().current_node() == 1);        // avatar stays on the just-cleared node
+
+    REQUIRE(app.update(bumpy::MenuInput{}) == bumpy::AppOutcome::running);  // release the win key
+
+    // Fire on the now-cleared node must be a silent no-op (FUN_1000_3cf7's `*node == 0`
+    // gate): no cloud-jump starts and the board is never re-entered.
+    REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+    REQUIRE_FALSE(app.world_map().is_jumping());
+    REQUIRE(app.screen() == bumpy::Screen::map);
+    // Ticking on does not sneak into the level either.
+    for (int i = 0; i < 40; ++i) {
+        REQUIRE(app.update(bumpy::MenuInput{.confirm = true}) == bumpy::AppOutcome::running);
+        REQUIRE(app.screen() == bumpy::Screen::map);
+    }
+}
+
 TEST_CASE("dying returns to the map without clearing the board (replayable)") {
     bumpy::App app(15);
     enter_level(app);
