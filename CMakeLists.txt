@@ -86,6 +86,11 @@ target_link_libraries(bumpy_platform_sdl3 PUBLIC bumpy_core SDL3::SDL3 opengl32)
 
 add_executable(bumpy_port src/app/main.cpp)
 target_link_libraries(bumpy_port PRIVATE bumpy_platform_sdl3)
+# Windows exe icon: the Bumpy hero (src/app/bumpy.ico via src/app/bumpy_port.rc).
+# The VS/MSVC generators compile .rc automatically.
+if(WIN32)
+  target_sources(bumpy_port PRIVATE src/app/bumpy_port.rc)
+endif()
 # Release is a GUI app: no console window (Windows GUI subsystem). SDL's SDL_main.h
 # emits both main() and WinMain(), so the WINDOWS subsystem links WinMain -> SDL_main
 # with no source change. Debug stays on the default CONSOLE subsystem so the dev CLI

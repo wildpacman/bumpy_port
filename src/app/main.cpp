@@ -19,6 +19,7 @@
 #include "resources/font.h"
 #include "resources/midi_song.h"
 #include "resources/level_resources.h"
+#include "resources/sprite_frame.h"
 #include "resources/sfx_tables.h"
 #include "resources/menu_resources.h"
 #include "resources/vec.h"
@@ -608,6 +609,48 @@ int render_board_to_bmp(const std::filesystem::path& asset_root, int level_numbe
     return 0;
 }
 
+// --render-sprite <level> <frame> <out.rgba>: decode one BUMSPJEU.BIN frame using
+// the level's board-0 in-game DEC palette and dump it as raw RGBA -- a little-endian
+// int32 width, int32 height, then width*height RGBA bytes (top-to-bottom), with the
+// sprite transparent index emitted as fully transparent (0,0,0,0). Feeds the offline
+// exe-icon build (tools/re/build_icon.py); not part of the shipped game.
+int render_sprite_to_rgba(const std::filesystem::path& asset_root, int level_number,
+                          int frame_index, const std::filesystem::path& out_path) {
+    const auto level = bumpy::LevelResources::load(asset_root, level_number);
+    const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+    const auto dac = level.board(0).palette();
+    std::array<bumpy::Rgba, bumpy::LevelBoard::palette_colors> pal{};
+    for (int c = 0; c < bumpy::LevelBoard::palette_colors; ++c) {
+        const std::uint8_t* e = dac.data() + static_cast<std::size_t>(c) * 3;
+        pal[static_cast<std::size_t>(c)] =
+            bumpy::Rgba{bumpy::vga_dac_to_rgba_component(e[0]), bumpy::vga_dac_to_rgba_component(e[1]),
+                        bumpy::vga_dac_to_rgba_component(e[2]), 0xff};
+    }
+    const auto sprite = bumpy::decode_sprite_frame(bank.bytes(), frame_index);
+    std::vector<std::uint8_t> rgba(static_cast<std::size_t>(sprite.width) * sprite.height * 4);
+    for (std::size_t i = 0; i < sprite.pixels.size(); ++i) {
+        const std::uint8_t idx = sprite.pixels[i];
+        const bumpy::Rgba c =
+            idx == bumpy::sprite_transparent_index ? bumpy::Rgba{0, 0, 0, 0} : pal[idx];
+        rgba[i * 4 + 0] = c.r;
+        rgba[i * 4 + 1] = c.g;
+        rgba[i * 4 + 2] = c.b;
+        rgba[i * 4 + 3] = c.a;
+    }
+    std::ofstream out(out_path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        throw std::runtime_error("cannot create RGBA dump: " + out_path.string());
+    }
+    const std::int32_t w = sprite.width;
+    const std::int32_t h = sprite.height;
+    out.write(reinterpret_cast<const char*>(&w), 4);
+    out.write(reinterpret_cast<const char*>(&h), 4);
+    out.write(reinterpret_cast<const char*>(rgba.data()), static_cast<std::streamsize>(rgba.size()));
+    std::cout << "wrote " << out_path.string() << " (" << w << "x" << h << " frame " << frame_index
+              << ")\n";
+    return 0;
+}
+
 // RGBA (rows top-to-bottom) -> 24-bit BMP, for GL readback dumps.
 void write_24bit_bmp_rgba(const std::filesystem::path& path,
                           const std::vector<std::uint8_t>& rgba, int w, int h) {
@@ -1034,6 +1077,10 @@ int main(int argc, char* argv[]) {
             return render_board_to_bmp(asset_root, std::stoi(argv[2]), argv[3],
                                        static_cast<std::size_t>(std::stoi(argv[4])), argv[5],
                                        draw_map, draw_entities, draw_sprites);
+        }
+        if (argc == 5 && std::string_view(argv[1]) == "--render-sprite") {
+            // --render-sprite <level> <frame> <out.rgba>: one BUMSPJEU frame -> raw RGBA.
+            return render_sprite_to_rgba(asset_root, std::stoi(argv[2]), std::stoi(argv[3]), argv[4]);
         }
         if (argc == 6 && std::string_view(argv[1]) == "--render-3d") {
             // --render-3d <level> <MONDE.VEC> <board> <out.bmp>: headless diorama dump.
