@@ -453,6 +453,15 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                     } else {
                         std::cerr << "3D mode unavailable: no OpenGL 3.3\n";
                     }
+#ifndef NDEBUG
+                } else if (event.key.key == SDLK_R && (event.key.mod & SDL_KMOD_ALT)) {
+                    // Debug look-iteration: recompile the diorama shaders in place.
+                    if (scene_renderer) {
+                        std::cerr << (scene_renderer->reload_shaders()
+                                          ? "shaders reloaded\n"
+                                          : "shader reload failed; keeping previous\n");
+                    }
+#endif
                 } else {
                     update_key_state(input, event.key.key, true);
                 }

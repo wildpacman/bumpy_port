@@ -1,9 +1,9 @@
 # Bumpy Port — Project Status
 
-Source of truth for new sessions. Last updated: 2026-07-07 (**audio / sound system
-implemented** — intro OPL2 music from `BUMPY.MID` + `BUMPY.BNK`, PC-speaker SFX at all
-27 recovered trigger sites, mixed through SDL3; see "Stage 3 audio / sound system" below.
-Prior: Escape / exit flow matches `FUN_1000_0c18`).
+Source of truth for new sessions. Last updated: 2026-07-08 (**3D render mode
+implemented** — an optional OpenGL 3.3 diorama presentation of the in-level
+playfield, toggled by Alt+3 / `--render3d` / `bumpy_port.cfg`; see "3D render
+mode" below. Prior: audio / sound system implemented).
 
 ## Goal
 
@@ -34,6 +34,8 @@ only a platform adapter.
 - `resources` — direct readers/decoders for the original formats.
 - `video` — palette and frame composition over an indexed 320×200 buffer.
 - `audio` — music, instrument bank, effects.
+- `video3d` — CPU-side 3D diorama scene model (wall/slab/billboard geometry, blur).
+- `platform_gl3` — OpenGL 3.3 core presenter + the diorama's GL programs/textures.
 - `platform_sdl3` — window, input, timing, presentation.
 
 ## Roadmap
@@ -447,6 +449,9 @@ cmake --build --preset windows-debug
 & build/windows-debug/Debug/bumpy_port.exe --render-password SCORE.VEC pw.bmp [CODE]     # PASSWORD entry screen; [CODE] shows its OK/ERROR flash
 & build/windows-debug/Debug/bumpy_port.exe --dump-music BUMPY.MID BUMPY.BNK music.wav 20 # offline-render N s of the intro music (OPL2+BNK) to a mono 49715 Hz WAV
 & build/windows-debug/Debug/bumpy_port.exe --dump-sfx 1 sfx.wav                          # render one SFX preset (id 1..0x15) via the speaker sweep engine to a WAV
+& build/windows-debug/Debug/bumpy_port.exe --render3d                                    # launch straight into 3D diorama mode
+& build/windows-debug/Debug/bumpy_port.exe --render-3d 1 MONDE1.VEC 0 out.bmp            # headless diorama dump for one board
+& build/windows-debug/Debug/bumpy_port.exe --present-parity                              # flat-path GL-vs-CPU parity gate (menu/board/map x2/x4, exit 0 = all PASS)
 ```
 
 In the window: the startup splash now **plays the intro FM music** (looped until a key
@@ -459,7 +464,10 @@ enters that node's board. **Escape matches the original** (`FUN_1000_0c18`): in 
 it **loses a life** and returns to the world map (node replayable), or triggers GAME
 OVER on the last life; on the world map it is a **GAME OVER → menu** (drops the run, no
 high-score table); on the menu it quits. Every screen change plays the edge-to-centre
-darken.
+darken. **Alt+Enter** toggles fullscreen, **Alt+A** toggles the display aspect
+(16:10 square pixels / 4:3), and **Alt+3** toggles the 3D diorama presentation
+in-level (see "3D render mode" above) — all three persist to `bumpy_port.cfg` next
+to the exe. Debug builds add **Alt+R** to hot-reload the diorama shaders in place.
 
 ## Reverse-engineering workflow
 
@@ -865,6 +873,76 @@ beeper SFX). Design + plan: `docs/superpowers/specs/2026-07-06-audio-sound-syste
   logic. Judged **acceptable for now**; a future pass could model DOSBox's speaker filter
   precisely instead of the single low-pass. Deferred code minors: `adlib_bank` version-byte
   check, decoder negative-path tests, a MIDI same-pitch-retrigger voice.
+
+## 3D render mode (2026-07-08)
+
+An optional **"diorama" 3D presentation** of the in-level playfield is implemented,
+independent of the earlier `feat/hd-render-mode` xBRZ work (that branch stays
+parked). The same original assets render pixel-for-pixel, arranged in a real 3D
+scene with depth, light, and shader effects — no upscaling, no new art. Design +
+plan: `docs/superpowers/specs/2026-07-08-3d-render-mode-design.md`,
+`docs/superpowers/plans/2026-07-08-3d-render-mode.md`.
+
+- **Presentation moved to an in-house OpenGL 3.3 core presenter** (`src/platform_gl3`):
+  the window now opens a GL context and every screen — not just the 3D diorama —
+  draws through it. The **flat path** (menu, map, level, password, scores, outro:
+  the existing 320x200 `IndexedFramebuffer` composition, unchanged pixel-for-pixel)
+  uploads the frame to a GL texture and draws one quad with a sharp-bilinear
+  pixel-art scaling shader; Alt+A (16:10/4:3) and Alt+Enter (fullscreen) become
+  viewport math, behavior unchanged. This is the highest-risk point for the
+  faithful path, so it is **parity-gated**: `--present-parity` renders three
+  representative composed screens (menu/board/map) through the GL flat path at
+  x2/x4 integer scales and compares byte-for-byte against the CPU nearest-neighbor
+  reference (6/6 PASS, exit 0). **Fallback:** if the window can't get an OpenGL 3.3
+  core context, the port silently drops back to the original `SDL_Renderer` path
+  (never fatal); 3D mode is simply unavailable (`Alt+3` logs "3D mode unavailable:
+  no OpenGL 3.3").
+- **Alt+3 diorama** (in-level only): the board's DEC mural becomes a blurred back
+  wall (baked gaussian DOF, `kWallBlurSigma`), BUM-plane sprites are classified by
+  their own opaque silhouette — solid rectangles (lanes, blocks) become **extruded
+  slabs** (front face = original pixels, side/top/bottom faces = the sprite's own
+  edge pixels stretched to the extrusion depth, each shaded per face), irregular
+  silhouettes (spiky bumpers, deflectors, collectibles, ball, monster) stay crisp
+  **billboards**. A narrow-FOV camera on the board's central axis eases toward the
+  ball's offset from board centre for a light **parallax** read (wall shifts less
+  than the z=0 plane). Effects: a soft spotlight that follows the ball, a vignette,
+  and soft blurred shadows of platform/ball silhouettes projected onto the wall
+  with a small offset. All textures sample `GL_NEAREST` — no filtering of the
+  source pixels themselves. Scene building lives in `src/video3d/` (CPU-side scene
+  model: wall texture + blur, slab/billboard geometry, live quad list from the same
+  `LevelGame` state that feeds the flat `render_level()`) and `src/platform_gl3`
+  (`SceneRenderer`, the GL programs/textures/draw calls). Every look-tuning knob
+  (wall Z, extrusion depth, ambient/spot/vignette strength, parallax gain/ease,
+  shadow offset/blur/alpha) is a named constant in `src/video3d/scene3d.h` /
+  `slab_mesh.h`, meant to be adjusted by eye rather than re-derived.
+- **Switching, three ways, always in sync:** **Alt+3** toggles instantly (hard cut,
+  no transition animation) whenever a GL context exists; **`--render3d`** on the
+  command line starts a session already in 3D; and the choice **persists across
+  restarts** in **`bumpy_port.cfg`** (a plain `key=value` file written next to the
+  exe) — the port's **first on-disk persistence** of any kind (high scores stay
+  session-only, matching the original). The same file also carries the
+  aspect/fullscreen state from the earlier Alt+A/Alt+Enter work. Unknown keys are
+  ignored and bad values fall back to defaults, so older/newer builds tolerate each
+  other's config files.
+- **Tools:** **`--render-3d <level> <MONDE.VEC> <board> <out.bmp>`** dumps one
+  diorama frame headlessly for by-eye inspection (`analysis/generated/render3d_final.bmp`);
+  **`--present-parity`** runs the flat-path parity gate above. Debug builds only:
+  **Alt+R** recompiles the diorama shaders in place from `shaders3d/` without
+  restarting — reload failures keep the previous (working) programs and print
+  `shader reload failed; keeping previous` instead of crashing or going black, so a
+  broken shader edit never loses the running session.
+- **Scope / phase 2:** 3D dressing covers the **in-level playfield only** — menu,
+  world map, password/high-score/outro screens still render flat even with Alt+3
+  on (dressing those is a separate future phase, not started). Game logic, timing,
+  and positions are completely untouched by any of this; the flat 320x200
+  composition still runs every frame (even in 3D mode) so the screen-change darken
+  and the two presentation paths stay trivially in sync.
+- **220 C++ tests pass** (82530 assertions) covering the GL helpers, mat4/blur math,
+  scene decomposition (slab-vs-billboard classification, live quad building),
+  slab/billboard face geometry, the renderer's shader reload path, and the config
+  parser/serializer; originals verify clean. Verified by eye: the parity dump, the
+  live diorama in-window (springs, monster, collectibles, exit portal, win/lose
+  transitions), and the headless `--render-3d` dump.
 
 ## Next step
 
