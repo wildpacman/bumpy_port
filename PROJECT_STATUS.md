@@ -908,7 +908,8 @@ plan: `docs/superpowers/specs/2026-07-08-3d-render-mode-design.md`,
   presents **4:3-corrected** (`kCrtPixelAspect`, matching the flat path's Alt+A
   4:3) and `scene_frustum` widens the frustum to fill any window shape — the
   field stays whole and centred while spare width/height reveals the wall,
-  continued past its 320x200 edges as a **mirrored** copy (`GL_MIRRORED_REPEAT`). Effects: a soft spotlight that follows the ball, a vignette,
+  continued past its 320x200 edges as a **mirrored** copy (`GL_MIRRORED_REPEAT`).
+  Effects: a soft spotlight that follows the ball, a vignette,
   and soft blurred shadows of platform/ball silhouettes projected onto the wall
   with a small offset. All textures sample `GL_NEAREST` — no filtering of the
   source pixels themselves. Scene building lives in `src/video3d/` (CPU-side scene
@@ -940,7 +941,7 @@ plan: `docs/superpowers/specs/2026-07-08-3d-render-mode-design.md`,
   and positions are completely untouched by any of this; the flat 320x200
   composition still runs every frame (even in 3D mode) so the screen-change darken
   and the two presentation paths stay trivially in sync.
-- **220 C++ tests pass** (82530 assertions) covering the GL helpers, mat4/blur math,
+- **225 C++ tests pass** (82544 assertions) covering the GL helpers, mat4/blur math,
   scene decomposition (slab-vs-billboard classification, live quad building),
   slab/billboard face geometry, the renderer's shader reload path, and the config
   parser/serializer; originals verify clean. Verified by eye: the parity dump, the

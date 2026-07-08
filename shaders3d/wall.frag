@@ -8,7 +8,7 @@ uniform vec2 u_light;        // ball position, GL space
 uniform float u_ambient;     // base wall brightness
 uniform float u_spot;        // spotlight strength added near the ball
 uniform float u_spot_radius; // px
-uniform vec2 u_vp_offset;    // letterbox viewport origin in window px
+uniform vec2 u_vp_offset;    // viewport origin in window px
 uniform vec2 u_vp_size;
 void main() {
     vec4 c = texture(u_tex, v_uv);
