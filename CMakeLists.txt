@@ -33,6 +33,7 @@ add_library(bumpy_core
   src/resources/font.cpp
   src/resources/adlib_bank.cpp
   src/resources/midi_song.cpp
+  src/resources/sfx_tables.cpp
   src/resources/sfx_tables.gen.cpp
   src/resources/level_resources.cpp
   src/resources/world_resources.cpp

@@ -500,6 +500,25 @@ TEST_CASE("hopping up from a nest digs a fresh nest one row up (event 0x2f)") {
     CHECK(clouds == 1);
 }
 
+TEST_CASE("world 2 orange drippy plank rests silently") {
+    auto level = LevelResources::load(".", 2);
+    BumEntities board = level.bum_entities(7);
+    constexpr std::uint8_t cell = 0x23;  // screenshot sound_check.png: col 3, row 4
+    REQUIRE(board.layer_a(3, 4) == 0x03);
+    REQUIRE(board.layer_b(3, 4) == 0x00);
+    board.bytes[0x90] = static_cast<std::uint8_t>(cell + 1);
+
+    LevelGame g(board);
+    bool heard = false;
+    for (int i = 0; i < 40; ++i) {
+        g.tick(none);
+        heard = heard || !g.take_sfx_events().empty();
+    }
+
+    CHECK(g.ball_cell() == cell);
+    CHECK_FALSE(heard);
+}
+
 TEST_CASE("hopping onto a cushion block (plane-B 0x0d) sits and bobs; DOWN rolls off") {
     // Hop up-left into a cell whose plane-B holds 0x0d: kNeigh4256[0xd] = state
     // 0x21, whose decide (FUN_1000_1e5e) turns non-slab landings into the sitting

@@ -30,4 +30,13 @@ extern const std::uint8_t kSfxHeldBump[0x30];     // DS:0x26fe  (held-bump in bo
 extern const std::uint8_t kSfxLayerBBlock[0x20];  // DS:0x274e  (layer-B block, 6a89)
 extern const std::uint8_t kSfxPictureBlock[0x20]; // DS:0x278e  (picture block, 640c)
 
+// Bounded speaker-profile lookup helpers. The original tables have fixed extents;
+// out-of-range selectors should stay silent instead of wrapping onto another element.
+[[nodiscard]] std::uint8_t sfx_idle_rest(std::uint8_t tile) noexcept;
+[[nodiscard]] std::uint8_t sfx_roll_bump(std::uint8_t tile) noexcept;
+[[nodiscard]] std::uint8_t sfx_fall_route(std::uint8_t tile) noexcept;
+[[nodiscard]] std::uint8_t sfx_held_bump(std::uint8_t tile) noexcept;
+[[nodiscard]] std::uint8_t sfx_layer_b_block(std::uint8_t event_id) noexcept;
+[[nodiscard]] std::uint8_t sfx_picture_block(std::uint8_t plane_b_value) noexcept;
+
 }  // namespace bumpy

@@ -358,7 +358,7 @@ void LevelGame::anim_dispatch(std::uint8_t state, std::uint8_t step) {
     // of the bounce states 0x06/0x07/0x2b; without the 654e routing a held UP only
     // re-armed the bounce every other cycle, so the floor lane recoiled on alternate
     // landings instead of every one (the original springs it each bounce).
-    case 0x647e: emit_sfx(kSfxHeldBump[d_79b9 & 0x2f]); f_654e(); break;
+    case 0x647e: emit_sfx(sfx_held_bump(d_79b9)); f_654e(); break;
     case 0x654e: f_654e(); break;
     case 0x6587: f_6587(); break;
     case 0x6627: f_6627(); break;
@@ -407,11 +407,10 @@ void LevelGame::f_28f9() {
             f_4305();  // nest tile: park the ball in it (state 0x1c) and spin
         } else if (d_7924 == 0x03) {
             // FUN_1000_463d settle: a 3-frame delay (using the sub-step lock as the
-            // counter, which also inhibits motion meanwhile) then re-decide. The settle
-            // plays once, on the frame the delay completes (not once per frame).
+            // counter, which also inhibits motion meanwhile) then re-decide. It does
+            // not call FUN_1000_6e11; the world-2 orange plank using tile 0x03 is silent.
             if (++ball_.substep_lock == 3) {
                 ball_.substep_lock = 0;
-                emit_sfx(0x03);
                 f_2965();
             }
         } else {
@@ -537,7 +536,7 @@ void LevelGame::f_2634() {  // hop up-left
     // state not already rolling (DAT_8552 != 0x03/0x0f). (all_functions.c:3230-3231,
     // 7342-7363.)
     if (d_8552 != 0x03 && d_8552 != 0x0f) {
-        emit_sfx(kSfxRollBump[d_7924 & 0x2f]);
+        emit_sfx(sfx_roll_bump(d_7924));
     }
     std::uint8_t code;
     if (ball_.cell_col == 0) {
@@ -561,7 +560,7 @@ void LevelGame::f_26a1() {  // hop up-right
     // FUN_1000_26a1 opens with the same unconditional FUN_1000_63be() call as 2634.
     // (all_functions.c:3272-3273, 7342-7363.)
     if (d_8552 != 0x03 && d_8552 != 0x0f) {
-        emit_sfx(kSfxRollBump[d_7924 & 0x2f]);
+        emit_sfx(sfx_roll_bump(d_7924));
     }
     std::uint8_t code;
     if (ball_.cell_col == 7) {
@@ -636,7 +635,7 @@ void LevelGame::f_2810() {
     // state not already falling/rolling (DAT_8552 != 0x03/0x0d/0x10). (all_functions.c:
     // 3433-3443.)
     if (d_8552 != 0x03 && d_8552 != 0x0d && d_8552 != 0x10) {
-        emit_sfx(kSfxFallRoute[d_7922 & 0x2f]);
+        emit_sfx(sfx_fall_route(d_7922));
     }
     if (ball_.cell < 8) {
         f_4263(6);
@@ -1052,7 +1051,7 @@ void LevelGame::f_640c() {
     // Block-bump anim step: plays the per-block sound (kSfxPictureBlock, keyed by the
     // pre-bump plane-B value DAT_8551), then, if that value was a picture (0x0e..0x11),
     // re-checks the match puzzle.
-    emit_sfx(kSfxPictureBlock[d_8551 & 0x1f]);
+    emit_sfx(sfx_picture_block(d_8551));
     if (d_8551 > 0x0d && d_8551 < 0x12) {
         f_6183();
     }
@@ -1554,7 +1553,7 @@ void LevelGame::f_69aa(std::uint8_t id) {
 }
 
 void LevelGame::f_6a89(std::uint8_t id) {
-    emit_sfx(kSfxLayerBBlock[id & 0x1f]);  // layer-B block, keyed by the event id itself
+    emit_sfx(sfx_layer_b_block(id));  // layer-B block, keyed by the event id itself
     if (id == 0 || id >= kBumpEventBCount || kBumpEventB[id].stream_len == 0) {
         return;
     }
@@ -1588,7 +1587,7 @@ void LevelGame::f_686a(std::uint8_t row) {
 }
 
 void LevelGame::f_6648() {
-    emit_sfx(kSfxIdleRest[d_7924 & 0x2f]);  // idle-rest, keyed by the tile under the ball
+    emit_sfx(sfx_idle_rest(d_7924));  // idle-rest, keyed by the tile under the ball
     f_6987(d_7924 < 0x30 ? kIdleSpringA[d_7924] : 0);
 }
 
