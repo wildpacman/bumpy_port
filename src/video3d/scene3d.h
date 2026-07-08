@@ -23,7 +23,7 @@ inline constexpr float kBillboardAbZ = kSlabDepth;         // irregular A/B spri
 inline constexpr float kCollectibleZ = kSlabDepth + 2.0f;  // plane C
 inline constexpr float kActorZ = kSlabDepth + 4.0f;        // ball and monster
 inline constexpr float kCameraFovYDeg = 26.0f;
-inline constexpr float kWallBlurSigma = 1.6f;  // baked mural DOF
+inline constexpr float kWallBlurSigma = 1.0f;  // baked mural DOF
 
 // CRT pixel aspect: mode 13h pixels are 240/200 = 1.2x taller than wide. The 3D
 // stage always presents 4:3-corrected -- the flat path's Alt+A 4:3 look.
