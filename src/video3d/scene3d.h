@@ -23,8 +23,6 @@ inline constexpr float kBillboardAbZ = kSlabDepth;         // irregular A/B spri
 inline constexpr float kCollectibleZ = kSlabDepth + 2.0f;  // plane C
 inline constexpr float kActorZ = kSlabDepth + 4.0f;        // ball and monster
 inline constexpr float kCameraFovYDeg = 26.0f;
-inline constexpr float kParallaxGain = 0.05f;  // camera shift per ball offset px
-inline constexpr float kParallaxEase = 0.12f;  // easing per presented frame
 inline constexpr float kWallBlurSigma = 1.6f;  // baked mural DOF
 
 // CRT pixel aspect: mode 13h pixels are 240/200 = 1.2x taller than wide. The 3D

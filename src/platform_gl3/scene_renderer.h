@@ -11,11 +11,6 @@
 
 namespace bumpy {
 
-struct SceneCamera {
-    float x{};
-    float y{};  // eased parallax offset, board pixels (y down)
-};
-
 // Draws the diorama: blurred mural wall, then slabs/billboards with a depth
 // buffer. Owns the scene's GL resources. Shaders load from shader_dir
 // (scene.vert, wall.frag, sprite.frag); any failure throws std::runtime_error
@@ -32,9 +27,12 @@ public:
     void set_scene(const Scene3d& scene, SpriteCache& sprites);
 
     // Per-frame. Caller binds the target framebuffer (backbuffer or FBO) first and
-    // swaps/reads after. light = ball position in board pixels.
+    // swaps/reads after. light = ball position in board pixels. vp is the full
+    // window rect: the camera is fixed on the board centre and scene_frustum
+    // shapes the projection so the 4:3-corrected field is always whole and
+    // centred -- wider windows reveal mirrored wall, never letterbox.
     void render(std::span<const SceneQuad> quads, float light_x, float light_y,
-                const SceneCamera& cam, const Viewport& vp);
+                const Viewport& vp);
 
     // Recompile from shader_dir; on failure keeps the old programs, returns false.
     bool reload_shaders();

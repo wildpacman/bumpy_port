@@ -301,7 +301,6 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
     SpriteCache sprite_cache(sprite_bank);
     int scene_world = -1;
     std::size_t scene_board = static_cast<std::size_t>(-1);
-    SceneCamera cam{};
     auto shader_dir = [&]() -> std::filesystem::path {
         if (const char* base = SDL_GetBasePath()) {
             const std::filesystem::path candidate = std::filesystem::path(base) / "shaders3d";
@@ -352,20 +351,16 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             live, {anims.data(), anim_count}, monster,
             BallPose{game->ball_frame(), game->ball_x(), game->ball_y()}, sprite_cache);
 
-        // Eased parallax toward the ball's offset from the board centre.
-        const float tx = kParallaxGain * (static_cast<float>(game->ball_x()) - 160.0f);
-        const float ty = kParallaxGain * (static_cast<float>(game->ball_y()) - 100.0f);
-        cam.x += kParallaxEase * (tx - cam.x);
-        cam.y += kParallaxEase * (ty - cam.y);
-
         int win_w = 0;
         int win_h = 0;
         SDL_GetWindowSizeInPixels(window_, &win_w, &win_h);
-        const Viewport vp =
-            compute_letterbox_viewport(win_w, win_h, 320, square_pixels ? 200 : 240);
+        // 3D fills the whole window at any shape: scene_frustum keeps the 4:3-
+        // corrected field whole and centred; spare window area shows mirrored
+        // wall. Alt+A (square_pixels) only affects the flat path.
+        const Viewport vp{0, 0, win_w, win_h};
         gl_->gl().BindFramebuffer(GL_FRAMEBUFFER, 0);
         scene_renderer->render(quads, static_cast<float>(game->ball_x()),
-                               static_cast<float>(game->ball_y()), cam, vp);
+                               static_cast<float>(game->ball_y()), vp);
         SDL_GL_SwapWindow(window_);
         return true;
     };
@@ -439,7 +434,9 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                     config.fullscreen = !fullscreen;
                     persist();
                 } else if (event.key.key == SDLK_A && (event.key.mod & SDL_KMOD_ALT)) {
-                    // Alt+A: flip display aspect between 16:10 (square pixels) and 4:3 (CRT).
+                    // Alt+A: flip the flat-path display aspect between 16:10 and
+                    // 4:3 (CRT). The 3D scene is always 4:3-corrected; this only
+                    // shows once back on a flat screen.
                     square_pixels = !square_pixels;
                     apply_aspect();
                     config.square_pixels = square_pixels;

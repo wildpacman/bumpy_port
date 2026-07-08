@@ -5,6 +5,7 @@
 #include "video3d/mat4.h"
 #include "video3d/slab_mesh.h"
 
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -112,6 +113,11 @@ void SceneRenderer::set_scene(const Scene3d& scene, SpriteCache& sprites) {
     palette_ = scene.palette;
     // LINEAR: the wall is pre-blurred; linear sampling keeps the parallax smooth.
     wall_tex_ = make_rgba_texture(scene.wall_rgba, 320, 200, /*linear_filter=*/true);
+    // Widescreen reveals wall past the 320x200 mural; continue it as a mirrored
+    // copy (pre-blurred, so the seam is soft).
+    glBindTexture(GL_TEXTURE_2D, wall_tex_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
 }
 
 GLuint SceneRenderer::sprite_texture(int frame_index) {
@@ -164,21 +170,20 @@ GLuint SceneRenderer::shadow_texture(int frame_index) {
 }
 
 void SceneRenderer::render(std::span<const SceneQuad> quads, float light_x, float light_y,
-                           const SceneCamera& cam, const Viewport& vp) {
+                           const Viewport& vp) {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glViewport(vp.x, vp.y, vp.w, vp.h);
 
     const float dist = scene_camera_distance();
-    // vp always comes from compute_letterbox_viewport at 320:logical_h, so aspect is
-    // 1.6 (square pixels) or ~1.333 (Alt+A CRT); with the vertical frustum fixed at
-    // 200 world px the 4:3 case presents the same stage stretched taller -- exactly
-    // the flat path's Alt+A behavior.
-    const float aspect = vp.h > 0 ? static_cast<float>(vp.w) / vp.h : 1.6f;
-    const Mat4 proj =
-        mat4_perspective(kCameraFovYDeg * 3.14159265f / 180.0f, aspect, 1.0f, 2000.0f);
-    // Camera: parallax offset in board px (y down) -> GL (y up), backed off by dist.
-    const Mat4 view = mat4_translate(-cam.x, cam.y, -dist);
+    // 4:3-corrected stage in any window: world px present kCrtPixelAspect taller
+    // than wide (the flat path's Alt+A 4:3 look). The camera never moves; the fov
+    // only grows when the window is narrower than 4:3, so the field is always
+    // whole and centred and wider windows just reveal more wall at the sides.
+    const SceneFrustum fr = scene_frustum(vp.w, vp.h);
+    const float fovy = 2.0f * std::atan(fr.half_height / dist);
+    const Mat4 proj = mat4_perspective(fovy, fr.aspect, 1.0f, 2000.0f);
+    const Mat4 view = mat4_translate(0.0f, 0.0f, -dist);
     const Mat4 mvp = mat4_multiply(proj, view);
     const float light_gx = light_x - 160.0f;
     const float light_gy = 100.0f - light_y;
@@ -186,16 +191,21 @@ void SceneRenderer::render(std::span<const SceneQuad> quads, float light_x, floa
     gl_.BindVertexArray(vao_);
     gl_.BindBuffer(GL_ARRAY_BUFFER, vbo_);
 
-    // --- Wall: scaled so the frustum (plus the parallax travel) never sees past
-    // its edge; drawn without depth so everything else stacks in front.
+    // --- Wall: sized to the frustum at wall depth; UVs keep the mural's 320x200
+    // texels exactly behind the field (1 texel <-> 1 stage px on screen) and the
+    // GL_MIRRORED_REPEAT wrap continues it past the edges. Drawn without depth so
+    // everything else stacks in front.
     {
         const float cover = (dist - kWallZ) / dist;
-        const float margin = (kParallaxGain * 160.0f + 4.0f) / 160.0f;
-        const float sx = 160.0f * (cover + margin);
-        const float sy = 100.0f * (cover + margin);
+        const float sx = fr.half_height * fr.aspect * cover + 2.0f;
+        const float sy = fr.half_height * cover + 2.0f;
+        const float u0 = 0.5f - sx / (320.0f * cover);
+        const float u1 = 0.5f + sx / (320.0f * cover);
+        const float v0 = 0.5f - sy / (200.0f * cover);
+        const float v1 = 0.5f + sy / (200.0f * cover);
         QuadFace wall;
         wall.corners = {-sx, sy, kWallZ, sx, sy, kWallZ, sx, -sy, kWallZ, -sx, -sy, kWallZ};
-        wall.uv = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f};
+        wall.uv = {u0, v0, u1, v0, u1, v1, u0, v1};
         wall.shade = 1.0f;
         std::vector<float> verts;
         append_face(verts, wall);

@@ -691,7 +691,7 @@ int render_3d_to_bmp(const std::filesystem::path& asset_root, std::string_view e
         auto target = bumpy::make_offscreen_target(presenter.gl(), w, h);
         presenter.gl().BindFramebuffer(GL_FRAMEBUFFER, target.fbo);
         renderer.render(quads, static_cast<float>(game.ball_x()),
-                        static_cast<float>(game.ball_y()), {}, bumpy::Viewport{0, 0, w, h});
+                        static_cast<float>(game.ball_y()), bumpy::Viewport{0, 0, w, h});
         const auto rgba = bumpy::read_target_rgba(presenter.gl(), target);
         presenter.gl().BindFramebuffer(GL_FRAMEBUFFER, 0);
         bumpy::destroy_offscreen_target(presenter.gl(), target);
