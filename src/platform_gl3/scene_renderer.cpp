@@ -42,7 +42,13 @@ SceneRenderer::SceneRenderer(const Gl33& gl, std::filesystem::path shader_dir)
     : gl_(gl), shader_dir_(std::move(shader_dir)) {
     const auto vert = read_text_file(shader_dir_ / "scene.vert");
     wall_program_ = link_program(gl_, vert, read_text_file(shader_dir_ / "wall.frag"));
-    sprite_program_ = link_program(gl_, vert, read_text_file(shader_dir_ / "sprite.frag"));
+    try {
+        sprite_program_ = link_program(gl_, vert, read_text_file(shader_dir_ / "sprite.frag"));
+    } catch (...) {
+        gl_.DeleteProgram(wall_program_);
+        wall_program_ = 0;
+        throw;
+    }
     gl_.GenVertexArrays(1, &vao_);
     gl_.BindVertexArray(vao_);
     gl_.GenBuffers(1, &vbo_);
@@ -212,8 +218,13 @@ bool SceneRenderer::reload_shaders() {
     try {
         const auto vert = read_text_file(shader_dir_ / "scene.vert");
         const GLuint wall = link_program(gl_, vert, read_text_file(shader_dir_ / "wall.frag"));
-        const GLuint sprite =
-            link_program(gl_, vert, read_text_file(shader_dir_ / "sprite.frag"));
+        GLuint sprite = 0;
+        try {
+            sprite = link_program(gl_, vert, read_text_file(shader_dir_ / "sprite.frag"));
+        } catch (...) {
+            gl_.DeleteProgram(wall);
+            throw;
+        }
         gl_.DeleteProgram(wall_program_);
         gl_.DeleteProgram(sprite_program_);
         wall_program_ = wall;
