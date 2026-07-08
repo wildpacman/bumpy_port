@@ -301,6 +301,13 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
     SpriteCache sprite_cache(sprite_bank);
     int scene_world = -1;
     std::size_t scene_board = static_cast<std::size_t>(-1);
+    // Level->map darken while 3D is on: presenting the flat wipe would pop the
+    // diorama off for the whole close. Instead the resolved scene is stashed when
+    // the board ends and present_3d_wipe replays it under the closing border.
+    bool wipe_3d = false;
+    std::vector<SceneQuad> wipe_quads;
+    float wipe_light_x = 0.0f;
+    float wipe_light_y = 0.0f;
     auto shader_dir = [&]() -> std::filesystem::path {
         if (const char* base = SDL_GetBasePath()) {
             const std::filesystem::path candidate = std::filesystem::path(base) / "shaders3d";
@@ -310,6 +317,26 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             }
         }
         return asset_root / "shaders3d";
+    };
+
+    // Live quads: the exact same inputs the flat render_level composes. Shared by
+    // the per-frame 3D present and the level-end stash for the 3D darken.
+    auto collect_live_quads = [&]() -> std::vector<SceneQuad> {
+        BumEntities live = live_entities();
+        std::array<ObjectAnimSprite, 7> anims{};
+        const std::size_t anim_count = game->object_anims(anims);
+        for (std::size_t k = 0; k < anim_count; ++k) {
+            const std::size_t off = anims[k].layer_b ? BumEntities::layer_b_offset
+                                                     : BumEntities::layer_a_offset;
+            live.bytes[anims[k].cell + off] = 0;
+        }
+        std::optional<MonsterPose> monster;
+        if (game->monster_present()) {
+            monster = MonsterPose{game->monster_frame(), game->monster_x(), game->monster_y()};
+        }
+        return build_live_quads(
+            live, {anims.data(), anim_count}, monster,
+            BallPose{game->ball_frame(), game->ball_x(), game->ball_y()}, sprite_cache);
     };
 
     // Present the level through the diorama; false = caller presents flat instead
@@ -334,22 +361,7 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             scene_world = world.world();
             scene_board = app.board_index();
         }
-        // Live quads: the exact same inputs the flat render_level composes.
-        BumEntities live = live_entities();
-        std::array<ObjectAnimSprite, 7> anims{};
-        const std::size_t anim_count = game->object_anims(anims);
-        for (std::size_t k = 0; k < anim_count; ++k) {
-            const std::size_t off = anims[k].layer_b ? BumEntities::layer_b_offset
-                                                     : BumEntities::layer_a_offset;
-            live.bytes[anims[k].cell + off] = 0;
-        }
-        std::optional<MonsterPose> monster;
-        if (game->monster_present()) {
-            monster = MonsterPose{game->monster_frame(), game->monster_x(), game->monster_y()};
-        }
-        const auto quads = build_live_quads(
-            live, {anims.data(), anim_count}, monster,
-            BallPose{game->ball_frame(), game->ball_x(), game->ball_y()}, sprite_cache);
+        const auto quads = collect_live_quads();
 
         int win_w = 0;
         int win_h = 0;
@@ -361,6 +373,46 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
         gl_->gl().BindFramebuffer(GL_FRAMEBUFFER, 0);
         scene_renderer->render(quads, static_cast<float>(game->ball_x()),
                                static_cast<float>(game->ball_y()), vp);
+        SDL_GL_SwapWindow(window_);
+        return true;
+    };
+
+    // Present one darken ring over the stashed terminal 3D scene: re-render the
+    // frozen diorama and close ScreenTransition's black border over it (scissored
+    // clears -- no new GL objects), the 320x200 cell grid scaled to the window.
+    // false = caller presents the flat wipe instead (mode off mid-wipe, no GL, or
+    // the outgoing screen was not a 3D-presented level).
+    auto present_3d_wipe = [&]() -> bool {
+        if (!wipe_3d || !render3d || !gl_ || !scene_renderer) {
+            return false;
+        }
+        int win_w = 0;
+        int win_h = 0;
+        SDL_GetWindowSizeInPixels(window_, &win_w, &win_h);
+        gl_->gl().BindFramebuffer(GL_FRAMEBUFFER, 0);
+        scene_renderer->render(wipe_quads, wipe_light_x, wipe_light_y,
+                               Viewport{0, 0, win_w, win_h});
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        if (transition.step() >= ScreenTransition::kSteps) {
+            // The last ring closes the full width (2*kCellW*kSteps == 320): clear
+            // everything rather than trusting integer rounding to meet mid-screen.
+            glClear(GL_COLOR_BUFFER_BIT);
+        } else {
+            const int bx = win_w * ScreenTransition::kCellW * transition.step() / 320;
+            const int by = win_h * ScreenTransition::kCellH * transition.step() / 200;
+            glEnable(GL_SCISSOR_TEST);
+            // The four border bars are symmetric, so GL's bottom-left origin
+            // needs no flip.
+            glScissor(0, 0, bx, win_h);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glScissor(win_w - bx, 0, bx, win_h);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glScissor(0, 0, win_w, by);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glScissor(0, win_h - by, win_w, by);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glDisable(GL_SCISSOR_TEST);
+        }
         SDL_GL_SwapWindow(window_);
         return true;
     };
@@ -475,12 +527,17 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
         // wipe over the snapshotted outgoing screen. Each ring is shown kDarkenFramesPerRing
         // retraces before advancing inward.
         if (transition.active()) {
-            transition.render(frame);
-            present_frame();
+            if (!present_3d_wipe()) {
+                transition.render(frame);
+                present_frame();
+            }
             wait_next_tick(period_full);
             if (++darken_hold >= kDarkenFramesPerRing) {
                 darken_hold = 0;
                 transition.advance();  // may deactivate after the final (fully black) ring
+                if (!transition.active()) {
+                    wipe_3d = false;  // the 3D close (if any) is done; next wipe re-arms
+                }
             }
             continue;
         }
@@ -567,6 +624,18 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                         // darken would freeze the previous (still-descending) frame, leaving the
                         // ball visibly on top of the pit.
                         render_level();
+                        // In 3D mode the darken must keep the diorama on screen:
+                        // stash the same resolved scene for present_3d_wipe to
+                        // replay under the closing border (the flat `frame`
+                        // snapshot stays as the fallback).
+                        wipe_3d = render3d && scene_renderer && !scene_renderer_failed &&
+                                  scene_world == world.world() &&
+                                  scene_board == app.board_index();
+                        if (wipe_3d) {
+                            wipe_quads = collect_live_quads();
+                            wipe_light_x = static_cast<float>(game->ball_x());
+                            wipe_light_y = static_cast<float>(game->ball_y());
+                        }
                         // Win/lose/game-over: carry lives+score back and update the run.
                         app.finish_level(game->status(), game->lives(), game->score());
                         game.reset();
@@ -584,8 +653,10 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
         // outermost ring shows this frame; the active()-block above paces the rest.
         if (screen_changed) {
             transition.begin(frame);
-            transition.render(frame);
-            present_frame();
+            if (!present_3d_wipe()) {
+                transition.render(frame);
+                present_frame();
+            }
             wait_next_tick(period_full);
             darken_hold = 1;  // ring 1 shown once this frame
             continue;
