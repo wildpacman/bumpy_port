@@ -1,5 +1,6 @@
 #include "platform_gl3/gl_util.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 

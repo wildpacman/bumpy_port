@@ -6,6 +6,9 @@ out/
 __pycache__/
 *.py[cod]
 
+# Runtime config
+/bumpy_port.cfg
+
 # User-supplied original game files
 /*.EXE
 /*.VEC

@@ -13,7 +13,7 @@ file is the quick-start: build, run, controls, config, dev tools.
 
 - The original game's resource files at the repo root: `BUMPY.EXE`, `TITRE.VEC`,
   `MONDE1..9.VEC`, `D1..9.PAV/DEC/BUM`, `BUMSPJEU.BIN`, `DDFNT2.CAR`, `BUMPY.MID`,
-  `BUMPY.BNK`, `SCORE.VEC`, `DESSFIN.VEC`, `FLECHE.BIN`, `MASKBUMP.VEC`. These are
+  `BUMPY.BNK`, `SCORE.VEC`, `DESSFIN.VEC`, `FLECHE.BIN`, `MASKBUMP.VEC`, `BUMPRESE.VEC`. These are
   **not** included in this repository (see `.gitignore`) — supply your own copy of
   the original game and drop the files in. They are treated as read-only inputs;
   the port never writes to them.
@@ -26,6 +26,7 @@ file is the quick-start: build, run, controls, config, dev tools.
 ## Build & run
 
 ```powershell
+cmake --preset windows-debug               # One-time configure (required on fresh clone)
 cmake --build --preset windows-debug      # Debug config, console kept for dev CLI flags
 cmake --build --preset windows-release    # Release config, windowed (no console)
 & build/windows-debug/Debug/bumpy_port.exe
