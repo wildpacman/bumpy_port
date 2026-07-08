@@ -596,12 +596,16 @@ TEST_CASE("matching the picture blocks pops every 0x05 block open") {
     for (int i = 0; i < 4; ++i) {
         g.tick(left);  // hop up-left INTO the block (state 0x12 bonk)
     }
-    bool cycled = false, popped = false;
+    bool cycled = false, popped = false, heard_pop = false;
     for (int i = 0; i < 80; ++i) {
         g.tick(none);
         cycled = cycled || g.grid()[0x30 + 0x13] == 0x0e;
         popped = popped || g.grid()[0x30 + 0x17] == 0x00;
+        for (std::uint8_t id : g.take_sfx_events()) {
+            if (id == 0x11) heard_pop = true;  // FUN_1000_629c's 6e11(0x11) block-pop
+        }
     }
-    CHECK(cycled);  // the bumped picture block cycled 0x11 -> 0x0e
-    CHECK(popped);  // ... and the matched puzzle popped the 0x05 block open
+    CHECK(cycled);     // the bumped picture block cycled 0x11 -> 0x0e
+    CHECK(popped);     // ... and the matched puzzle popped the 0x05 block open
+    CHECK(heard_pop);  // ... and the pop was audible (speaker preset 0x11)
 }

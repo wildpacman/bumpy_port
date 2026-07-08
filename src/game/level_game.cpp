@@ -1045,7 +1045,8 @@ void LevelGame::f_2261() {
 // Ghidra failed on it) checks after each such bump whether every remaining
 // picture block shows the SAME picture, and if so lists every plane-B 0x05 block
 // in the DS:0x886 buffer. FUN_1000_629c (main loop) then pops them open one at a
-// time -- layer-B event 0x18 clears the tile -- every 11 frames.
+// time -- layer-B event 0x18 clears the tile -- every 11 frames, each pop playing
+// the block-pop sound 6e11(0x11 speaker / 0xe AdLib) (the 0x18 event itself is silent).
 
 void LevelGame::f_640c() {
     // Block-bump anim step: plays the per-block sound (kSfxPictureBlock, keyed by the
@@ -1104,7 +1105,8 @@ void LevelGame::f_629c() {
     if (d_79b7 == 0) {
         d_79b7 = 0x0a;
         d_8570 = d_0886_[cascade_cursor_];
-        f_6a89(0x18);  // pop the block open (new_tile 0x00); kSfxLayerBBlock[0x18] == 0, silent
+        f_6a89(0x18);    // pop the block open (new_tile 0x00); kSfxLayerBBlock[0x18] == 0, silent
+        emit_sfx(0x11);  // FUN_1000_629c then always plays the pop: 6e11(0x11 speaker / 0xe AdLib)
         ++cascade_cursor_;
     } else {
         --d_79b7;
