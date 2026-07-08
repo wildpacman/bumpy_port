@@ -24,6 +24,13 @@ inline constexpr float kCollectibleZ = kSlabDepth + 2.0f;  // plane C
 inline constexpr float kActorZ = kSlabDepth + 4.0f;        // ball and monster
 inline constexpr float kCameraFovYDeg = 26.0f;
 inline constexpr float kWallBlurSigma = 1.0f;  // baked mural DOF
+// Baked wall bloom (#1): mural pixels whose max channel (0..1) exceeds this
+// threshold glow; the bright-pass is spread by kBloomSigma and drawn additively
+// over the wall. Only light already in the mural (star specks, silhouette
+// highlights) blooms -- no invented art. Board-load bake; tune the additive
+// strength live in bloom.frag via Alt+R.
+inline constexpr float kBloomThreshold = 0.20f;
+inline constexpr float kBloomSigma = 6.0f;
 
 // CRT pixel aspect: mode 13h pixels are 240/200 = 1.2x taller than wide. The 3D
 // stage always presents 4:3-corrected -- the flat path's Alt+A 4:3 look.
@@ -90,8 +97,17 @@ private:
 };
 
 // Shadow silhouette offset and appearance.
-inline constexpr float kShadowOffsetX = 5.0f;
-inline constexpr float kShadowOffsetY = 7.0f;
+// Shadow projection from an overhead light. The shadow drops straight down
+// (kShadowOffsetY) and fans horizontally from the light's vertical axis
+// (kShadowLightX): an object's throw is kShadowFanX per board-px its centre sits
+// away from that axis. Centre objects cast straight down; edge objects fan
+// outward -- consistent with the ceiling light (#3). Computed per frame from the
+// live quad, so a moving ball's shadow leans correctly. kShadowOffsetX is a small
+// constant bias on top (0 = pure fan).
+inline constexpr float kShadowLightX = 160.0f;  // board centre = light's vertical axis
+inline constexpr float kShadowFanX = 0.18f;     // sideways throw per px from the axis
+inline constexpr float kShadowOffsetX = 0.0f;   // constant horizontal bias
+inline constexpr float kShadowOffsetY = 8.0f;   // straight-down drop
 inline constexpr float kShadowAlpha = 0.35f;
 inline constexpr float kShadowBlurSigma = 2.0f;
 inline constexpr int kShadowPad = 6;
@@ -99,9 +115,17 @@ inline constexpr int kShadowPad = 6;
 // Static per-board scene part: the wall (render_board output with the baked DOF
 // blur) and the board palette that sprite textures are built with.
 struct Scene3d {
-    std::vector<std::uint8_t> wall_rgba;  // 320*200*4, rows top-to-bottom, pre-blurred
+    std::vector<std::uint8_t> wall_rgba;   // 320*200*4, rows top-to-bottom, pre-blurred
+    std::vector<std::uint8_t> bloom_rgba;  // 320*200*4, bright-pass of the wall, blurred wide
     std::array<Rgba, 256> palette{};
 };
+
+// Bright-pass for the wall bloom: each pixel is kept, scaled by how far its max
+// channel (0..1) rises above `threshold` (squared for a tighter core), and the
+// rest zeroed; alpha forced opaque. Pure/deterministic -- the wide blur that
+// spreads the glow is applied separately by build_scene3d.
+[[nodiscard]] std::vector<std::uint8_t> bloom_bright_pass(const std::vector<std::uint8_t>& rgba,
+                                                          int w, int h, float threshold);
 [[nodiscard]] Scene3d build_scene3d(const LevelResources& level, std::size_t board_index,
                                     std::span<const std::uint8_t> backdrop_screen);
 

@@ -110,8 +110,33 @@ Scene3d build_scene3d(const LevelResources& level, std::size_t board_index,
         scene.wall_rgba[i * 4 + 2] = c.b;
         scene.wall_rgba[i * 4 + 3] = 0xff;
     }
+    // Bloom: bright-pass the crisp mural colours, then spread wide. Done before
+    // the wall's own DOF blur so the bright specks stay sharp going into the
+    // wider bloom blur.
+    scene.bloom_rgba = bloom_bright_pass(scene.wall_rgba, 320, 200, kBloomThreshold);
+    gaussian_blur_rgba(scene.bloom_rgba, 320, 200, kBloomSigma);
     gaussian_blur_rgba(scene.wall_rgba, 320, 200, kWallBlurSigma);
     return scene;
+}
+
+std::vector<std::uint8_t> bloom_bright_pass(const std::vector<std::uint8_t>& rgba, int w, int h,
+                                            float threshold) {
+    std::vector<std::uint8_t> out(static_cast<std::size_t>(w) * h * 4, 0);
+    const float denom = std::max(1.0f - threshold, 1e-3f);
+    for (std::size_t i = 0; i + 3 < rgba.size() && i + 3 < out.size(); i += 4) {
+        const float r = rgba[i] / 255.0f;
+        const float g = rgba[i + 1] / 255.0f;
+        const float b = rgba[i + 2] / 255.0f;
+        const float lum = std::max(r, std::max(g, b));
+        // Linear knee above the threshold: the mural is dark, so squaring would
+        // crush the silhouette/speck mid-tones that carry most of the glow.
+        const float f = std::clamp((lum - threshold) / denom, 0.0f, 1.0f);
+        out[i] = static_cast<std::uint8_t>(std::lround(r * f * 255.0f));
+        out[i + 1] = static_cast<std::uint8_t>(std::lround(g * f * 255.0f));
+        out[i + 2] = static_cast<std::uint8_t>(std::lround(b * f * 255.0f));
+        out[i + 3] = 0xff;
+    }
+    return out;
 }
 
 namespace {

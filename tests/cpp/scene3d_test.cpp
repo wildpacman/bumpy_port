@@ -52,6 +52,35 @@ TEST_CASE("solid rectangle classifies as slab, irregular as billboard, empty as 
     REQUIRE(bumpy::classify_sprite(empty) == bumpy::QuadKind::billboard);
 }
 
+TEST_CASE("bloom_bright_pass keeps bright pixels, zeroes dim ones, preserves hue") {
+    // 3x1 row: dim (below threshold), mid (partial), bright (full).
+    const std::vector<std::uint8_t> rgba = {
+        50,  50,  50,  255,  // lum 0.196 < 0.30 -> zeroed
+        128, 0,   0,   255,  // lum 0.502 -> partial glow, red only
+        255, 255, 255, 255,  // lum 1.0 -> kept intact (f == 1)
+    };
+    const auto out = bumpy::bloom_bright_pass(rgba, 3, 1, 0.30f);
+    REQUIRE(out.size() == rgba.size());
+
+    // dim pixel: rgb zeroed, alpha forced opaque
+    REQUIRE(out[0] == 0);
+    REQUIRE(out[1] == 0);
+    REQUIRE(out[2] == 0);
+    REQUIRE(out[3] == 255);
+
+    // mid pixel: partial, strictly between 0 and source; hue preserved (green/blue stay 0)
+    REQUIRE(out[4] > 0);
+    REQUIRE(out[4] < 128);
+    REQUIRE(out[5] == 0);
+    REQUIRE(out[6] == 0);
+
+    // bright pixel: at full strength it is kept intact
+    REQUIRE(out[8] == 255);
+    REQUIRE(out[9] == 255);
+    REQUIRE(out[10] == 255);
+    REQUIRE(out[11] == 255);
+}
+
 TEST_CASE("build_live_quads mirrors the flat composition") {
     const auto bank = bumpy::decode_sprite_archive(root / "BUMSPJEU.BIN");
     bumpy::SpriteCache sprites(bank.bytes());

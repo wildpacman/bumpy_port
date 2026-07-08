@@ -49,9 +49,11 @@ private:
     GLuint wall_program_{};
     GLuint sprite_program_{};
     GLuint shadow_program_{};
+    GLuint bloom_program_{};
     GLuint vao_{};
     GLuint vbo_{};
     GLuint wall_tex_{};
+    GLuint bloom_tex_{};
     std::unordered_map<int, GLuint> sprite_textures_;
     std::unordered_map<int, GLuint> shadow_textures_;
 };

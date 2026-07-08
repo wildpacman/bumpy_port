@@ -59,6 +59,17 @@ SceneRenderer::SceneRenderer(const Gl33& gl, std::filesystem::path shader_dir)
         sprite_program_ = 0;
         throw;
     }
+    try {
+        bloom_program_ = link_program(gl_, vert, read_text_file(shader_dir_ / "bloom.frag"));
+    } catch (...) {
+        gl_.DeleteProgram(wall_program_);
+        gl_.DeleteProgram(sprite_program_);
+        gl_.DeleteProgram(shadow_program_);
+        wall_program_ = 0;
+        sprite_program_ = 0;
+        shadow_program_ = 0;
+        throw;
+    }
     gl_.GenVertexArrays(1, &vao_);
     gl_.BindVertexArray(vao_);
     gl_.GenBuffers(1, &vbo_);
@@ -90,12 +101,19 @@ SceneRenderer::~SceneRenderer() {
     if (shadow_program_ != 0) {
         gl_.DeleteProgram(shadow_program_);
     }
+    if (bloom_program_ != 0) {
+        gl_.DeleteProgram(bloom_program_);
+    }
 }
 
 void SceneRenderer::destroy_scene_textures() {
     if (wall_tex_ != 0) {
         glDeleteTextures(1, &wall_tex_);
         wall_tex_ = 0;
+    }
+    if (bloom_tex_ != 0) {
+        glDeleteTextures(1, &bloom_tex_);
+        bloom_tex_ = 0;
     }
     for (auto& [frame, tex] : sprite_textures_) {
         glDeleteTextures(1, &tex);
@@ -116,6 +134,12 @@ void SceneRenderer::set_scene(const Scene3d& scene, SpriteCache& sprites) {
     // Widescreen reveals wall past the 320x200 mural; continue it as a mirrored
     // copy (pre-blurred, so the seam is soft).
     glBindTexture(GL_TEXTURE_2D, wall_tex_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+    // Bloom: the wall's baked bright-pass, added over the wall. Same size/wrap so
+    // it lines up with the mural and its mirrored widescreen extension.
+    bloom_tex_ = make_rgba_texture(scene.bloom_rgba, 320, 200, /*linear_filter=*/true);
+    glBindTexture(GL_TEXTURE_2D, bloom_tex_);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
 }
@@ -229,6 +253,23 @@ void SceneRenderer::render(std::span<const SceneQuad> quads, float light_x, floa
         gl_.ActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, wall_tex_);
         glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        // --- Wall bloom: the same quad, additive, using the baked bright-pass
+        // (mural's own bright pixels spread wide). Depth stays off; the VBO still
+        // holds the wall verts, so this reuses them exactly.
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE);
+        gl_.UseProgram(bloom_program_);
+        gl_.Uniform1i(gl_.GetUniformLocation(bloom_program_, "u_tex"), 0);
+        gl_.UniformMatrix4fv(gl_.GetUniformLocation(bloom_program_, "u_mvp"), 1, GL_FALSE,
+                             mvp.m.data());
+        gl_.Uniform2f(gl_.GetUniformLocation(bloom_program_, "u_vp_offset"),
+                      static_cast<float>(vp.x), static_cast<float>(vp.y));
+        gl_.Uniform2f(gl_.GetUniformLocation(bloom_program_, "u_vp_size"),
+                      static_cast<float>(vp.w), static_cast<float>(vp.h));
+        glBindTexture(GL_TEXTURE_2D, bloom_tex_);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDisable(GL_BLEND);
     }
 
     // --- Shadows: each quad's blurred silhouette, offset toward down-right, flat
@@ -247,7 +288,12 @@ void SceneRenderer::render(std::span<const SceneQuad> quads, float light_x, floa
         }
         SceneQuad shadow = quad;
         shadow.kind = QuadKind::billboard;  // flat silhouette, never extruded
-        shadow.x = quad.x - kShadowPad + kShadowOffsetX;
+        // Overhead light: throw fans from the light's vertical axis by the
+        // object centre's horizontal distance from it (centre -> straight down).
+        const float shadow_center_x = quad.x + static_cast<float>(quad.w) * 0.5f;
+        const float shadow_off_x =
+            kShadowOffsetX + kShadowFanX * (shadow_center_x - kShadowLightX);
+        shadow.x = quad.x - kShadowPad + shadow_off_x;
         shadow.y = quad.y - kShadowPad + kShadowOffsetY;
         shadow.w = quad.w + 2 * kShadowPad;
         shadow.h = quad.h + 2 * kShadowPad;
@@ -319,12 +365,23 @@ bool SceneRenderer::reload_shaders() {
             gl_.DeleteProgram(sprite);
             throw;
         }
+        GLuint bloom = 0;
+        try {
+            bloom = link_program(gl_, vert, read_text_file(shader_dir_ / "bloom.frag"));
+        } catch (...) {
+            gl_.DeleteProgram(wall);
+            gl_.DeleteProgram(sprite);
+            gl_.DeleteProgram(shadow);
+            throw;
+        }
         gl_.DeleteProgram(wall_program_);
         gl_.DeleteProgram(sprite_program_);
         gl_.DeleteProgram(shadow_program_);
+        gl_.DeleteProgram(bloom_program_);
         wall_program_ = wall;
         sprite_program_ = sprite;
         shadow_program_ = shadow;
+        bloom_program_ = bloom;
         return true;
     } catch (const std::exception&) {
         return false;
