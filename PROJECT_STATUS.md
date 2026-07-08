@@ -53,16 +53,19 @@ only a platform adapter.
   (move/jump/roll/fall/warp), collect/score/lives/win, the **tile bump/spring
   animations** (pegs/platforms recoiling), and the **moving entity (enemy AI +
   collision death)** all run in-window (see the in-level-loop sections below).
-  Remaining: the in-level score/lives HUD, worlds 2–9. The world-map screen is now
+  The map's score + lives HUD is drawn (`draw_lives`/`draw_score` after
+  `render_map`); the only HUD not shown is the **in-level** one, which is
+  intentionally absent (the original's in-level `FUN_1000_0816` is gated on an
+  event flag, so normal play shows none — see "Next step"). The world-map screen is now
   wired in: confirming "start" on the menu shows world 1's map
   (`MONDE1.VEC` + the Bumpy avatar on node 1); the arrows move between linked nodes;
   fire enters that node's board; Escape returns to the menu (see "Stage 3 world-map
   screen" below). The flow now matches the original's **menu → world map →
   playfield**; the temporary ←/→ board paging is retired. The **in-level palette is
   now correct** — the board uses its own per-board palette from the DEC header
-  (dark blue), not the brown MONDE map palette. Remaining: physics, collision,
-  win/loss; the map's score/lives HUD. The sprite-frame decoder from Stage 2 is the
-  reusable foundation for gameplay sprites.
+  (dark blue), not the brown MONDE map palette. Physics, collision, win/loss and
+  the map's score/lives HUD are all implemented. The sprite-frame decoder from
+  Stage 2 is the reusable foundation for gameplay sprites.
 
 ## Current state
 
