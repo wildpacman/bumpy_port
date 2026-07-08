@@ -10,7 +10,8 @@ namespace bumpy {
 
 // Per-face constant shading of an extruded slab (cheap directional light).
 inline constexpr float kShadeFront = 1.0f;
-inline constexpr float kShadeTop = 1.18f;
+inline constexpr float kShadeTop = 1.7f;  // glossy warm highlight: the top face samples the
+                                          // art's top pixel row (the bar's orange edge)
 inline constexpr float kShadeBottom = 0.62f;
 inline constexpr float kShadeSide = 0.8f;
 
