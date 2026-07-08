@@ -874,7 +874,7 @@ beeper SFX). Design + plan: `docs/superpowers/specs/2026-07-06-audio-sound-syste
   precisely instead of the single low-pass. Deferred code minors: `adlib_bank` version-byte
   check, decoder negative-path tests, a MIDI same-pitch-retrigger voice.
 
-## 3D render mode (2026-07-08)
+## Stage 3 3D render mode (2026-07-08)
 
 An optional **"diorama" 3D presentation** of the in-level playfield is implemented,
 independent of the earlier `feat/hd-render-mode` xBRZ work (that branch stays
