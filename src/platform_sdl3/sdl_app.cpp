@@ -2,6 +2,7 @@
 
 #include "game/level_game.h"
 #include "game/speed_pacer.h"
+#include "platform_gl3/scene_renderer.h"
 #include "resources/world_resources.h"
 #include "video/board_renderer.h"
 #include "video/high_score_renderer.h"
@@ -10,11 +11,14 @@
 #include "video/password_renderer.h"
 #include "video/screen_image.h"
 #include "video/screen_transition.h"
+#include "video/viewport.h"
+#include "video3d/scene3d.h"
 
 #include <algorithm>
 #include <array>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 
@@ -289,6 +293,83 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
         }
     };
 
+    // --- 3D diorama state (Alt+3). The flat 320x200 composition in `frame` still
+    // runs every frame even in 3D mode: the screen-change darken snapshots it, and
+    // it keeps the two paths trivially in sync. 3D only swaps the PRESENTATION.
+    std::unique_ptr<SceneRenderer> scene_renderer;
+    bool scene_renderer_failed = false;  // shader/setup failure: 3D disabled for the run
+    SpriteCache sprite_cache(sprite_bank);
+    int scene_world = -1;
+    std::size_t scene_board = static_cast<std::size_t>(-1);
+    SceneCamera cam{};
+    auto shader_dir = [&]() -> std::filesystem::path {
+        if (const char* base = SDL_GetBasePath()) {
+            const std::filesystem::path candidate = std::filesystem::path(base) / "shaders3d";
+            std::error_code error;
+            if (std::filesystem::is_directory(candidate, error)) {
+                return candidate;
+            }
+        }
+        return asset_root / "shaders3d";
+    };
+
+    // Present the level through the diorama; false = caller presents flat instead
+    // (no GL, renderer failed, mode off, or no live board this frame).
+    auto present_3d_level = [&]() -> bool {
+        if (!render3d || !gl_ || scene_renderer_failed || !game) {
+            return false;
+        }
+        if (!scene_renderer) {
+            try {
+                scene_renderer = std::make_unique<SceneRenderer>(gl_->gl(), shader_dir());
+            } catch (const std::exception& error) {
+                std::cerr << "warning: 3D mode disabled: " << error.what() << '\n';
+                scene_renderer_failed = true;
+                return false;
+            }
+        }
+        if (scene_world != world.world() || scene_board != app.board_index()) {
+            const Scene3d scene =
+                build_scene3d(world.level(), app.board_index(), world.backdrop());
+            scene_renderer->set_scene(scene, sprite_cache);
+            scene_world = world.world();
+            scene_board = app.board_index();
+        }
+        // Live quads: the exact same inputs the flat render_level composes.
+        BumEntities live = live_entities();
+        std::array<ObjectAnimSprite, 7> anims{};
+        const std::size_t anim_count = game->object_anims(anims);
+        for (std::size_t k = 0; k < anim_count; ++k) {
+            const std::size_t off = anims[k].layer_b ? BumEntities::layer_b_offset
+                                                     : BumEntities::layer_a_offset;
+            live.bytes[anims[k].cell + off] = 0;
+        }
+        std::optional<MonsterPose> monster;
+        if (game->monster_present()) {
+            monster = MonsterPose{game->monster_frame(), game->monster_x(), game->monster_y()};
+        }
+        const auto quads = build_live_quads(
+            live, {anims.data(), anim_count}, monster,
+            BallPose{game->ball_frame(), game->ball_x(), game->ball_y()}, sprite_cache);
+
+        // Eased parallax toward the ball's offset from the board centre.
+        const float tx = kParallaxGain * (static_cast<float>(game->ball_x()) - 160.0f);
+        const float ty = kParallaxGain * (static_cast<float>(game->ball_y()) - 100.0f);
+        cam.x += kParallaxEase * (tx - cam.x);
+        cam.y += kParallaxEase * (ty - cam.y);
+
+        int win_w = 0;
+        int win_h = 0;
+        SDL_GetWindowSizeInPixels(window_, &win_w, &win_h);
+        const Viewport vp =
+            compute_letterbox_viewport(win_w, win_h, 320, square_pixels ? 200 : 240);
+        gl_->gl().BindFramebuffer(GL_FRAMEBUFFER, 0);
+        scene_renderer->render(quads, static_cast<float>(game->ball_x()),
+                               static_cast<float>(game->ball_y()), cam, vp);
+        SDL_GL_SwapWindow(window_);
+        return true;
+    };
+
     auto present_frame = [&]() {
         if (gl_) {
             gl_->present_flat(frame, square_pixels ? 200 : 240);
@@ -544,7 +625,9 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             render_level();
         }
 
-        present_frame();
+        if (app.screen() != Screen::level || !present_3d_level()) {
+            present_frame();
+        }
 
         // Pick this frame's period from the live phase. An in-level game tick is paced by
         // the difficulty mask (FUN_1000_1349): EASY = 2 retraces (35.043 Hz, the historical
