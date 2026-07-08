@@ -27,8 +27,24 @@ inline constexpr float kParallaxGain = 0.05f;  // camera shift per ball offset p
 inline constexpr float kParallaxEase = 0.12f;  // easing per presented frame
 inline constexpr float kWallBlurSigma = 1.6f;  // baked mural DOF
 
+// CRT pixel aspect: mode 13h pixels are 240/200 = 1.2x taller than wide. The 3D
+// stage always presents 4:3-corrected -- the flat path's Alt+A 4:3 look.
+inline constexpr float kCrtPixelAspect = 1.2f;
+
 // Camera distance that makes the z=0 plane subtend exactly 200 world px of height.
 [[nodiscard]] float scene_camera_distance();
+
+// Frustum shape that fills a window of any aspect with the 4:3-corrected stage:
+// `aspect` is the world-unit width/height ratio for mat4_perspective and
+// `half_height` the board px visible above/below centre at z=0. The 320x200
+// field is always whole: windows wider than 4:3 pin half_height at 100 and
+// widen, narrower windows grow half_height so all 320 px of width stay visible.
+// Camera distance is unchanged either way (only the fov widens).
+struct SceneFrustum {
+    float aspect{};
+    float half_height{};
+};
+[[nodiscard]] SceneFrustum scene_frustum(int window_w, int window_h);
 
 enum class QuadKind { slab, billboard };
 

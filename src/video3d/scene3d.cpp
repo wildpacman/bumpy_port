@@ -5,6 +5,7 @@
 #include "video/board_renderer.h"
 #include "video3d/blur.h"
 
+#include <algorithm>
 #include <cmath>
 #include <exception>
 #include <numbers>
@@ -14,6 +15,15 @@ namespace bumpy {
 float scene_camera_distance() {
     const float half_fov = kCameraFovYDeg * std::numbers::pi_v<float> / 360.0f;
     return 100.0f / std::tan(half_fov);
+}
+
+SceneFrustum scene_frustum(int window_w, int window_h) {
+    if (window_w <= 0 || window_h <= 0) {
+        return {320.0f / 200.0f, 100.0f};  // degenerate: exact-field default
+    }
+    const float aspect =
+        kCrtPixelAspect * static_cast<float>(window_w) / static_cast<float>(window_h);
+    return {aspect, std::max(100.0f, 160.0f / aspect)};
 }
 
 OpaqueBounds opaque_bounds(const MenuImage& image) {

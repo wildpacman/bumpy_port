@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 
 #include "resources/entity_sprites.h"
 #include "resources/menu_resources.h"
@@ -155,4 +156,42 @@ TEST_CASE("shadow_silhouette pads and blurs the opaque mask") {
     REQUIRE(mask[(pad + 1) * w + (pad + 1)] > 100);
     REQUIRE(mask[(pad + 0) * w + (pad + 1)] > 0);
     REQUIRE(mask[0] == 0);
+}
+
+TEST_CASE("scene_frustum: 4:3 window sees exactly the 320x200 field") {
+    const auto f = bumpy::scene_frustum(800, 600);
+    REQUIRE(f.aspect == Catch::Approx(1.6f));
+    REQUIRE(f.half_height == Catch::Approx(100.0f));
+    // width at z=0 = 2 * half_height * aspect = exactly the 320 px board
+    REQUIRE(2.0f * f.half_height * f.aspect == Catch::Approx(320.0f));
+}
+
+TEST_CASE("scene_frustum: wider windows keep the field height and widen") {
+    const auto f = bumpy::scene_frustum(1920, 1080);  // 16:9
+    REQUIRE(f.aspect == Catch::Approx(1.2f * 1920.0f / 1080.0f));
+    REQUIRE(f.half_height == Catch::Approx(100.0f));
+    // reveals wall: > 320 px visible at z=0
+    REQUIRE(2.0f * f.half_height * f.aspect > 320.0f);
+}
+
+TEST_CASE("scene_frustum: 16:10 default window already reveals some wall") {
+    const auto f = bumpy::scene_frustum(1920, 1200);
+    REQUIRE(f.aspect == Catch::Approx(1.92f));
+    REQUIRE(f.half_height == Catch::Approx(100.0f));
+    REQUIRE(2.0f * f.half_height * f.aspect == Catch::Approx(384.0f));
+}
+
+TEST_CASE("scene_frustum: portrait windows grow the height, field width whole") {
+    const auto f = bumpy::scene_frustum(600, 800);  // 3:4
+    REQUIRE(f.aspect == Catch::Approx(0.9f));
+    // full 320 px width stays visible...
+    REQUIRE(2.0f * f.half_height * f.aspect == Catch::Approx(320.0f));
+    // ...by growing the vertical extent past the 200-line board
+    REQUIRE(f.half_height > 100.0f);
+}
+
+TEST_CASE("scene_frustum: degenerate window falls back to the exact field") {
+    const auto f = bumpy::scene_frustum(0, 600);
+    REQUIRE(f.aspect == Catch::Approx(1.6f));
+    REQUIRE(f.half_height == Catch::Approx(100.0f));
 }
