@@ -847,8 +847,9 @@ beeper SFX). Design + plan: `docs/superpowers/specs/2026-07-06-audio-sound-syste
   sweep, ISR-rate glide, square/noise gen, termination). Presets + the six per-tile map
   tables are baked by **`tools/re/dump_sfx.py`** → `src/resources/sfx_tables.gen.cpp`.
 - **Mixer + platform.** **`src/audio/audio_engine`** owns the looping music player + a
-  6-voice SFX pool, mixes to mono float, and is thread-safe (one mutex over all shared
-  state). **`src/platform_sdl3/sdl_audio`** opens an SDL3 stream (F32/mono/49715) whose
+  **single** PC-speaker SFX voice (the original engine is monophonic: one global sound
+  slot overwritten per play, so a new sound preempts the one in flight — `kVoiceCount=1`),
+  mixes to mono float, and is thread-safe (one mutex over all shared state). **`src/platform_sdl3/sdl_audio`** opens an SDL3 stream (F32/mono/49715) whose
   callback pulls `AudioEngine::render`. A missing/locked device degrades to **muted**
   (never fatal). `SdlApp` starts/stops music on the `splash`↔`menu` transition.
 - **In-game triggers.** All **27 recovered `6e11` sites** re-inserted in `LevelGame`

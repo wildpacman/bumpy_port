@@ -22,7 +22,16 @@ namespace bumpy {
 class AudioEngine {
 public:
     static constexpr std::uint32_t kSampleRate = 49715;
-    static constexpr std::size_t kVoiceCount = 6;
+    // The original PC-speaker sweep engine is MONOPHONIC: one physical speaker / one
+    // PIT ch-2 / one global sound slot (DAT_1000_9788..979f + the single active
+    // step-handler pointer DAT_1000_97a1). FUN_1000_9488/9502 overwrite that slot on
+    // every play, so a new sound always cuts off whatever tone was mid-sweep. Modelling
+    // it with a single voice (play_sfx steals it every time) reproduces that: e.g. the
+    // ~999 ms side-spring/deflector sweep 0x03 gets preempted by the ball's next
+    // roll/bump, so it is heard as a short chirp -- not the long, drawn-out tone a
+    // polyphonic pool let run to completion. The single voice also persists the noise
+    // LFSR across sounds exactly like the original's shared BSS register.
+    static constexpr std::size_t kVoiceCount = 1;
     // One-pole low-pass cutoff modelling the PC-speaker cone. The 1-bit sweep output is
     // otherwise a hard square whose high harmonics (and >Nyquist aliasing on the fast
     // sweeps) sound harsh/"частотный"; the real beeper rolls them off. Tunable by ear.
