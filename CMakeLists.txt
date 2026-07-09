@@ -26,6 +26,7 @@ add_library(bumpy_core
   src/game/high_score_screen.cpp
   src/game/password_screen.cpp
   src/game/app.cpp
+  src/game/settings_overlay.cpp
   src/resources/binary_reader.cpp
   src/resources/vec.cpp
   src/resources/menu_resources.cpp
@@ -135,6 +136,7 @@ add_executable(bumpy_tests
   tests/cpp/high_score_screen_test.cpp
   tests/cpp/high_score_renderer_test.cpp
   tests/cpp/app_test.cpp
+  tests/cpp/settings_overlay_test.cpp
   tests/cpp/world_map_test.cpp
   tests/cpp/world_graphs_test.cpp
   tests/cpp/world_resources_test.cpp
