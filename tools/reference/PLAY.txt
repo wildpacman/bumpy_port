@@ -1,0 +1,26 @@
+Bumpy Port -- ready-to-run build
+=================================
+
+This is the port's own binary. It does NOT include Bumpy's Arcade Fantasy
+itself -- you need your own copy of the original 1993 DOS game.
+
+Setup:
+  1. Get the original game's files (BUMPY.EXE, TITRE.VEC, MONDE1..9.VEC,
+     D1..9.PAV/DEC/BUM, BUMSPJEU.BIN, DDFNT2.CAR, BUMPY.MID, BUMPY.BNK,
+     SCORE.VEC, DESSFIN.VEC, FLECHE.BIN, MASKBUMP.VEC, BUMPRESE.VEC).
+  2. Drop them in this same folder, next to bumpy_port.exe.
+  3. Run bumpy_port.exe.
+
+Controls:
+  Arrows          Move / navigate menus and the world map
+  Enter / Space   Confirm / fire
+  Escape          Back / quit (context-sensitive, matches the original)
+  Alt+Enter       Toggle fullscreen
+  Alt+A           Toggle 2D aspect: 16:10 square pixels / 4:3 CRT-style
+  Alt+3           Toggle the 3D diorama render mode (in-level only)
+  Tab             Settings overlay
+
+Settings are saved to bumpy_port.cfg next to the exe.
+
+Full source, the reverse-engineering writeup, and the project's story:
+https://github.com/wildpacman/bumpy_port

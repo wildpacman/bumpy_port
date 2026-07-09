@@ -25,3 +25,6 @@ __pycache__/
 # Reproducible reverse-engineering artifacts and downloaded tools
 /analysis/generated/
 /tools/vendor/
+
+# Packaged release staging (built by tools/package_release.ps1)
+/dist/
