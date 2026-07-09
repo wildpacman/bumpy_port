@@ -980,6 +980,10 @@ int run_sdl_menu(const std::filesystem::path& asset_root, int start_world, bumpy
     // The HIGH-SCORE / GAME-OVER backdrop (SCORE.VEC, MENU index 3). Ships as a raw 320x200
     // screen image (not a compressed VEC), so read it directly. World-independent; outlives run().
     const auto score_screen = bumpy::read_binary_file(asset_root / "SCORE.VEC");
+    // The Tab settings overlay's renderer: SCORE.VEC backdrop + sprite bank glyphs +
+    // FLECHE.BIN cursor. World-independent, constructed once, outlives run().
+    const bumpy::SettingsRenderer settings_renderer(
+        score_screen, sprite_bank.bytes(), resources.cursor_sprites);
     // The intro-music song + AdLib instrument bank (FUN_1000_30dd): world-independent, loaded
     // once and outliving run(); AudioEngine only ever reads them to (re)construct the player.
     const auto midi_song = bumpy::MidiSong::load(asset_root / "BUMPY.MID");
@@ -1012,9 +1016,9 @@ int run_sdl_menu(const std::filesystem::path& asset_root, int start_world, bumpy
         std::cerr << "warning: could not open audio device, running muted: " << error.what() << '\n';
     }
 
-    return sdl.run(app, renderer, asset_root, std::move(world), sprite_bank.bytes(), font,
-                   resources.splash.decoded_bytes(), outro.decoded_bytes(), score_screen, frame,
-                   audio_engine, config, cfg_path);
+    return sdl.run(app, renderer, settings_renderer, asset_root, std::move(world),
+                   sprite_bank.bytes(), font, resources.splash.decoded_bytes(),
+                   outro.decoded_bytes(), score_screen, frame, audio_engine, config, cfg_path);
 }
 
 }  // namespace

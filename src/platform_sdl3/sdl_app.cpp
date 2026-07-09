@@ -1,6 +1,7 @@
 #include "platform_sdl3/sdl_app.h"
 
 #include "game/level_game.h"
+#include "game/settings_overlay.h"
 #include "game/speed_pacer.h"
 #include "platform_gl3/scene_renderer.h"
 #include "resources/world_resources.h"
@@ -168,7 +169,9 @@ SdlApp::~SdlApp() {
     SDL_Quit();
 }
 
-int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesystem::path& asset_root,
+int SdlApp::run(App& app, const MenuRenderer& menu_renderer,
+                const SettingsRenderer& settings_renderer,
+                const std::filesystem::path& asset_root,
                 WorldResources world, std::span<const std::uint8_t> sprite_bank, const Font& font,
                 std::span<const std::uint8_t> splash_screen,
                 std::span<const std::uint8_t> outro_screen,
@@ -176,14 +179,17 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                 AudioEngine& audio, PortConfig config, std::filesystem::path config_path) {
     bool running = true;
     MenuInput input{};
+    SettingsOverlay overlay;
+    bool overlay_open = false;
 
     // FUN_1000_30dd: the intro tune loops for as long as the startup splash is showing.
     // Splash is the initial screen, so arm it before the loop's first iteration; the
     // screen-change tracking below (via `before`) stops it the moment the player leaves
     // for the menu.
-    if (app.screen() == Screen::splash) {
+    if (app.screen() == Screen::splash && config.music) {
         audio.start_music();
     }
+    audio.set_sfx_enabled(config.sfx);
 
     // The in-level game state machine, created when the level screen is entered for a
     // board and destroyed when it is left. nullopt off the playfield.
@@ -511,6 +517,16 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
                                           : "shader reload failed; keeping previous\n");
                     }
 #endif
+                } else if (event.key.key == SDLK_TAB) {
+                    // Tab: open/close the settings overlay. Only openable on the play
+                    // surfaces (menu / map / level); a no-op elsewhere.
+                    if (overlay_open) {
+                        overlay_open = false;
+                    } else if (app.screen() == Screen::menu || app.screen() == Screen::map ||
+                               app.screen() == Screen::level) {
+                        overlay.reset();
+                        overlay_open = true;
+                    }
                 } else {
                     update_key_state(input, event.key.key, true);
                 }
@@ -520,6 +536,74 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
         }
         if (!running) {
             break;
+        }
+
+        // Modal settings overlay (Tab). While open, the world is frozen: no app.update,
+        // no game tick, no transition stepping. Input drives the overlay; each event is
+        // applied here (side effect + PortConfig write), reusing the hotkey side effects.
+        if (overlay_open) {
+            switch (overlay.update(input, gl_ != nullptr)) {
+            case SettingsEvent::toggle_3d:
+                if (gl_) {
+                    render3d = !render3d;
+                    config.render3d = render3d;
+                    persist();
+                }
+                break;
+            case SettingsEvent::toggle_aspect:
+                square_pixels = !square_pixels;
+                apply_aspect();
+                config.square_pixels = square_pixels;
+                persist();
+                break;
+            case SettingsEvent::toggle_fullscreen: {
+                const bool fs = (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0;
+                SDL_SetWindowFullscreen(window_, !fs);
+                config.fullscreen = !fs;
+                persist();
+                break;
+            }
+            case SettingsEvent::toggle_music:
+                config.music = !config.music;
+                if (config.music) {
+                    if (app.screen() == Screen::splash) audio.start_music();
+                } else {
+                    audio.stop_music();
+                }
+                persist();
+                break;
+            case SettingsEvent::toggle_sfx:
+                config.sfx = !config.sfx;
+                audio.set_sfx_enabled(config.sfx);
+                persist();
+                break;
+            case SettingsEvent::quit:
+                running = false;
+                break;
+            case SettingsEvent::close:
+                overlay_open = false;
+                break;
+            case SettingsEvent::none:
+                break;
+            }
+            if (!running) {
+                break;
+            }
+            if (overlay_open) {
+                SettingsView view{};
+                view.page = overlay.page();
+                view.cursor_row = overlay.cursor_row();
+                view.render3d = render3d;
+                view.square_pixels = square_pixels;
+                view.fullscreen = (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0;
+                view.music = config.music;
+                view.sfx = config.sfx;
+                view.render3d_available = gl_ != nullptr;
+                settings_renderer.render(view, frame);
+                present_frame();  // flat path, over both GL and SDL_Renderer back-ends
+            }
+            wait_next_tick(period_full);  // menu-rate; keeps cadence so close has no burst
+            continue;                     // freeze the world under the overlay
         }
 
         // While the edge-to-centre darken is playing, freeze all game logic (the original
@@ -564,7 +648,7 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer, const std::filesyst
             // startup-only), so this is exactly FUN_1000_30dd's loop-until-keypress.
             if (before == Screen::splash) {
                 audio.stop_music();
-            } else if (app.screen() == Screen::splash) {
+            } else if (app.screen() == Screen::splash && config.music) {
                 audio.start_music();
             }
         }

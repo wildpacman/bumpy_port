@@ -10,6 +10,7 @@
 #include "resources/font.h"
 #include "resources/world_resources.h"
 #include "video/menu_renderer.h"
+#include "video/settings_renderer.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -41,7 +42,9 @@ public:
     // config/config_path seed the persisted presentation state (square pixels, fullscreen,
     // 3D mode) and are best-effort re-saved to config_path whenever Alt+Enter/Alt+A/Alt+3
     // change it, so the choice survives to the next launch.
-    int run(App& app, const MenuRenderer& menu_renderer, const std::filesystem::path& asset_root,
+    int run(App& app, const MenuRenderer& menu_renderer,
+            const SettingsRenderer& settings_renderer,
+            const std::filesystem::path& asset_root,
             WorldResources world, std::span<const std::uint8_t> sprite_bank, const Font& font,
             std::span<const std::uint8_t> splash_screen, std::span<const std::uint8_t> outro_screen,
             std::span<const std::uint8_t> score_screen,
