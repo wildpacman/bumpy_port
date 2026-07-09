@@ -763,6 +763,7 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer,
             }
         } else if (app.screen() == Screen::menu) {
             menu_renderer.render(app.menu().view(), frame);
+            draw_tab_hint(font, frame);  // port hint: press Tab for the settings overlay
         } else if (app.screen() == Screen::map) {
             render_map(world.backdrop(), app.world_map().view(), sprite_bank, frame,
                        app.cleared_boards());

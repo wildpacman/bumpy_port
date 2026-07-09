@@ -285,6 +285,10 @@ bumpy::IndexedFramebuffer render_menu_frame(const std::filesystem::path& asset_r
     view.level_value = level_value;  // 0/1/2 = EASY/MEDIUM/HARD indicator
     bumpy::IndexedFramebuffer frame(320, 200);
     renderer.render(view, frame);
+    // The port's TAB->OPTIONS hint, so --render-title previews the title exactly as the
+    // shell composes it (the shell draws the same hint on Screen::menu).
+    const auto font = bumpy::Font::load(asset_root / "DDFNT2.CAR");
+    bumpy::draw_tab_hint(font, frame);
     return frame;
 }
 

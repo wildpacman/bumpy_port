@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string_view>
 
 namespace bumpy {
 
@@ -38,5 +39,19 @@ void draw_lives(std::span<const std::uint8_t> sprite_bank, std::uint8_t lives,
 // each digit advancing by glyph.width + font.spacing(). Used on the world map.
 void draw_score(const Font& font, std::uint32_t score, int cursor_x, int baseline_y,
                 std::uint8_t color, IndexedFramebuffer& target);
+
+// Total advance width in pixels of `text` in `font` (sum of per-glyph width + spacing,
+// including the trailing spacing) -- for right-aligning a string before draw_text.
+[[nodiscard]] int measure_text(const Font& font, std::string_view text);
+
+// Draw `text` left-to-right from (x, baseline_y) in `font`, set bits in `color`. Generalises
+// draw_score to an arbitrary string; characters outside the font advance as blank cells.
+void draw_text(const Font& font, std::string_view text, int x, int baseline_y,
+               std::uint8_t color, IndexedFramebuffer& target);
+
+// The port's TAB->OPTIONS discoverability hint (a port addition, not in the original), drawn
+// small and right-aligned in the bottom-right corner of the title menu so a first-time player
+// learns the settings overlay exists. Uses the small HUD font (DDFNT2).
+void draw_tab_hint(const Font& font, IndexedFramebuffer& target);
 
 }  // namespace bumpy
