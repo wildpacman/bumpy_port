@@ -527,6 +527,10 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer,
                         overlay.reset();
                         overlay_open = true;
                     }
+                    // Clear any held key so the first frame after this transition (overlay
+                    // open OR close) doesn't leak a stale edge into the (soon-to-be-frozen
+                    // or just-resumed) app/game update.
+                    input = MenuInput{};
                 } else {
                     update_key_state(input, event.key.key, true);
                 }
@@ -582,6 +586,11 @@ int SdlApp::run(App& app, const MenuRenderer& menu_renderer,
                 break;
             case SettingsEvent::close:
                 overlay_open = false;
+                // Esc/Left-close: that key is still physically held (no KEY_UP yet), and
+                // App's waiting_for_release_ latch was frozen while the overlay was open,
+                // so without this the held key reads as a fresh edge next frame (quit /
+                // back_to_menu / life-loss). Clear it so the resumed screen sees no input.
+                input = MenuInput{};
                 break;
             case SettingsEvent::none:
                 break;
