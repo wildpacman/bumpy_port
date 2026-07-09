@@ -20,7 +20,7 @@ constexpr int kRowY0 = 64;
 constexpr int kRowStepY = 24;
 constexpr int kCursorX = 40;
 constexpr int kLabelX = 64;
-constexpr int kValueX = 208;
+constexpr int kValueX = 240;
 // Passwords page (two columns of four).
 constexpr int kPwRowY0 = 56;
 constexpr int kPwRowStep = 24;
@@ -71,8 +71,8 @@ void SettingsRenderer::render(const SettingsView& view, IndexedFramebuffer& targ
         draw_glyph_string(label, std::char_traits<char>::length(label), kLabelX, y,
                           sprite_bank_, target);
         if (value) {
-            draw_glyph_string(value, std::char_traits<char>::length(value), kValueX, y,
-                              sprite_bank_, target);
+            draw_editor_glyphs(value, std::char_traits<char>::length(value), kValueX, y,
+                               sprite_bank_, target);
         }
     };
 
