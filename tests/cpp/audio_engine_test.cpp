@@ -19,3 +19,22 @@ TEST_CASE("AudioEngine mixes an SFX one-shot") {
     double active = 0.0; for (float s : buf) active += double(s) * s;
     REQUIRE(active > 0.0);
 }
+
+TEST_CASE("AudioEngine SFX gate silences play_sfx when disabled") {
+    const auto song = bumpy::MidiSong::load("BUMPY.MID");
+    const auto bank = bumpy::AdLibBank::load("BUMPY.BNK");
+    bumpy::AudioEngine engine(song, bank);
+    std::vector<float> buf(4096, 0.0f);
+
+    engine.set_sfx_enabled(false);
+    engine.play_sfx(1);                        // ignored while disabled
+    engine.render(buf.data(), buf.size());
+    double off = 0.0; for (float s : buf) off += double(s) * s;
+    REQUIRE(off == 0.0);
+
+    engine.set_sfx_enabled(true);
+    engine.play_sfx(1);                        // audible again
+    engine.render(buf.data(), buf.size());
+    double on = 0.0; for (float s : buf) on += double(s) * s;
+    REQUIRE(on > 0.0);
+}

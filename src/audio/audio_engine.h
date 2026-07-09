@@ -45,6 +45,10 @@ public:
     // the oldest active one if all are busy. Ignores unknown/unused ids.
     void play_sfx(std::uint8_t id);
 
+    // Enable/disable the SFX bus (Tab overlay AUDIO page). When disabled, play_sfx
+    // starts no voice. Music is unaffected (it has its own start/stop).
+    void set_sfx_enabled(bool enabled);
+
     // Audio-thread entry point: zeroes `out`, then mixes in the music (if
     // playing) and every active SFX voice.
     void render(float* out, std::size_t frames);
@@ -56,6 +60,7 @@ private:
     std::mutex mutex_;
     std::optional<MidiOplPlayer> music_;
     bool music_playing_ = false;
+    bool sfx_enabled_ = true;
 
     std::array<SpeakerVoice, kVoiceCount> voices_{};
     std::array<std::uint64_t, kVoiceCount> voice_age_{};

@@ -24,12 +24,20 @@ void AudioEngine::stop_music() {
     music_playing_ = false;
 }
 
+void AudioEngine::set_sfx_enabled(bool enabled) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    sfx_enabled_ = enabled;
+}
+
 void AudioEngine::play_sfx(std::uint8_t id) {
     if (id >= 0x16 || !kSfxPresets[id].used) {
         return;
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
+    if (!sfx_enabled_) {
+        return;
+    }
     std::size_t slot = 0;
     std::uint64_t oldest_age = voice_age_[0];
     for (std::size_t i = 0; i < kVoiceCount; ++i) {
