@@ -44,6 +44,10 @@ PortConfig parse_port_config(std::string_view text) noexcept {
             parse_bool(value, config.square_pixels);
         } else if (key == "fullscreen") {
             parse_bool(value, config.fullscreen);
+        } else if (key == "music") {
+            parse_bool(value, config.music);
+        } else if (key == "sfx") {
+            parse_bool(value, config.sfx);
         }
     }
     return config;
@@ -55,7 +59,9 @@ std::string serialize_port_config(const PortConfig& config) {
         << "# for known keys, unknown keys are ignored)\n"
         << "render3d=" << (config.render3d ? 1 : 0) << '\n'
         << "square_pixels=" << (config.square_pixels ? 1 : 0) << '\n'
-        << "fullscreen=" << (config.fullscreen ? 1 : 0) << '\n';
+        << "fullscreen=" << (config.fullscreen ? 1 : 0) << '\n'
+        << "music=" << (config.music ? 1 : 0) << '\n'
+        << "sfx=" << (config.sfx ? 1 : 0) << '\n';
     return out.str();
 }
 

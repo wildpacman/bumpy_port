@@ -11,9 +11,11 @@ namespace bumpy {
 // session-only like the original). Simple key=value lines; unknown keys are
 // ignored so future versions can add fields without breaking older builds.
 struct PortConfig {
-    bool render3d = false;      // Alt+3 diorama mode
-    bool square_pixels = true;  // Alt+A: true = 16:10 (logical 200), false = 4:3 (240)
-    bool fullscreen = false;    // Alt+Enter
+    bool render3d = true;       // Alt+3 diorama mode (on by default)
+    bool square_pixels = false; // Alt+A: true = 16:10, false = 4:3 (CRT, default)
+    bool fullscreen = true;     // Alt+Enter (fullscreen by default)
+    bool music = true;          // intro-music gate (Tab overlay AUDIO page)
+    bool sfx = true;            // SFX gate (Tab overlay AUDIO page)
 };
 
 [[nodiscard]] PortConfig parse_port_config(std::string_view text) noexcept;
