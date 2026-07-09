@@ -18,9 +18,15 @@ constexpr int kGlyphStepX = 16;
 constexpr int kTitleY = 16;
 constexpr int kRowY0 = 64;
 constexpr int kRowStepY = 24;
-constexpr int kCursorX = 40;
-constexpr int kLabelX = 64;
-constexpr int kValueX = 240;
+// Horizontal budget on the 320px page: the longest label "FULLSCREEN" (10 glyph
+// cells = 160px) plus the longest value "16.10" (5 cells = 80px) must both fit with
+// a gap between them and a margin at the right edge. cursor 16..~36, labels 48..208,
+// values left-aligned at 224 (16px gap after FULLSCREEN); "16.10" ends at 304, a 16px
+// right margin -- so no value ever touches the 320px edge (the earlier 240 put "16.10"
+// flush against it).
+constexpr int kCursorX = 16;
+constexpr int kLabelX = 48;
+constexpr int kValueX = 224;
 // Passwords page (two columns of four).
 constexpr int kPwRowY0 = 56;
 constexpr int kPwRowStep = 24;

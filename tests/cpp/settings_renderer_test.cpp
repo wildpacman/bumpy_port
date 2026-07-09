@@ -68,7 +68,7 @@ TEST_CASE("SettingsRenderer draws the video page with a non-overlapping value co
     bumpy::SettingsView view{};
     view.page = bumpy::SettingsPage::video;
     view.render3d = true;
-    view.square_pixels = false;
+    view.square_pixels = true;  // aspect value "16.10" -- the longest value (5 glyphs)
     view.fullscreen = true;
     view.render3d_available = true;
 
@@ -78,12 +78,16 @@ TEST_CASE("SettingsRenderer draws the video page with a non-overlapping value co
     REQUIRE(nonzero_pixels(frame, 16, 32) > 20);    // VIDEO title band
     REQUIRE(nonzero_pixels(frame, 64, 140) > 60);   // the three rows + cursor
 
-    // Labels never reach x >= 224 (the longest label, "FULLSCREEN", ends its last glyph
-    // cell at 208-223), so any ink at x >= 256 can only come from a value's 2nd/3rd glyph.
-    // At the old buggy kValueX = 208 the longest value here ("4.3", 3 glyphs) only reaches
-    // column 255, so this band would be entirely blank -- this assertion fails under the
-    // regression and passes only once the value column is moved clear of the label.
-    REQUIRE(nonzero_pixels_x(frame, 256, 320, 64, 140) > 0);
+    // Layout: labels at x=48.. (the longest, "FULLSCREEN", ends its last glyph cell at 208);
+    // values left-aligned at kValueX=224. So [208,224) is the label/value gap and must be
+    // blank, and the value column [224,320) must carry ink.
+    REQUIRE(nonzero_pixels_x(frame, 208, 224, 64, 140) == 0);  // gap: no label/value overlap
+    REQUIRE(nonzero_pixels_x(frame, 224, 320, 64, 140) > 0);   // values render
+
+    // "16.10" (5 glyphs) ends at x=304 -- a 16px right margin -- so no value touches the frame
+    // edge. This fails at the old kValueX=240 (where "16.10" spanned 240..320, flush to the
+    // 320 edge -- the "runs off the edge / looks skewed" report), and passes at 224.
+    REQUIRE(nonzero_pixels_x(frame, 304, 320, 64, 140) == 0);  // right margin clear
 }
 
 TEST_CASE("SettingsRenderer draws the audio page with a non-overlapping value column") {
@@ -103,6 +107,6 @@ TEST_CASE("SettingsRenderer draws the audio page with a non-overlapping value co
     REQUIRE(nonzero_pixels(frame, 16, 32) > 20);    // AUDIO title band
     REQUIRE(nonzero_pixels(frame, 64, 116) > 40);   // the two rows + cursor
 
-    // Value column (ON/ON) must render distinctly in the value column.
-    REQUIRE(nonzero_pixels_x(frame, 240, 320, 64, 116) > 0);
+    // Values (ON/ON) render in the value column, left-aligned at kValueX=224.
+    REQUIRE(nonzero_pixels_x(frame, 224, 320, 64, 116) > 0);
 }
