@@ -55,6 +55,7 @@ add_library(bumpy_core
   src/video/viewport.cpp
   src/video/high_score_renderer.cpp
   src/video/password_renderer.cpp
+  src/video/settings_renderer.cpp
   src/game/world_map.cpp
   src/game/world_graphs.gen.cpp
   src/audio/opl2.cpp
@@ -137,6 +138,7 @@ add_executable(bumpy_tests
   tests/cpp/high_score_renderer_test.cpp
   tests/cpp/app_test.cpp
   tests/cpp/settings_overlay_test.cpp
+  tests/cpp/settings_renderer_test.cpp
   tests/cpp/world_map_test.cpp
   tests/cpp/world_graphs_test.cpp
   tests/cpp/world_resources_test.cpp

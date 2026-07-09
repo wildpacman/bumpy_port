@@ -36,6 +36,7 @@
 #include "video/menu_renderer.h"
 #include "video/password_renderer.h"
 #include "video/screen_image.h"
+#include "video/settings_renderer.h"
 #include "video/screen_transition.h"
 #include "video3d/scene3d.h"
 
@@ -580,6 +581,35 @@ int render_password_to_bmp(const std::filesystem::path& asset_root,
     return 0;
 }
 
+// Dump a settings-overlay page through the shared renderer for by-eye checking.
+// page = root | video | audio | passwords (default root).
+int render_options_to_bmp(const std::filesystem::path& asset_root,
+                          const std::filesystem::path& score_path,
+                          const std::filesystem::path& out_path, const std::string& page) {
+    const auto score_bytes = bumpy::read_binary_file(score_path);
+    const auto bank = bumpy::decode_sprite_archive(asset_root / "BUMSPJEU.BIN");
+    const auto fleche = bumpy::read_binary_file(asset_root / "FLECHE.BIN");
+    bumpy::SettingsRenderer renderer(score_bytes, bank.bytes(), fleche);
+
+    bumpy::SettingsView view{};
+    view.render3d = true;
+    view.square_pixels = false;
+    view.fullscreen = true;
+    view.music = true;
+    view.sfx = true;
+    view.render3d_available = true;
+    view.page = page == "video"       ? bumpy::SettingsPage::video
+                : page == "audio"     ? bumpy::SettingsPage::audio
+                : page == "passwords" ? bumpy::SettingsPage::passwords
+                                      : bumpy::SettingsPage::root;
+
+    bumpy::IndexedFramebuffer frame(320, 200);
+    renderer.render(view, frame);
+    write_24bit_bmp(out_path, frame);
+    std::cout << "wrote " << out_path.string() << " (" << page << ")\n";
+    return 0;
+}
+
 // Compose a static playfield board (MONDE backdrop + D?.PAV objects on the 16x16
 // grid) and dump it to a BMP for by-eye comparison with the original.
 int render_board_to_bmp(const std::filesystem::path& asset_root, int level_number,
@@ -1039,6 +1069,10 @@ int main(int argc, char* argv[]) {
         if ((argc == 4 || argc == 5) && std::string_view(argv[1]) == "--render-password") {
             // --render-password <SCORE.VEC> <out.bmp> [CODE]: [CODE] shows the OK/ERROR flash.
             return render_password_to_bmp(asset_root, argv[2], argv[3], argc == 5 ? argv[4] : "");
+        }
+        if ((argc == 4 || argc == 5) && std::string_view(argv[1]) == "--render-options") {
+            // --render-options <SCORE.VEC> <out.bmp> [root|video|audio|passwords]
+            return render_options_to_bmp(asset_root, argv[2], argv[3], argc == 5 ? argv[4] : "root");
         }
         if ((argc == 5 || argc == 6) && std::string_view(argv[1]) == "--render-map") {
             // --render-map <world> <MONDE.VEC> <out.bmp> [cleared_node_count]
