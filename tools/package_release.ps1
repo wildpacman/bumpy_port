@@ -1,8 +1,8 @@
 $ErrorActionPreference = "Stop"
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$version = "v1.0.0"
-$stageName = "bumpy_port-$version-win64"
+$version = "v0.1.0"
+$stageName = "Bumpy3D-$version-win64"
 
 Push-Location $root
 try {
@@ -18,7 +18,7 @@ try {
     if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" -Confirm:$false }
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-    Copy-Item $exe $stage
+    Copy-Item $exe (Join-Path $stage "Bumpy3D.exe")
     Copy-Item $dll $stage
     Copy-Item -Recurse "shaders3d" (Join-Path $stage "shaders3d")
     Copy-Item -Recurse "config" (Join-Path $stage "config")

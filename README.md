@@ -1,11 +1,13 @@
-# Bumpy Port
+# Bumpy3D
 
 **A vibecoded source port of *Bumpy's Arcade Fantasy* (Loriciel, 1993, DOS)** — a
 native Windows 11 rebuild in C++20 / SDL3 that reads the original game's own
 resource files directly. No re-implemented art, no upscaled or AI-generated
 replacements: every sprite, board, and sound you see comes straight out of the
 original `.EXE` and data files, decoded by a reimplementation of the original
-game's own logic.
+game's own logic. The name refers to the optional [3D diorama render
+mode](#3d-render-mode) below, not to upscaled assets — the sprites and boards
+are the original 1993 art, unchanged.
 
 "Vibecoded" is meant literally, not as a disclaimer: there was no source code,
 no leaked build, no prior disassembly to start from. Everything here — the
@@ -14,6 +16,16 @@ the audio synthesis — was reverse-engineered from the binary by working
 alongside an AI coding agent (Claude Code), byte-exact-verified against the
 original as it went. On top of that faithful reconstruction, the port adds a
 couple of things the 1993 original never had — see [3D render mode](#3d-render-mode) below.
+
+## Status
+
+This is an early, preview-quality build. All 9 worlds are playable and the
+core systems (physics, collision, scoring, sound) are byte/behavior-verified
+against the original piece by piece — but the game is large and intricate,
+and it has **not** been played through start to finish end-to-end. There will
+be bugs, possibly game-breaking ones on some boards. If you hit one, please
+[open an issue](https://github.com/wildpacman/bumpy_port/issues) with the
+world/board and what happened.
 
 <p align="center">
   <img src="docs/media/title.png" width="45%" alt="Title screen"/>
@@ -28,7 +40,7 @@ couple of things the 1993 original never had — see [3D render mode](#3d-render
 ## Download & play
 
 Grab the latest build from **[Releases](https://github.com/wildpacman/bumpy_port/releases/latest)**
-— it's just the port's own `bumpy_port.exe` + `SDL3.dll` + shaders, nothing
+— it's just the port's own `Bumpy3D.exe` + `SDL3.dll` + shaders, nothing
 else. It does **not** include the original game (see [Legal](#legal) below):
 
 1. Download and unzip the release.
@@ -36,8 +48,8 @@ else. It does **not** include the original game (see [Legal](#legal) below):
    (`BUMPY.EXE`, `TITRE.VEC`, `MONDE1..9.VEC`, `D1..9.PAV/DEC/BUM`,
    `BUMSPJEU.BIN`, `DDFNT2.CAR`, `BUMPY.MID`, `BUMPY.BNK`, `SCORE.VEC`,
    `DESSFIN.VEC`, `FLECHE.BIN`, `MASKBUMP.VEC`, `BUMPRESE.VEC`) next to
-   `bumpy_port.exe`.
-3. Run `bumpy_port.exe`.
+   `Bumpy3D.exe`.
+3. Run `Bumpy3D.exe`.
 
 ## Features
 
@@ -78,7 +90,9 @@ differ in build configuration, so both exes land under
 GLSL sources) is copied next to the exe by the build automatically.
 
 `tools/package_release.ps1` builds a clean redistributable zip (the port's own
-files only) into `dist/` — what the GitHub Releases build is made from.
+files only) into `dist/` — what the GitHub Releases build is made from (it
+renames the exe to `Bumpy3D.exe` for that package; the build output itself is
+still `bumpy_port.exe`, matching the CMake project name).
 
 ## Controls
 
